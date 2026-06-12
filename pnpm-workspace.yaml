@@ -1,5 +1,7 @@
 allowBuilds:
-  esbuild: set this to true or false
+  # esbuild's postinstall just downloads its platform binary — required by
+  # drizzle-kit and vitest, safe to allow.
+  esbuild: true
   sharp: false
   unrs-resolver: false
 ignoredBuiltDependencies:
