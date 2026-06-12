@@ -1,0 +1,362 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-canvas: var(--canvas);
+  --color-canvas-foreground: var(--canvas-foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  /* --color-tertiary removed: was identical to --primary */
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-destructive-bg: var(--destructive-bg);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-warning-bg: var(--warning-bg);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-success-bg: var(--success-bg);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-info-bg: var(--info-bg);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  --font-sans: var(--font-sans);
+  --font-sebenta: var(--font-sebenta);
+  --font-mono: var(--font-mono);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  --shadow-2xs: var(--shadow-2xs);
+  --shadow-xs: var(--shadow-xs);
+  --shadow-sm: var(--shadow-sm);
+  --shadow: var(--shadow);
+  --shadow-md: var(--shadow-md);
+  --shadow-lg: var(--shadow-lg);
+  --shadow-xl: var(--shadow-xl);
+  --shadow-2xl: var(--shadow-2xl);
+
+  --tracking-tighter: calc(var(--tracking-normal) - 0.05em);
+  --tracking-tight: calc(var(--tracking-normal) - 0.025em);
+  --tracking-normal: var(--tracking-normal);
+  --tracking-wide: calc(var(--tracking-normal) + 0.025em);
+  --tracking-wider: calc(var(--tracking-normal) + 0.05em);
+  --tracking-widest: calc(var(--tracking-normal) + 0.1em);
+}
+
+:root {
+  /* ── Base ── */
+  --background: #ffffff;
+  --foreground: #0f1a0a;
+
+  /* ── Surfaces ── */
+  --canvas: #f6f3ec;
+  --canvas-foreground: #0f1a0a;
+  --card: #ffffff;
+  --card-foreground: #0f1a0a;
+  --popover: #ffffff;
+  --popover-foreground: #0f1a0a;
+
+  /* ── Brand ── */
+  --primary: #1f00ce;
+  --primary-foreground: #ffffff;
+  --secondary: #6cf020;
+  --secondary-foreground: #0f1a0a;
+  /* --tertiary removed: was identical to --primary */
+
+  /* ── Muted & Accent ── */
+  --muted: #f0ede6;
+  --muted-foreground: #5c5c52;
+  --accent: #f3fbd9;
+  --accent-foreground: #1f00ce;
+
+  /* ── Semantic: Destructive ── */
+  --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
+  --destructive-bg: #fee2e2;
+
+  /* ── Semantic: Warning ── */
+  --warning: #f97316;
+  --warning-foreground: #431407;
+  --warning-bg: #ffedd5;
+
+  /* ── Semantic: Success ── */
+  --success: #22c55e;
+  --success-foreground: #052e16;
+  --success-bg: #dcfce7;
+
+  /* ── Semantic: Info ── */
+  --info: #3b82f6;
+  --info-foreground: #1e3a5f;
+  --info-bg: #dbeafe;
+
+  /* ── Border & Input ── */
+  --border: #e3dfd5;
+  --input: #e3dfd5;
+  --ring: #1f00ce;
+
+  /* ── Charts ── */
+  --chart-1: #1f00ce;
+  --chart-2: #6cf020;
+  --chart-3: #f97316;
+  --chart-4: #c77dff;
+  --chart-5: #ef4444;
+
+  /* ── Sidebar ── */
+  --sidebar: #efece4;
+  --sidebar-foreground: #0f1a0a;
+  --sidebar-primary: #1f00ce;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #ffffff;
+  --sidebar-accent-foreground: #0f1a0a;
+  --sidebar-border: #e3dfd5;
+  --sidebar-ring: #1f00ce;
+
+  /* ── Typography ── */
+  --font-sans: Inter, system-ui, sans-serif;
+  --font-sebenta: Sebenta, ui-serif, Georgia, serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --tracking-normal: -0.01em;
+
+  /* ── Spacing & Radius ── */
+  --radius: 0.5rem;
+  --spacing: 0.25rem;
+
+  /* ── Shadows ── */
+  --shadow-x: 0;
+  --shadow-y: 4px;
+  --shadow-blur: 10px;
+  --shadow-spread: -2px;
+  --shadow-opacity: 0.1;
+  --shadow-color: #000000;
+  --shadow-2xs: 0 4px 10px -2px hsl(0 0% 0% / 0.05);
+  --shadow-xs: 0 4px 10px -2px hsl(0 0% 0% / 0.05);
+  --shadow-sm:
+    0 4px 10px -2px hsl(0 0% 0% / 0.1), 0 1px 2px -3px hsl(0 0% 0% / 0.1);
+  --shadow:
+    0 4px 10px -2px hsl(0 0% 0% / 0.1), 0 1px 2px -3px hsl(0 0% 0% / 0.1);
+  --shadow-md:
+    0 4px 10px -2px hsl(0 0% 0% / 0.1), 0 2px 4px -3px hsl(0 0% 0% / 0.1);
+  --shadow-lg:
+    0 4px 10px -2px hsl(0 0% 0% / 0.1), 0 4px 6px -3px hsl(0 0% 0% / 0.1);
+  --shadow-xl:
+    0 4px 10px -2px hsl(0 0% 0% / 0.1), 0 8px 10px -3px hsl(0 0% 0% / 0.1);
+  --shadow-2xl: 0 4px 10px -2px hsl(0 0% 0% / 0.25);
+}
+
+.dark {
+  /* ── Base ── */
+  --background: #0e0e0e;
+  --foreground: #edeade;
+
+  /* ── Surfaces ── */
+  --canvas: #1a1814;
+  --canvas-foreground: #edeade;
+  --card: #1c1c1a;
+  --card-foreground: #edeade;
+  --popover: #242320;
+  --popover-foreground: #edeade;
+
+  /* ── Brand ── */
+  --primary: #4f2fff;
+  --primary-foreground: #ffffff;
+  --secondary: #6cf020;
+  --secondary-foreground: #0a1205;
+
+  /* ── Muted & Accent ── */
+  --muted: #2a2923;
+  --muted-foreground: #9e9d95;
+  --accent: #252d14;
+  --accent-foreground: #a8e832;
+
+  /* ── Semantic: Destructive ── */
+  --destructive: #f87171;
+  --destructive-foreground: #1a0303;
+  --destructive-bg: #2d0e0e;
+
+  /* ── Semantic: Warning ── */
+  --warning: #fb923c;
+  --warning-foreground: #1a0800;
+  --warning-bg: #2a1500;
+
+  /* ── Semantic: Success ── */
+  --success: #4ade80;
+  --success-foreground: #021a0a;
+  --success-bg: #0a2414;
+
+  /* ── Semantic: Info ── */
+  --info: #60a5fa;
+  --info-foreground: #030d1a;
+  --info-bg: #0c1e35;
+
+  /* ── Border & Input ── */
+  --border: #2e2d28;
+  --input: #2e2d28;
+  --ring: #4f2fff;
+
+  /* ── Charts ── */
+  --chart-1: #6b54ff;
+  --chart-2: #6cf020;
+  --chart-3: #fb923c;
+  --chart-4: #d19dff;
+  --chart-5: #f87171;
+
+  /* ── Sidebar ── */
+  --sidebar: #161512;
+  --sidebar-foreground: #edeade;
+  --sidebar-primary: #4f2fff;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #2a2923;
+  --sidebar-accent-foreground: #edeade;
+  --sidebar-border: #2a2820;
+  --sidebar-ring: #4f2fff;
+
+  /* ── Shadows (deeper on dark) ── */
+  --shadow-color: #000000;
+  --shadow-opacity: 0.35;
+  --shadow-2xs: 0 4px 10px -2px hsl(0 0% 0% / 0.2);
+  --shadow-xs: 0 4px 10px -2px hsl(0 0% 0% / 0.2);
+  --shadow-sm:
+    0 4px 10px -2px hsl(0 0% 0% / 0.35), 0 1px 2px -3px hsl(0 0% 0% / 0.35);
+  --shadow:
+    0 4px 10px -2px hsl(0 0% 0% / 0.35), 0 1px 2px -3px hsl(0 0% 0% / 0.35);
+  --shadow-md:
+    0 4px 10px -2px hsl(0 0% 0% / 0.35), 0 2px 4px -3px hsl(0 0% 0% / 0.35);
+  --shadow-lg:
+    0 4px 10px -2px hsl(0 0% 0% / 0.35), 0 4px 6px -3px hsl(0 0% 0% / 0.35);
+  --shadow-xl:
+    0 4px 10px -2px hsl(0 0% 0% / 0.35), 0 8px 10px -3px hsl(0 0% 0% / 0.35);
+  --shadow-2xl: 0 4px 10px -2px hsl(0 0% 0% / 0.6);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
+
+  /* Tailwind v4 Preflight no longer sets a pointer cursor on interactive
+     elements. Restore it globally for everything clickable (utilities like
+     `cursor-not-allowed`/`cursor-default` still override this, and disabled
+     elements are excluded). */
+  button:not(:disabled),
+  [role="button"]:not(:disabled):not([aria-disabled="true"]):not(
+      [data-disabled]
+    ),
+  [role="tab"]:not([data-disabled]),
+  [role="menuitem"]:not([data-disabled]),
+  [role="menuitemradio"]:not([data-disabled]),
+  [role="option"]:not([data-disabled]),
+  [role="switch"]:not([data-disabled]),
+  label:has(> input:is([type="checkbox"], [type="radio"], [type="file"])),
+  summary,
+  select:not(:disabled) {
+    cursor: pointer;
+  }
+}
+/* 
+@utility scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: #4f2fff transparent;
+
+  &::-webkit-scrollbar {
+    width: 9px;
+    height: 9px;
+    border-radius: 9999px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background-color: #4f2fff;
+    border-radius: 9999px;
+  }
+} */
+
+/* Animated success check (see AnimatedCheck component) */
+@keyframes homei-pop-in {
+  0% {
+    transform: scale(0);
+  }
+  80% {
+    transform: scale(1.1);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+@keyframes homei-draw-circle {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+@keyframes homei-draw-check {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+/* Animated rainbow underline for the marketing header nav (ported from the
+   db-curation header). The slide between links is a plain CSS transition set
+   inline on the element; this class only paints the moving gradient fill. */
+.animated-line {
+  background: linear-gradient(
+    90deg,
+    #57a8ff,
+    #ff00d4,
+    #8c6dff,
+    #ff00d4,
+    #57a8ff
+  );
+  background-size: 200% 100%;
+  animation: line-gradient-animation 2s linear infinite;
+}
+
+@keyframes line-gradient-animation {
+  0% {
+    background-position: 0% 0%;
+  }
+  100% {
+    background-position: 100% 0%;
+  }
+}

@@ -1,0 +1,20 @@
+services:
+  postgres-test:
+    # Plain Postgres — MakingFlow has no geospatial needs (unlike homei's
+    # PostGIS image). Swap to postgis/postgis if that ever changes.
+    image: postgres:15-alpine
+    container_name: makingflow-postgres-test
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: makingflow_test
+      POSTGRES_PASSWORD: makingflow_test
+      POSTGRES_DB: makingflow_test
+    ports:
+      - '54322:5432'
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U makingflow_test']
+      interval: 2s
+      timeout: 3s
+      retries: 20
+    tmpfs:
+      - /var/lib/postgresql/data
