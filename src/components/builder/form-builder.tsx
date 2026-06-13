@@ -211,32 +211,6 @@ export function FormBuilder({
   return (
     <div className="flex h-[calc(100dvh-3.5rem)] flex-col lg:flex-row">
       <aside className="flex h-1/2 shrink-0 flex-col border-b border-border lg:h-full lg:w-[380px] lg:border-b-0 lg:border-r">
-        <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
-          <div className="flex min-w-0 items-center gap-2">
-            <p className="min-w-0 truncate font-sebenta text-sm font-semibold text-foreground">
-              {form?.title || "New form"}
-            </p>
-            <SaveStatus state={saveState} />
-          </div>
-          <div className="flex shrink-0 items-center gap-1">
-            <Button
-              variant="ghost"
-              onClick={startOver}
-              disabled={isLoading}
-              className="h-8 px-2.5 text-muted-foreground"
-            >
-              New
-            </Button>
-            <Button
-              onClick={saveNow}
-              disabled={!currentForm || isLoading || saveState === "saving"}
-              className="h-8 px-3"
-            >
-              {saveState === "saving" ? "Saving…" : saveState === "saved" ? "Saved" : "Save"}
-            </Button>
-          </div>
-        </div>
-
         <div className="thin-scroll flex-1 space-y-4 overflow-y-auto px-4 py-4">
           {chat.map((m) =>
             m.role === "user" ? (
@@ -279,8 +253,36 @@ export function FormBuilder({
         </div>
       </aside>
 
-      <main className="thin-scroll flex-1 overflow-y-auto bg-canvas px-6 py-10 sm:px-10">
-        <FormPreview form={form} building={isLoading} />
+      <main className="flex h-1/2 min-w-0 flex-1 flex-col lg:h-full">
+        <header className="flex items-center justify-between gap-2 border-b border-border bg-background px-5 py-3">
+          <div className="flex min-w-0 items-center gap-2">
+            <p className="min-w-0 truncate font-sebenta text-sm font-semibold text-foreground">
+              {form?.title || "New form"}
+            </p>
+            <SaveStatus state={saveState} />
+          </div>
+          <div className="flex shrink-0 items-center gap-1">
+            <Button
+              variant="ghost"
+              onClick={startOver}
+              disabled={isLoading}
+              className="h-8 px-2.5 text-muted-foreground"
+            >
+              New
+            </Button>
+            <Button
+              onClick={saveNow}
+              disabled={!currentForm || isLoading || saveState === "saving"}
+              className="h-8 px-3"
+            >
+              {saveState === "saving" ? "Saving…" : saveState === "saved" ? "Saved" : "Save"}
+            </Button>
+          </div>
+        </header>
+
+        <div className="thin-scroll flex-1 overflow-y-auto bg-canvas px-6 py-10 sm:px-10">
+          <FormPreview form={form} building={isLoading} />
+        </div>
       </main>
     </div>
   )
@@ -323,9 +325,12 @@ function UserBubble({ message }: { message: ChatMessage }) {
 function AssistantRow({ text, building }: { text?: string; building?: boolean }) {
   return (
     <div className="flex items-start gap-2.5">
-      <span className="mt-0.5 grid size-6 shrink-0 place-items-center rounded-full bg-foreground text-background">
-        <Sparkle className="size-3.5" />
-      </span>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src="/logo/logo.svg"
+        alt=""
+        className="mt-0.5 size-6 shrink-0 rounded-md object-contain"
+      />
       {building ? (
         <span className="flex items-center gap-1.5 pt-1 text-sm text-muted-foreground">
           Building your form
@@ -345,14 +350,6 @@ function Dots() {
       <span className="size-1 animate-bounce rounded-full bg-muted-foreground [animation-delay:-0.1s]" />
       <span className="size-1 animate-bounce rounded-full bg-muted-foreground" />
     </span>
-  )
-}
-
-function Sparkle({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-      <path d="M12 2l1.6 5.2L19 9l-5.4 1.8L12 16l-1.6-5.2L5 9l5.4-1.8L12 2zM19 14l.8 2.6L22 18l-2.2.8L19 22l-.8-3.2L16 18l2.2-1.4L19 14z" />
-    </svg>
   )
 }
 
