@@ -14,6 +14,8 @@ import {
 import { getVisitorKey, logFormEvent } from "@/lib/analytics/track"
 import { getServerSubmissionMeta } from "@/lib/analytics/request-meta"
 import { syncSubmissionToSheets } from "@/lib/integrations/sync"
+import { deliverWebhooks } from "@/lib/integrations/webhook"
+import { sendSubmissionEmails } from "@/lib/integrations/email"
 
 /** Field types that don't collect an answer (content/layout only). */
 const NON_ANSWER_TYPES = new Set(["heading", "paragraph", "image", "embed", "page_break"])
@@ -51,6 +53,8 @@ export async function submitForm(input: {
   answers: { fieldId: string; value: AnswerValue }[]
   /** Client-captured context: original referrer + UTM/query params. */
   meta?: { referrer?: string; urlParams?: Record<string, string> }
+  /** A partial draft to promote to completed (save & resume), if any. */
+  submissionId?: string | null
 }): Promise<SubmitResult> {
   const [form] = await db
     .select()
@@ -105,25 +109,48 @@ export async function submitForm(input: {
   let submissionId: string | null = null
   try {
     await db.transaction(async (tx) => {
-      const [sub] = await tx
-        .insert(submissions)
-        .values({
-          formId: form.id,
-          workspaceId: form.workspaceId,
-          status: "completed",
-          mode: "classic",
-          completedAt: new Date(),
-          meta: metaValue,
-        })
-        .returning({ id: submissions.id })
-      submissionId = sub.id
+      // Promote the respondent's partial draft (save & resume) to completed if
+      // they have one; otherwise create a fresh completed submission.
+      if (input.submissionId) {
+        const promoted = await tx
+          .update(submissions)
+          .set({ status: "completed", completedAt: new Date(), meta: metaValue })
+          .where(
+            and(
+              eq(submissions.id, input.submissionId),
+              eq(submissions.formId, form.id),
+              eq(submissions.status, "partial"),
+            ),
+          )
+          .returning({ id: submissions.id })
+        if (promoted.length > 0) {
+          submissionId = promoted[0].id
+          // Replace the draft answers with the final validated set.
+          await tx.delete(answers).where(eq(answers.submissionId, submissionId))
+        }
+      }
+      if (!submissionId) {
+        const [sub] = await tx
+          .insert(submissions)
+          .values({
+            formId: form.id,
+            workspaceId: form.workspaceId,
+            status: "completed",
+            mode: "classic",
+            completedAt: new Date(),
+            meta: metaValue,
+          })
+          .returning({ id: submissions.id })
+        submissionId = sub.id
+      }
+      const sid = submissionId as string
 
       if (accepted.length > 0) {
         await tx.insert(answers).values(
           accepted.map((a) => {
             const f = fieldById.get(a.fieldId)!
             return {
-              submissionId: sub.id,
+              submissionId: sid,
               fieldId: f.id,
               question: f.label || "",
               type: f.type,
@@ -140,7 +167,7 @@ export async function submitForm(input: {
         return filesFromValue(a.value).map((file) => ({
           workspaceId: form.workspaceId,
           formId: form.id,
-          submissionId: sub.id,
+          submissionId: sid,
           storageKey: file.storageKey,
           url: file.url,
           fileName: file.name,
@@ -164,15 +191,29 @@ export async function submitForm(input: {
     visitorKey,
   })
 
-  // Deliver to connected integrations (Google Sheets). Best-effort — a sync
-  // failure must never turn a stored submission into an error for the
-  // respondent, so it runs after commit and swallows its own errors. The
-  // workspace's Google connection auto-syncs every form (sheet created lazily).
-  await syncSubmissionToSheets(
-    { id: form.id, workspaceId: form.workspaceId, title: form.title },
-    accepted,
-    new Date(),
-  )
+  // Deliver to connected integrations. Best-effort — runs AFTER commit and each
+  // path swallows its own errors, so a down integration can never turn a stored
+  // submission into an error for the respondent. Each runs isolated.
+  const submittedAt = new Date()
+  const webhookAnswers = accepted.map((a) => ({
+    fieldId: a.fieldId,
+    question: fieldById.get(a.fieldId)?.label || "",
+    value: a.value,
+  }))
+  await Promise.allSettled([
+    // Google Sheets: workspace connection auto-syncs every form (sheet created lazily).
+    syncSubmissionToSheets(
+      { id: form.id, workspaceId: form.workspaceId, title: form.title },
+      accepted,
+      submittedAt,
+    ),
+    deliverWebhooks(
+      { id: form.id, title: form.title, publicId: form.publicId },
+      webhookAnswers,
+      { id: submissionId ?? "", submittedAt },
+    ),
+    sendSubmissionEmails({ id: form.id, title: form.title }, webhookAnswers),
+  ])
 
   return { success: true }
 }

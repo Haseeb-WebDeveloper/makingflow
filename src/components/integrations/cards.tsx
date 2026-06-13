@@ -35,8 +35,6 @@ export function StatusBadge({ status }: { status: FormSyncStatus }) {
 }
 
 const COMING_SOON = [
-  { name: "Webhooks", domain: "Send a POST on every submission", icon: "webhook" },
-  { name: "Email", domain: "Notify your team of new responses", icon: "email" },
   { name: "Discord", domain: "Post submissions to a channel", icon: "discord" },
   { name: "Notion", domain: "Append responses to a database", icon: "notion" },
   { name: "Zapier", domain: "Connect to 5,000+ apps", icon: "zapier" },

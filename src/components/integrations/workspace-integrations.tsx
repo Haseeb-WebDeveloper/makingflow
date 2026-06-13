@@ -83,7 +83,7 @@ export function WorkspaceIntegrationsPanel({
         {/* ── Google Sheets ── */}
         <CardShell>
           <div className="flex items-start justify-between gap-3">
-            <SVGIcon src="/integrations/sheets.svg" className="size-9" />
+            <SVGIcon src="/integrations/google-sheets.svg" className="size-9" />
             {connected ? (
               <span className="inline-flex items-center gap-1 rounded-full bg-success-bg px-2 py-0.5 text-[11px] font-medium text-success-foreground">
                 <span className="size-1.5 rounded-full bg-success" />
@@ -148,7 +148,7 @@ export function WorkspaceIntegrationsPanel({
         <SheetContent side="right" className="w-full sm:max-w-md">
           <SheetHeader>
             <div className="flex items-center gap-3">
-              <SVGIcon src="/integrations/sheets.svg" className="size-9" />
+              <SVGIcon src="/integrations/google-sheets.svg" className="size-9" />
               <div>
                 <SheetTitle>Google Sheets</SheetTitle>
                 <SheetDescription>

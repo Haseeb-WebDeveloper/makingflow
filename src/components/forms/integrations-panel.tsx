@@ -9,15 +9,23 @@ import { Icon } from "@/components/ui/icon";
 import { showToast } from "@/components/ui/toast";
 import { enableFormSheet, pauseFormSheet } from "@/lib/actions/integrations";
 import { CardShell, ComingSoonCards } from "@/components/integrations/cards";
-import type { GoogleSheetsState } from "@/lib/data/integrations";
+import { WebhooksCard } from "@/components/forms/webhooks-card";
+import { EmailCard } from "@/components/forms/email-card";
+import type { GoogleSheetsState, FormWebhook, FormEmailState } from "@/lib/data/integrations";
 import { SVGIcon } from "../ui/svg-icon";
 
 export function IntegrationsPanel({
   formId,
   state,
+  webhooks,
+  email,
+  ownerEmail,
 }: {
   formId: string;
   state: GoogleSheetsState;
+  webhooks: FormWebhook[];
+  email: FormEmailState;
+  ownerEmail: string;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -111,7 +119,7 @@ export function IntegrationsPanel({
       {/* ── Google Sheets (active) ── */}
       <CardShell>
         <div className="flex items-start justify-between gap-3">
-          <SVGIcon src="/integrations/sheets.svg" className="size-9" />
+          <SVGIcon src="/integrations/google-sheets.svg" className="size-9" />
           {status === "syncing" ? (
             <span className="inline-flex items-center gap-1 rounded-full bg-success-bg px-2 py-0.5 text-[11px] font-medium text-success-foreground">
               <span className="size-1.5 rounded-full bg-success" />
@@ -156,6 +164,12 @@ export function IntegrationsPanel({
           </div>
         ) : null}
       </CardShell>
+
+      {/* ── Webhooks ── */}
+      <WebhooksCard formId={formId} webhooks={webhooks} />
+
+      {/* ── Email notifications ── */}
+      <EmailCard formId={formId} state={email} ownerEmail={ownerEmail} />
 
       {/* ── Coming soon ── */}
       <ComingSoonCards />

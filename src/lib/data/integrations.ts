@@ -8,6 +8,7 @@ import {
 } from "@/lib/db/schema"
 import { getDefaultWorkspace } from "@/lib/auth/session"
 import { isGoogleConfigured } from "@/lib/integrations/google"
+import { isEmailConfigured } from "@/lib/email/provider"
 
 /**
  * Sync state of one form under the global model:
@@ -74,6 +75,82 @@ export async function getGoogleSheetsState(formId: string): Promise<GoogleSheets
 }
 
 // ── Workspace Integrations control center (/integrations) ───────────────────
+
+// ── Per-form webhooks ───────────────────────────────────────────────────────
+
+export type FormWebhook = {
+  id: string
+  url: string
+  enabled: boolean
+  hasSecret: boolean
+}
+
+/** Webhook endpoints configured on a form (secret value never leaves the server). */
+export async function getFormWebhooks(formId: string): Promise<FormWebhook[]> {
+  const workspace = await getDefaultWorkspace()
+  if (!workspace) return []
+
+  const rows = await db
+    .select({ id: formIntegrations.id, enabled: formIntegrations.enabled, config: formIntegrations.config })
+    .from(formIntegrations)
+    .where(
+      and(
+        eq(formIntegrations.formId, formId),
+        eq(formIntegrations.workspaceId, workspace.id),
+        eq(formIntegrations.type, "webhook"),
+      ),
+    )
+    .orderBy(formIntegrations.createdAt)
+
+  return rows.map((r) => {
+    const cfg = r.config as { url?: string; secret?: string } | null
+    return {
+      id: r.id,
+      url: cfg?.url ?? "",
+      enabled: r.enabled,
+      hasSecret: Boolean(cfg?.secret),
+    }
+  })
+}
+
+// ── Per-form email notifications ────────────────────────────────────────────
+
+export type FormEmailState = {
+  configured: boolean
+  notification: { id: string; recipients: string[]; includeAnswers: boolean; enabled: boolean } | null
+}
+
+/** The form's single email-notification config (recipients + options). */
+export async function getFormEmail(formId: string): Promise<FormEmailState> {
+  const configured = isEmailConfigured()
+  const workspace = await getDefaultWorkspace()
+  if (!workspace) return { configured, notification: null }
+
+  const [row] = await db
+    .select({ id: formIntegrations.id, enabled: formIntegrations.enabled, config: formIntegrations.config })
+    .from(formIntegrations)
+    .where(
+      and(
+        eq(formIntegrations.formId, formId),
+        eq(formIntegrations.workspaceId, workspace.id),
+        eq(formIntegrations.type, "email"),
+      ),
+    )
+    .limit(1)
+
+  const cfg = row?.config as { recipients?: string[]; includeAnswers?: boolean } | null
+  return {
+    configured,
+    notification: row
+      ? {
+          id: row.id,
+          recipients: cfg?.recipients ?? [],
+          includeAnswers: cfg?.includeAnswers ?? false,
+          enabled: row.enabled,
+        }
+      : null,
+  }
+}
 
 export type WorkspaceIntegrations = {
   configured: boolean

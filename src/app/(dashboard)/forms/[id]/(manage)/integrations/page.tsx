@@ -2,7 +2,8 @@ import type { Metadata } from "next"
 import { notFound } from "next/navigation"
 import { Icon } from "@/components/ui/icon"
 import { IntegrationsPanel } from "@/components/forms/integrations-panel"
-import { getGoogleSheetsState } from "@/lib/data/integrations"
+import { getGoogleSheetsState, getFormWebhooks, getFormEmail } from "@/lib/data/integrations"
+import { getRequiredUser } from "@/lib/auth/session"
 
 export const metadata: Metadata = { title: "Integrations · MakingFlow" }
 
@@ -12,7 +13,12 @@ export default async function FormIntegrationsPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
-  const state = await getGoogleSheetsState(id)
+  const [state, webhooks, email, user] = await Promise.all([
+    getGoogleSheetsState(id),
+    getFormWebhooks(id),
+    getFormEmail(id),
+    getRequiredUser(),
+  ])
   if (!state) notFound()
 
   return (
@@ -24,7 +30,13 @@ export default async function FormIntegrationsPage({
       </p>
 
       <div className="mt-5">
-        <IntegrationsPanel formId={id} state={state} />
+        <IntegrationsPanel
+          formId={id}
+          state={state}
+          webhooks={webhooks}
+          email={email}
+          ownerEmail={user.email}
+        />
       </div>
 
       <div className="mt-6 flex items-start gap-2.5 rounded-lg border border-dashed border-border p-3.5 text-sm text-muted-foreground">

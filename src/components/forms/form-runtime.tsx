@@ -66,7 +66,14 @@ export function FormRuntime({
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState(false)
   const [pageIndex, setPageIndex] = useState(0)
+  const [resumed, setResumed] = useState(false)
   const startedRef = useRef(false)
+  // Save & resume: the partial submission id (resume token) + a mirror of values
+  // for the debounced/unload saver + the autosave debounce timer.
+  const submissionIdRef = useRef<string | null>(null)
+  const valuesRef = useRef<Record<string, AnswerValue>>({})
+  const partialTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const resumeKey = `mf:resume:${form.publicId}`
 
   const answerable = useMemo(
     () => form.fields.filter((f) => !NON_ANSWER.has(f.type)),
@@ -94,18 +101,94 @@ export function FormRuntime({
     track(form.publicId, "view")
   }, [testMode, form.publicId])
 
+  function isEmpty(v: AnswerValue | undefined) {
+    return v == null || v === "" || (Array.isArray(v) && v.length === 0)
+  }
+
+  // ── Save & resume ─────────────────────────────────────────────────
+  async function savePartialNow() {
+    if (testMode) return
+    const payload = answerable
+      .filter((f) => isFieldVisible(f.logic, valuesRef.current) && !isEmpty(valuesRef.current[f.id]))
+      .map((f) => ({ fieldId: f.id, value: valuesRef.current[f.id]! }))
+    if (payload.length === 0) return
+    try {
+      const res = await fetch("/api/partial", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          publicId: form.publicId,
+          submissionId: submissionIdRef.current,
+          answers: payload,
+        }),
+        keepalive: true,
+      })
+      const data = await res.json().catch(() => null)
+      if (data?.submissionId) {
+        submissionIdRef.current = data.submissionId
+        try {
+          localStorage.setItem(resumeKey, data.submissionId)
+        } catch {
+          /* storage blocked */
+        }
+      }
+    } catch {
+      /* best-effort */
+    }
+  }
+
+  function schedulePartialSave() {
+    if (testMode) return
+    if (partialTimer.current) clearTimeout(partialTimer.current)
+    partialTimer.current = setTimeout(savePartialNow, 1200)
+  }
+
+  // Restore a saved draft on return; flush a final save when the tab is hidden.
+  useEffect(() => {
+    if (testMode) return
+    let saved: string | null = null
+    try {
+      saved = localStorage.getItem(resumeKey)
+    } catch {
+      /* ignore */
+    }
+    if (saved) {
+      submissionIdRef.current = saved
+      fetch(
+        `/api/partial?publicId=${encodeURIComponent(form.publicId)}&submissionId=${encodeURIComponent(saved)}`,
+      )
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => {
+          if (d?.values && Object.keys(d.values).length > 0) {
+            valuesRef.current = d.values
+            setValues(d.values)
+            setResumed(true)
+          }
+        })
+        .catch(() => {})
+    }
+    const onHide = () => void savePartialNow()
+    window.addEventListener("pagehide", onHide)
+    return () => {
+      window.removeEventListener("pagehide", onHide)
+      if (partialTimer.current) clearTimeout(partialTimer.current)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [testMode, form.publicId])
+
   function setValue(id: string, value: AnswerValue) {
-    setValues((prev) => ({ ...prev, [id]: value }))
+    setValues((prev) => {
+      const next = { ...prev, [id]: value }
+      valuesRef.current = next
+      return next
+    })
     if (errors[id]) setErrors((prev) => ({ ...prev, [id]: false }))
     // Funnel: first interaction = a "start".
     if (!testMode && !startedRef.current) {
       startedRef.current = true
       track(form.publicId, "start")
     }
-  }
-
-  function isEmpty(v: AnswerValue | undefined) {
-    return v == null || v === "" || (Array.isArray(v) && v.length === 0)
+    schedulePartialSave()
   }
 
   // Required, visible, empty fields on a given page.
@@ -162,6 +245,7 @@ export function FormRuntime({
       return
     }
 
+    if (partialTimer.current) clearTimeout(partialTimer.current)
     setSubmitting(true)
     const payload = answerable
       .filter((f) => isFieldVisible(f.logic, values) && !isEmpty(values[f.id]))
@@ -171,12 +255,20 @@ export function FormRuntime({
       publicId: form.publicId,
       answers: payload,
       meta: collectClientMeta(),
+      submissionId: submissionIdRef.current, // promote the draft if we have one
     })
     setSubmitting(false)
     if (!res.success) {
       setError(res.error)
       return
     }
+    // Done — clear the resume token so a fresh visit starts clean.
+    try {
+      localStorage.removeItem(resumeKey)
+    } catch {
+      /* ignore */
+    }
+    submissionIdRef.current = null
     // A redirect URL is the form's own thank-you page.
     if (form.redirectUrl) {
       window.location.href = form.redirectUrl
@@ -218,6 +310,19 @@ export function FormRuntime({
           </div>
         ) : null}
       </header>
+
+      {resumed ? (
+        <div className="mb-6 flex items-center justify-between gap-2 rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+          <span>We restored the answers you started earlier.</span>
+          <button
+            type="button"
+            onClick={() => setResumed(false)}
+            className="shrink-0 font-medium text-foreground hover:underline"
+          >
+            Dismiss
+          </button>
+        </div>
+      ) : null}
 
       <div className="space-y-7">
         {currentPage.map((field) =>
