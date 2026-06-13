@@ -106,7 +106,7 @@ export function FormEditor({
         className="field-sizing-content mb-8 w-full resize-none border-0 bg-transparent py-0 pl-9 pr-0 font-sebenta text-3xl font-bold tracking-tight text-foreground outline-none placeholder:text-muted-foreground/40"
       />
 
-      <DndContext sensors={sensors} collisionDetection={closestCenter} modifiers={[restrictToVerticalAxis]} onDragEnd={onDragEnd}>
+      <DndContext id="form-editor-dnd" sensors={sensors} collisionDetection={closestCenter} modifiers={[restrictToVerticalAxis]} onDragEnd={onDragEnd}>
         <SortableContext items={form.fields.map((f) => f.id)} strategy={verticalListSortingStrategy}>
           <div className="space-y-1">
             {form.fields.map((field) => (

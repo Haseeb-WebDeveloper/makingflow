@@ -58,6 +58,43 @@ export const aiFieldSchema = z.object({
     .describe(
       "Choices for multiple_choice, dropdown, multi_select, and checkboxes. Omit for all other types.",
     ),
+  logic: z
+    .object({
+      action: z
+        .enum(["show", "hide"])
+        .describe("Show or hide THIS field when the conditions match."),
+      match: z
+        .enum(["all", "any"])
+        .optional()
+        .describe("Match all conditions or any of them. Defaults to all."),
+      conditions: z
+        .array(
+          z.object({
+            fieldLabel: z
+              .string()
+              .describe("The EXACT label of the OTHER field whose answer this depends on."),
+            operator: z.enum([
+              "equals",
+              "not_equals",
+              "contains",
+              "not_contains",
+              "greater_than",
+              "less_than",
+              "is_empty",
+              "is_not_empty",
+            ]),
+            value: z
+              .string()
+              .optional()
+              .describe("Value to compare against. Omit for is_empty / is_not_empty."),
+          }),
+        )
+        .min(1),
+    })
+    .optional()
+    .describe(
+      "Conditional visibility for THIS field, based on another field's answer. Only set when the user explicitly asks to show/hide a field based on another answer.",
+    ),
 })
 export type AiField = z.infer<typeof aiFieldSchema>
 
@@ -84,4 +121,5 @@ Rules:
 - Open longer forms with a short "heading" or "paragraph" intro when it improves clarity, but keep forms focused — only the fields that serve the stated purpose.
 - Prefer a logical order: identity/contact first, then the substantive questions, then anything optional.
 - Keep it calm and minimal. Do not invent fields the user didn't ask for unless they're clearly implied by the use case.
-- If the user provides a reference image (a screenshot of a form), recreate it: read every visible field, infer its type from the control shown (a star row → rating, a 0–10 row → nps or scale, checkboxes → checkboxes, a dropdown → dropdown, etc.), and preserve the labels, order, options, and grouping as closely as the allowed field types permit.`
+- If the user provides a reference image (a screenshot of a form), recreate it: read every visible field, infer its type from the control shown (a star row → rating, a 0–10 row → nps or scale, checkboxes → checkboxes, a dropdown → dropdown, etc.), and preserve the labels, order, options, and grouping as closely as the allowed field types permit.
+- CONDITIONAL LOGIC: when the user asks to show or hide a field based on another field's answer, set the "logic" on the field being shown/hidden (the TARGET), and reference the trigger field by its EXACT label. Example — "show 'Do you feel supported by your manager?' only when 'Do you feel you have adequate resources?' is No": on the manager field set logic = { "action": "show", "conditions": [{ "fieldLabel": "Do you feel you have adequate resources?", "operator": "equals", "value": "No" }] }. Operators: equals, not_equals, contains, not_contains, greater_than, less_than, is_empty, is_not_empty. When editing an existing form, KEEP the logic already present on fields unless the user asks to change it.`

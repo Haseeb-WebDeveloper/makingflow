@@ -1,5 +1,5 @@
-import type { AiForm, AiFieldType } from "@/lib/ai/form-schema"
-import type { FieldLogic, FieldOption } from "@/lib/db/schema"
+import type { AiForm, AiField, AiFieldType } from "@/lib/ai/form-schema"
+import type { FieldLogic, FieldCondition, FieldOption } from "@/lib/db/schema"
 
 /**
  * The editor's working model. Unlike the AI spec (`AiForm`), every field carries
@@ -95,19 +95,49 @@ export function newField(type: AiFieldType): EditorField {
 }
 
 // ── Conversions to/from the AI spec ───────────────────────────────────
-export function aiToEditor(ai: AiForm): EditorForm {
-  return {
-    title: ai.title ?? "Untitled form",
-    fields: (ai.fields ?? []).map((f) => ({
-      id: genId(),
-      type: f.type,
-      label: f.label ?? "",
-      description: f.description,
-      placeholder: f.placeholder,
-      required: f.required ?? false,
-      options: f.options?.map((label) => ({ id: genId(), label })),
-    })),
+
+const normLabel = (s: string) => s.trim().toLowerCase()
+
+/** Build a forgiving label→id map (trim + case-insensitive) for logic resolution. */
+function labelIdMap(fields: EditorField[]): Map<string, string> {
+  const m = new Map<string, string>()
+  for (const f of fields) if (!m.has(normLabel(f.label))) m.set(normLabel(f.label), f.id)
+  return m
+}
+
+/** Compile the AI's label-referenced logic into schema FieldLogic (id-referenced). */
+function compileAiLogic(
+  aiLogic: AiField["logic"],
+  labelToId: Map<string, string>,
+): FieldLogic | undefined {
+  if (!aiLogic) return undefined
+  const conditions: FieldCondition[] = []
+  for (const c of aiLogic.conditions ?? []) {
+    const fieldId = labelToId.get(normLabel(c.fieldLabel))
+    if (!fieldId) continue // skip references the AI couldn't resolve
+    conditions.push({ fieldId, operator: c.operator, value: c.value })
   }
+  if (conditions.length === 0) return undefined
+  return { action: aiLogic.action, match: aiLogic.match ?? "all", conditions, source: "ai" }
+}
+
+export function aiToEditor(ai: AiForm): EditorForm {
+  const aiFields = ai.fields ?? []
+  const fields: EditorField[] = aiFields.map((f) => ({
+    id: genId(),
+    type: f.type,
+    label: f.label ?? "",
+    description: f.description,
+    placeholder: f.placeholder,
+    required: f.required ?? false,
+    options: f.options?.map((label) => ({ id: genId(), label })),
+  }))
+  // Second pass: now that every field has an id, resolve logic by label.
+  const labelToId = labelIdMap(fields)
+  aiFields.forEach((af, i) => {
+    fields[i].logic = compileAiLogic(af.logic, labelToId)
+  })
+  return { title: ai.title ?? "Untitled form", fields }
 }
 
 /**
@@ -125,11 +155,11 @@ export function mergeAiIntoEditor(ai: AiForm, prev: EditorForm | null): EditorFo
     return pool.splice(i, 1)[0]
   }
 
-  const fields: EditorField[] = (ai.fields ?? []).map((af) => {
+  const built = (ai.fields ?? []).map((af) => {
     const match =
       take((p) => p.type === af.type && p.label === (af.label ?? "")) ??
       take((p) => p.type === af.type)
-    return {
+    const field: EditorField = {
       id: match?.id ?? genId(),
       type: af.type,
       label: af.label ?? "",
@@ -140,14 +170,23 @@ export function mergeAiIntoEditor(ai: AiForm, prev: EditorForm | null): EditorFo
         id: match?.options?.find((o) => o.label === label)?.id ?? genId(),
         label,
       })),
-      logic: match?.logic,
     }
+    return { field, af, match }
   })
+
+  const fields = built.map((b) => b.field)
+  // Resolve AI logic against the merged ids; keep prior manual logic if the AI
+  // didn't emit any for that field.
+  const labelToId = labelIdMap(fields)
+  for (const b of built) {
+    b.field.logic = b.af.logic ? compileAiLogic(b.af.logic, labelToId) : b.match?.logic
+  }
 
   return { title: ai.title ?? prev.title ?? "Untitled form", fields }
 }
 
 export function editorToAi(form: EditorForm): AiForm {
+  const idToLabel = new Map(form.fields.map((f) => [f.id, f.label]))
   return {
     title: form.title,
     fields: form.fields.map((f) => ({
@@ -157,6 +196,25 @@ export function editorToAi(form: EditorForm): AiForm {
       placeholder: f.placeholder,
       required: f.required,
       options: f.options?.map((o) => o.label),
+      // Surface existing logic to the AI by label, so it keeps/edits it sanely.
+      logic: f.logic
+        ? {
+            action: f.logic.action,
+            match: f.logic.match,
+            conditions: f.logic.conditions
+              .map((c) => ({
+                fieldLabel: idToLabel.get(c.fieldId) ?? "",
+                operator: c.operator,
+                value:
+                  c.value == null
+                    ? undefined
+                    : Array.isArray(c.value)
+                      ? c.value.join(", ")
+                      : String(c.value),
+              }))
+              .filter((c) => c.fieldLabel),
+          }
+        : undefined,
     })),
   }
 }
