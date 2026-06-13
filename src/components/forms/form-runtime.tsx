@@ -4,6 +4,7 @@ import { useMemo, useState } from "react"
 import { submitForm } from "@/lib/actions/submissions"
 import type { PublicForm, PublicField } from "@/lib/data/public-form"
 import type { AnswerValue } from "@/lib/db/schema"
+import { isFieldVisible } from "@/lib/builder/logic"
 import { cn } from "@/lib/utils"
 
 const NON_ANSWER = new Set(["heading", "paragraph", "image", "embed", "page_break"])
@@ -40,15 +41,18 @@ export function FormRuntime({
     e.preventDefault()
     setError(null)
 
+    // Only validate/submit answers for fields that are currently VISIBLE.
+    const live = answerable.filter((f) => isFieldVisible(f.logic, values))
+
     const missing: Record<string, boolean> = {}
-    for (const f of answerable) {
+    for (const f of live) {
       if (f.required && isEmpty(values[f.id])) missing[f.id] = true
     }
     if (Object.keys(missing).length > 0) {
       setErrors(missing)
       setError("Please answer the required questions.")
       // Scroll to the first missing field.
-      const firstId = answerable.find((f) => missing[f.id])?.id
+      const firstId = live.find((f) => missing[f.id])?.id
       if (firstId) document.getElementById(`field-${firstId}`)?.scrollIntoView({ behavior: "smooth", block: "center" })
       return
     }
@@ -60,7 +64,7 @@ export function FormRuntime({
     }
 
     setSubmitting(true)
-    const payload = answerable
+    const payload = live
       .filter((f) => !isEmpty(values[f.id]))
       .map((f) => ({ fieldId: f.id, value: values[f.id]! }))
 
@@ -95,15 +99,17 @@ export function FormRuntime({
       </header>
 
       <div className="space-y-7">
-        {form.fields.map((field) => (
-          <Field
-            key={field.id}
-            field={field}
-            value={values[field.id]}
-            invalid={!!errors[field.id]}
-            onChange={(v) => setValue(field.id, v)}
-          />
-        ))}
+        {form.fields.map((field) =>
+          isFieldVisible(field.logic, values) ? (
+            <Field
+              key={field.id}
+              field={field}
+              value={values[field.id]}
+              invalid={!!errors[field.id]}
+              onChange={(v) => setValue(field.id, v)}
+            />
+          ) : null,
+        )}
       </div>
 
       {error ? (

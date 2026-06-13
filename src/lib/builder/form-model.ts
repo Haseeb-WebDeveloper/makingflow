@@ -35,6 +35,7 @@ export const CONTENT_TYPES = new Set<AiFieldType>(["heading", "paragraph"])
 
 export const isChoice = (t: AiFieldType) => CHOICE_TYPES.has(t)
 export const isContent = (t: AiFieldType) => CONTENT_TYPES.has(t)
+export const isAnswerable = (t: AiFieldType) => !CONTENT_TYPES.has(t)
 
 // ── Insert palette catalog ────────────────────────────────────────────
 export type CatalogGroup = "Text" | "Choice" | "Contact" | "Rating" | "Date" | "File" | "Layout"
@@ -107,6 +108,43 @@ export function aiToEditor(ai: AiForm): EditorForm {
       options: f.options?.map((label) => ({ id: genId(), label })),
     })),
   }
+}
+
+/**
+ * Apply an AI result onto the current form while PRESERVING field ids, option
+ * ids, and conditional logic for fields that survived the edit (matched by
+ * type+label, then type). The AI returns a form with no ids/logic, so without
+ * this an AI edit would reset every id and drop the user's manual logic.
+ */
+export function mergeAiIntoEditor(ai: AiForm, prev: EditorForm | null): EditorForm {
+  if (!prev) return aiToEditor(ai)
+  const pool = [...prev.fields]
+  const take = (pred: (f: EditorField) => boolean): EditorField | null => {
+    const i = pool.findIndex(pred)
+    if (i < 0) return null
+    return pool.splice(i, 1)[0]
+  }
+
+  const fields: EditorField[] = (ai.fields ?? []).map((af) => {
+    const match =
+      take((p) => p.type === af.type && p.label === (af.label ?? "")) ??
+      take((p) => p.type === af.type)
+    return {
+      id: match?.id ?? genId(),
+      type: af.type,
+      label: af.label ?? "",
+      description: af.description,
+      placeholder: af.placeholder,
+      required: af.required ?? false,
+      options: af.options?.map((label) => ({
+        id: match?.options?.find((o) => o.label === label)?.id ?? genId(),
+        label,
+      })),
+      logic: match?.logic,
+    }
+  })
+
+  return { title: ai.title ?? prev.title ?? "Untitled form", fields }
 }
 
 export function editorToAi(form: EditorForm): AiForm {

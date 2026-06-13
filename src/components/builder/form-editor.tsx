@@ -27,7 +27,15 @@ import {
 } from "@/lib/builder/form-model"
 import { FieldGlyph } from "@/components/builder/field-glyph"
 import { InsertPalette } from "@/components/builder/insert-palette"
-import { Switch } from "@/components/ui/switch"
+import { LogicEditor, starterLogic } from "@/components/builder/logic-editor"
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
 
 export function FormEditor({
@@ -105,6 +113,7 @@ export function FormEditor({
               <Block
                 key={field.id}
                 field={field}
+                fields={form.fields}
                 active={activeId === field.id}
                 onActivate={() => setActiveId(field.id)}
                 onChange={(patch) => updateField(field.id, patch)}
@@ -140,6 +149,7 @@ export function FormEditor({
 
 function Block({
   field,
+  fields,
   active,
   onActivate,
   onChange,
@@ -148,6 +158,7 @@ function Block({
   onInsertAfter,
 }: {
   field: EditorField
+  fields: EditorField[]
   active: boolean
   onActivate: () => void
   onChange: (patch: Partial<EditorField>) => void
@@ -155,6 +166,7 @@ function Block({
   onDuplicate: () => void
   onInsertAfter: () => void
 }) {
+  const isContentBlock = field.type === "heading" || field.type === "paragraph"
   const { setNodeRef, attributes, listeners, transform, transition, isDragging } = useSortable({ id: field.id })
 
   const style = { transform: CSS.Transform.toString(transform), transition }
@@ -188,6 +200,42 @@ function Block({
         >
           <Plus className="size-4" />
         </button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              onClick={(e) => e.stopPropagation()}
+              aria-label="Block options"
+              className="grid size-6 place-items-center rounded text-muted-foreground hover:bg-muted"
+            >
+              <More className="size-4" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" side="right" className="w-52">
+            {!isContentBlock ? (
+              <DropdownMenuCheckboxItem
+                checked={field.required}
+                onCheckedChange={(v) => onChange({ required: v })}
+                onSelect={(e) => e.preventDefault()}
+              >
+                Required
+              </DropdownMenuCheckboxItem>
+            ) : null}
+            <DropdownMenuItem
+              onClick={() => {
+                if (!field.logic) onChange({ logic: starterLogic() })
+              }}
+            >
+              <Flow className="size-4" />
+              Conditional logic
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={onDuplicate}>Duplicate</DropdownMenuItem>
+            <DropdownMenuItem onClick={onRemove} className="text-destructive focus:text-destructive">
+              Delete
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
       <div className={cn("rounded-lg py-2.5 pl-9 pr-2 transition-colors", active ? "bg-muted/50" : "hover:bg-muted/30")}>
@@ -232,42 +280,8 @@ function Block({
           </>
         )}
 
-        {/* Per-block controls */}
-        {active ? (
-          <div className="mt-3 flex items-center gap-3 border-t border-border/60 pt-2.5">
-            {field.type !== "heading" && field.type !== "paragraph" ? (
-              <label className="flex cursor-pointer items-center gap-1.5 text-xs text-muted-foreground">
-                <Switch
-                  checked={field.required}
-                  onCheckedChange={(v) => onChange({ required: v })}
-                  className="scale-90"
-                />
-                Required
-              </label>
-            ) : null}
-            <div className="ml-auto flex items-center gap-1">
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onDuplicate()
-                }}
-                className="rounded px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
-              >
-                Duplicate
-              </button>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onRemove()
-                }}
-                className="rounded px-2 py-1 text-xs text-destructive hover:bg-destructive/10"
-              >
-                Delete
-              </button>
-            </div>
-          </div>
+        {field.logic ? (
+          <LogicEditor field={field} fields={fields} onChange={(logic) => onChange({ logic })} />
         ) : null}
       </div>
     </div>
@@ -428,6 +442,25 @@ function X({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" aria-hidden>
       <path d="M6 6l12 12M18 6L6 18" />
+    </svg>
+  )
+}
+function More({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+      <circle cx="12" cy="5" r="1.7" />
+      <circle cx="12" cy="12" r="1.7" />
+      <circle cx="12" cy="19" r="1.7" />
+    </svg>
+  )
+}
+function Flow({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <circle cx="6" cy="6" r="2" />
+      <circle cx="6" cy="18" r="2" />
+      <circle cx="18" cy="12" r="2" />
+      <path d="M6 8v8M8 6h6a2 2 0 012 2v2M8 18h6a2 2 0 002-2v-2" />
     </svg>
   )
 }

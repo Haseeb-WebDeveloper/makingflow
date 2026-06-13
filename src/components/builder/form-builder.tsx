@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { experimental_useObject as useObject } from "@ai-sdk/react"
 import { aiFormSchema, type AiForm } from "@/lib/ai/form-schema"
 import { saveAiForm, publishForm, unpublishForm } from "@/lib/actions/forms"
-import { type EditorForm, aiToEditor, editorToAi } from "@/lib/builder/form-model"
+import { type EditorForm, editorToAi, mergeAiIntoEditor } from "@/lib/builder/form-model"
 import { FormPreview, type PartialForm } from "@/components/builder/form-preview"
 import { FormEditor } from "@/components/builder/form-editor"
 import { FormRuntime } from "@/components/forms/form-runtime"
@@ -64,6 +64,7 @@ export function FormBuilder({
   const [mode, setMode] = useState<"edit" | "preview">("edit")
 
   const formIdRef = useRef<string | null>(initialFormId ?? null)
+  const currentFormRef = useRef<EditorForm | null>(initialForm ?? null)
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const endRef = useRef<HTMLDivElement>(null)
 
@@ -72,7 +73,9 @@ export function FormBuilder({
     schema: aiFormSchema,
     onFinish: ({ object }) => {
       if (!object) return
-      const full = aiToEditor(object as AiForm)
+      // Merge onto the current form so manual ids + logic survive the AI edit.
+      const full = mergeAiIntoEditor(object as AiForm, currentFormRef.current)
+      currentFormRef.current = full
       setCurrentForm(full)
       setChat((prev) => {
         const isFirst = !prev.some((m) => m.role === "assistant")
@@ -109,11 +112,13 @@ export function FormBuilder({
           placeholder: f.placeholder,
           required: f.required,
           options: f.options,
+          logic: f.logic,
         })),
       }
     : null
 
   function updateForm(next: EditorForm) {
+    currentFormRef.current = next
     setCurrentForm(next)
     scheduleAutosave(next)
   }
@@ -128,6 +133,11 @@ export function FormBuilder({
       if (saveTimer.current) clearTimeout(saveTimer.current)
     }
   }, [])
+
+  // Keep the ref in sync so AI edits merge onto the latest form (incl. manual edits).
+  useEffect(() => {
+    currentFormRef.current = currentForm
+  }, [currentForm])
 
   // ── Persistence ───────────────────────────────────────────────────
   async function doSave(formToSave: EditorForm) {
@@ -504,7 +514,7 @@ function AssistantRow({ text, building }: { text?: string; building?: boolean })
       <img
         src="/logo/logo.svg"
         alt=""
-        className="mt-0.5 size-6 shrink-0 rounded-md object-contain"
+        className="mt-1 size-6 shrink-0 rounded-md object-contain"
       />
       {building ? (
         <span className="flex items-center gap-1.5 pt-1 text-sm text-muted-foreground">
@@ -512,7 +522,7 @@ function AssistantRow({ text, building }: { text?: string; building?: boolean })
           <Dots />
         </span>
       ) : (
-        <p className="pt-0.5 text-sm leading-relaxed text-muted-foreground">{text}</p>
+        <p className="text-sm leading-relaxed text-muted-foreground">{text}</p>
       )}
     </div>
   )

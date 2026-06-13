@@ -1,6 +1,6 @@
 import { and, eq, isNull, sql } from "drizzle-orm"
 import { db } from "@/lib/db"
-import { forms, formFields, submissions } from "@/lib/db/schema"
+import { forms, formFields, submissions, type FieldLogic } from "@/lib/db/schema"
 
 export type PublicOption = { id: string; label: string }
 
@@ -12,6 +12,7 @@ export type PublicField = {
   placeholder?: string
   required: boolean
   options?: PublicOption[]
+  logic?: FieldLogic
 }
 
 export type PublicForm = {
@@ -73,6 +74,7 @@ export async function getPublicForm(publicId: string): Promise<PublicFormResult>
         placeholder: f.placeholder ?? undefined,
         required: f.required,
         options: f.options ?? undefined,
+        logic: f.logic ?? undefined,
       })),
     },
   }
