@@ -54,7 +54,7 @@ function CommandDialog({
         className={cn("overflow-hidden rounded-lg! p-0 lg:rounded-lg! lg:p-0", className)}
         showCloseButton={showCloseButton}
       >
-        {children}
+        <Command>{children}</Command>
       </DialogContent>
     </Dialog>
   )

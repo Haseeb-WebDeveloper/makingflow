@@ -3,7 +3,6 @@
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import {
-  Command,
   CommandDialog,
   CommandEmpty,
   CommandGroup,
@@ -71,8 +70,7 @@ export function CommandMenu({
       description="Search forms, pages, and actions"
       className="sm:max-w-xl"
     >
-      <Command shouldFilter>
-        <CommandInput
+      <CommandInput
           value={query}
           onValueChange={setQuery}
           placeholder="Search forms, pages, actions…"
@@ -157,7 +155,6 @@ export function CommandMenu({
             Close
           </span>
         </div>
-      </Command>
     </CommandDialog>
   )
 }

@@ -1,6 +1,6 @@
 "use server"
 
-import { and, eq, isNull } from "drizzle-orm"
+import { and, eq, isNull, notInArray, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { db } from "@/lib/db"
 import { forms, formFields, type FormSettings } from "@/lib/db/schema"
@@ -56,26 +56,61 @@ export async function saveAiForm(input: {
         formId = created.id
       } else {
         await tx.update(forms).set({ title }).where(eq(forms.id, formId))
-        // Drafts have no submissions, so a clean replace of fields is safe.
-        await tx.delete(formFields).where(eq(formFields.formId, formId))
+      }
+      const fid = formId as string
+
+      // Upsert fields keyed on their stable id. Unlike delete-and-reinsert, this
+      // keeps each row in place — so `answers.fieldId` references (ON DELETE SET
+      // NULL) survive an edit of a form that already has submissions.
+      if (fields.length > 0) {
+        await tx
+          .insert(formFields)
+          .values(
+            fields.map((f, i) => ({
+              id: f.id,
+              formId: fid,
+              type: f.type,
+              label: f.label ?? "",
+              description: f.description ?? null,
+              placeholder: f.placeholder ?? null,
+              required: f.required ?? false,
+              position: i,
+              options: f.options && f.options.length > 0 ? f.options : null,
+              logic: f.logic ?? null,
+            })),
+          )
+          .onConflictDoUpdate({
+            target: formFields.id,
+            set: {
+              type: sql`excluded.type`,
+              label: sql`excluded.label`,
+              description: sql`excluded.description`,
+              placeholder: sql`excluded.placeholder`,
+              required: sql`excluded.required`,
+              position: sql`excluded.position`,
+              options: sql`excluded.options`,
+              logic: sql`excluded.logic`,
+              deletedAt: null, // restore if a previously-removed id reappears
+              updatedAt: new Date(),
+            },
+          })
       }
 
-      if (fields.length > 0) {
-        await tx.insert(formFields).values(
-          fields.map((f, i) => ({
-            id: f.id, // stable id so logic refs + reopens survive saves
-            formId: formId as string,
-            type: f.type,
-            label: f.label ?? "",
-            description: f.description ?? null,
-            placeholder: f.placeholder ?? null,
-            required: f.required ?? false,
-            position: i,
-            options: f.options && f.options.length > 0 ? f.options : null,
-            logic: f.logic ?? null,
-          })),
+      // Soft-delete fields the editor removed — keeps their row (and any answers
+      // pointing at it) instead of hard-deleting and orphaning submissions.
+      const keepIds = fields.map((f) => f.id)
+      await tx
+        .update(formFields)
+        .set({ deletedAt: new Date() })
+        .where(
+          keepIds.length > 0
+            ? and(
+                eq(formFields.formId, fid),
+                isNull(formFields.deletedAt),
+                notInArray(formFields.id, keepIds),
+              )
+            : and(eq(formFields.formId, fid), isNull(formFields.deletedAt)),
         )
-      }
     })
   } catch (err) {
     console.error("[saveAiForm] failed", err)

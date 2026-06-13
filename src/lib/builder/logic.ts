@@ -28,7 +28,7 @@ export function conditionComplete(c: FieldCondition): boolean {
   return c.value != null && c.value !== "" && !(Array.isArray(c.value) && c.value.length === 0)
 }
 
-function testCondition(c: FieldCondition, values: Values): boolean {
+export function testCondition(c: FieldCondition, values: Values): boolean {
   const v = values[c.fieldId]
   const target = c.value
   switch (c.operator) {

@@ -204,6 +204,14 @@ export function DashboardShell({
           <header className="flex h-14 shrink-0 items-center gap-2 border-b border-border bg-background px-4">
             <SidebarTrigger />
             <div className="ml-auto flex items-center gap-2">
+              <Link
+                href="/forms/new"
+                prefetch
+                className="inline-flex h-9 items-center gap-1.5 rounded-md bg-foreground px-3 text-sm font-medium text-background transition-colors hover:bg-foreground/90"
+              >
+                <Icon name="plus" className="size-4" />
+                New form
+              </Link>
               <UserMenu user={user} />
             </div>
           </header>

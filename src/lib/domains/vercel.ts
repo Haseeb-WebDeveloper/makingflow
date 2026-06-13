@@ -77,6 +77,38 @@ export async function vercelAddDomain(domain: string): Promise<{
   return { verified: Boolean(body.verified), verification: body.verification ?? [] }
 }
 
+/**
+ * Trigger Vercel to (re)run verification for the domain — it checks the TXT/CNAME
+ * records and flips `verified` once they're present. GET alone never advances
+ * verification, so this must be called when polling a pending domain.
+ */
+export async function vercelVerifyDomain(domain: string): Promise<{
+  verified: boolean
+  verification: DomainVerification[]
+}> {
+  const { projectId, teamId } = creds()
+  const body = await vercelFetch(
+    `/v9/projects/${projectId}/domains/${encodeURIComponent(domain)}/verify`,
+    { method: "POST" },
+    teamId,
+  )
+  return { verified: Boolean(body.verified), verification: body.verification ?? [] }
+}
+
+/** Current verification state of a domain on the project (no side effects). */
+export async function vercelGetProjectDomain(domain: string): Promise<{
+  verified: boolean
+  verification: DomainVerification[]
+}> {
+  const { projectId, teamId } = creds()
+  const body = await vercelFetch(
+    `/v9/projects/${projectId}/domains/${encodeURIComponent(domain)}`,
+    { method: "GET" },
+    teamId,
+  )
+  return { verified: Boolean(body.verified), verification: body.verification ?? [] }
+}
+
 /** Remove a domain from the project. Treats "not found" as success (idempotent). */
 export async function vercelRemoveDomain(domain: string): Promise<void> {
   const { projectId, teamId } = creds()
@@ -95,20 +127,20 @@ export async function vercelRemoveDomain(domain: string): Promise<void> {
 /**
  * Current state of a domain: whether Vercel has verified ownership and whether
  * DNS still points somewhere wrong. Active = verified && !misconfigured.
+ *
+ * Triggers verification (the POST /verify) rather than just reading it, so a
+ * freshly-added TXT/CNAME actually advances the domain to verified. Falls back
+ * to a plain GET if verify errors (e.g. rate-limited or nothing to verify).
  */
 export async function vercelGetDomainStatus(domain: string): Promise<VercelDomainStatus> {
-  const { projectId, teamId } = creds()
-  const [projectDomain, config] = await Promise.all([
-    vercelFetch(
-      `/v9/projects/${projectId}/domains/${encodeURIComponent(domain)}`,
-      { method: "GET" },
-      teamId,
-    ),
+  const { teamId } = creds()
+  const [vres, config] = await Promise.all([
+    vercelVerifyDomain(domain).catch(() => vercelGetProjectDomain(domain)),
     vercelFetch(`/v6/domains/${encodeURIComponent(domain)}/config`, { method: "GET" }, teamId),
   ])
   return {
-    verified: Boolean(projectDomain.verified),
+    verified: vres.verified,
     misconfigured: Boolean(config.misconfigured),
-    verification: projectDomain.verification ?? [],
+    verification: vres.verification,
   }
 }

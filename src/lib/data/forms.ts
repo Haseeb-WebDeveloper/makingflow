@@ -127,8 +127,15 @@ export async function getFormSettings(id: string): Promise<FormSettingsData | nu
   }
 }
 
+export type SubmissionColumn = {
+  id: string
+  label: string
+  type: string
+  options: { id: string; label: string }[] | null
+}
+
 export type SubmissionsTable = {
-  columns: { id: string; label: string; type: string }[]
+  columns: SubmissionColumn[]
   rows: { id: string; submittedAt: Date; values: Record<string, AnswerValue> }[]
 }
 
@@ -150,11 +157,23 @@ export async function getFormSubmissions(
   if (!form) return null
 
   const fields = await db
-    .select({ id: formFields.id, label: formFields.label, type: formFields.type })
+    .select({
+      id: formFields.id,
+      label: formFields.label,
+      type: formFields.type,
+      options: formFields.options,
+    })
     .from(formFields)
     .where(and(eq(formFields.formId, id), isNull(formFields.deletedAt)))
     .orderBy(formFields.position)
-  const columns = fields.filter((f) => !NON_ANSWER.has(f.type))
+  const columns: SubmissionColumn[] = fields
+    .filter((f) => !NON_ANSWER.has(f.type))
+    .map((f) => ({
+      id: f.id,
+      label: f.label,
+      type: f.type,
+      options: f.options ? f.options.map((o) => ({ id: o.id, label: o.label })) : null,
+    }))
 
   const subs = await db
     .select({ id: submissions.id, submittedAt: submissions.createdAt })

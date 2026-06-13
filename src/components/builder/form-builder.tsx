@@ -89,6 +89,12 @@ export function FormBuilder({
   const currentFormRef = useRef<EditorForm | null>(initialForm ?? null)
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const endRef = useRef<HTMLDivElement>(null)
+  // Save serialization: only one saveAiForm runs at a time; the newest form is
+  // queued in pendingSaveRef and flushed when the current save finishes — so
+  // overlapping autosaves can't clobber (or double-create) the form.
+  const savingRef = useRef(false)
+  const pendingSaveRef = useRef<EditorForm | null>(null)
+  const savePromiseRef = useRef<Promise<void> | null>(null)
 
   const { object, submit, isLoading, error, stop, clear } = useObject({
     api: "/api/ai/form",
@@ -162,46 +168,65 @@ export function FormBuilder({
   }, [currentForm])
 
   // ── Persistence ───────────────────────────────────────────────────
-  async function doSave(formToSave: EditorForm) {
-    setSaveState("saving")
-    const res = await saveAiForm({ formId: formIdRef.current, form: formToSave })
-    if (res.success) {
-      formIdRef.current = res.id
-      setFormId(res.id)
-      setSaveState("saved")
-    } else {
-      setSaveState("error")
-      showToast(res.error, { type: "error" })
-    }
+  /**
+   * Persist the latest queued form. Single-flight: if a save is already running
+   * it returns the in-flight promise (the running loop picks up newer state),
+   * so saves never overlap and the most recent edit always wins.
+   */
+  function flushSave(): Promise<void> {
+    if (savingRef.current) return savePromiseRef.current ?? Promise.resolve()
+    savingRef.current = true
+    const run = (async () => {
+      try {
+        while (pendingSaveRef.current) {
+          const form = pendingSaveRef.current
+          pendingSaveRef.current = null
+          setSaveState("saving")
+          const res = await saveAiForm({ formId: formIdRef.current, form })
+          if (res.success) {
+            formIdRef.current = res.id
+            setFormId(res.id)
+          } else {
+            setSaveState("error")
+            showToast(res.error, { type: "error" })
+            return
+          }
+        }
+        setSaveState("saved")
+      } finally {
+        savingRef.current = false
+      }
+    })()
+    savePromiseRef.current = run
+    return run
   }
 
   function scheduleAutosave(formToSave: EditorForm) {
+    pendingSaveRef.current = formToSave
     if (saveTimer.current) clearTimeout(saveTimer.current)
-    saveTimer.current = setTimeout(() => void doSave(formToSave), 800)
+    saveTimer.current = setTimeout(() => void flushSave(), 800)
   }
 
   function saveNow() {
     if (!currentForm || isLoading) return
     if (saveTimer.current) clearTimeout(saveTimer.current)
-    void doSave(currentForm)
+    pendingSaveRef.current = currentForm
+    void flushSave()
   }
 
   async function publish() {
     if (!currentForm || isLoading || publishing) return
     setPublishing(true)
-    // Ensure the form is saved (has an id) before publishing.
-    let id = formIdRef.current
+    // Flush the latest edits (and create the form if needed) before publishing —
+    // shares the single-flight saver so it can't race an in-flight autosave.
+    if (saveTimer.current) clearTimeout(saveTimer.current)
+    pendingSaveRef.current = currentForm
+    await flushSave()
+    const id = formIdRef.current
     if (!id) {
-      const saved = await saveAiForm({ formId: null, form: currentForm })
-      if (!saved.success) {
-        setPublishing(false)
-        showToast(saved.error, { type: "error" })
-        return
-      }
-      id = saved.id
-      formIdRef.current = id
-      setFormId(id)
-      setSaveState("saved")
+      setPublishing(false)
+      showToast("Could not save the form", { type: "error" })
+      return
     }
     const res = await publishForm(id)
     setPublishing(false)

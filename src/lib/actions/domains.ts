@@ -1,10 +1,11 @@
 "use server"
 
-import { and, eq } from "drizzle-orm"
+import { and, eq, isNull, ne } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { db } from "@/lib/db"
-import { customDomains } from "@/lib/db/schema"
+import { customDomains, forms } from "@/lib/db/schema"
 import { getDefaultWorkspace } from "@/lib/auth/session"
+import { slugify } from "@/lib/forms/share"
 import {
   isVercelConfigured,
   vercelAddDomain,
@@ -90,6 +91,80 @@ export async function addCustomDomain(rawDomain: string): Promise<Result> {
 
   revalidatePath("/domains")
   return { success: true }
+}
+
+type SetDomainResult =
+  | { success: true; domain: string | null; slug: string | null }
+  | { success: false; error: string }
+
+/**
+ * Attach a form to a custom domain at a slug (team.acme.com/{slug}), or clear it
+ * back to the default /f link. Workspace-scoped; the domain must be active and
+ * the slug unique on that domain.
+ */
+export async function setFormDomain(
+  formId: string,
+  input: { customDomainId: string | null; slug: string | null },
+): Promise<SetDomainResult> {
+  const workspace = await getDefaultWorkspace()
+  if (!workspace) return { success: false, error: "No workspace" }
+
+  const [form] = await db
+    .select({ id: forms.id })
+    .from(forms)
+    .where(and(eq(forms.id, formId), eq(forms.workspaceId, workspace.id), isNull(forms.deletedAt)))
+    .limit(1)
+  if (!form) return { success: false, error: "Form not found" }
+
+  // Clear — revert to the default /f/{publicId} link.
+  if (!input.customDomainId) {
+    await db.update(forms).set({ customDomainId: null, slug: null }).where(eq(forms.id, formId))
+    revalidatePath(`/forms/${formId}`, "layout")
+    revalidatePath("/domains")
+    return { success: true, domain: null, slug: null }
+  }
+
+  const [dom] = await db
+    .select({ id: customDomains.id, domain: customDomains.domain })
+    .from(customDomains)
+    .where(
+      and(
+        eq(customDomains.id, input.customDomainId),
+        eq(customDomains.workspaceId, workspace.id),
+        eq(customDomains.status, "active"),
+      ),
+    )
+    .limit(1)
+  if (!dom) return { success: false, error: "That domain isn't available." }
+
+  const slug = slugify(input.slug ?? "")
+  if (!slug) return { success: false, error: "Enter a path for the form (e.g. feedback)." }
+
+  // No two forms may share a slug on the same domain.
+  const [clash] = await db
+    .select({ id: forms.id })
+    .from(forms)
+    .where(
+      and(
+        eq(forms.customDomainId, dom.id),
+        eq(forms.slug, slug),
+        ne(forms.id, formId),
+        isNull(forms.deletedAt),
+      ),
+    )
+    .limit(1)
+  if (clash) return { success: false, error: `"${slug}" is already used on ${dom.domain}.` }
+
+  try {
+    await db.update(forms).set({ customDomainId: dom.id, slug }).where(eq(forms.id, formId))
+  } catch (err) {
+    console.error("[setFormDomain] failed", err)
+    return { success: false, error: "Couldn't save. Try a different path." }
+  }
+
+  revalidatePath(`/forms/${formId}`, "layout")
+  revalidatePath("/domains")
+  return { success: true, domain: dom.domain, slug }
 }
 
 /** Re-check a pending domain against Vercel and flip it to active when ready. */
