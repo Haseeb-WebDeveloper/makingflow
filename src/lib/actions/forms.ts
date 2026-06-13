@@ -2,9 +2,9 @@
 
 import { and, eq } from "drizzle-orm"
 import { db } from "@/lib/db"
-import { forms, formFields, type FieldOption } from "@/lib/db/schema"
+import { forms, formFields } from "@/lib/db/schema"
 import { getRequiredUser, getDefaultWorkspace } from "@/lib/auth/session"
-import type { AiForm } from "@/lib/ai/form-schema"
+import type { EditorForm } from "@/lib/builder/form-model"
 
 type SaveResult = { success: true; id: string } | { success: false; error: string }
 
@@ -20,7 +20,7 @@ function newPublicId(): string {
  */
 export async function saveAiForm(input: {
   formId?: string | null
-  form: AiForm
+  form: EditorForm
 }): Promise<SaveResult> {
   const user = await getRequiredUser()
   const workspace = await getDefaultWorkspace()
@@ -62,6 +62,7 @@ export async function saveAiForm(input: {
       if (fields.length > 0) {
         await tx.insert(formFields).values(
           fields.map((f, i) => ({
+            id: f.id, // stable id so logic refs + reopens survive saves
             formId: formId as string,
             type: f.type,
             label: f.label ?? "",
@@ -69,13 +70,8 @@ export async function saveAiForm(input: {
             placeholder: f.placeholder ?? null,
             required: f.required ?? false,
             position: i,
-            options:
-              f.options && f.options.length > 0
-                ? f.options.map<FieldOption>((label) => ({
-                    id: crypto.randomUUID(),
-                    label,
-                  }))
-                : null,
+            options: f.options && f.options.length > 0 ? f.options : null,
+            logic: f.logic ?? null,
           })),
         )
       }

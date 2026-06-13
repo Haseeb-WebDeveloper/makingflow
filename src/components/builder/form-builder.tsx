@@ -5,7 +5,9 @@ import { useRouter } from "next/navigation"
 import { experimental_useObject as useObject } from "@ai-sdk/react"
 import { aiFormSchema, type AiForm } from "@/lib/ai/form-schema"
 import { saveAiForm, publishForm, unpublishForm } from "@/lib/actions/forms"
+import { type EditorForm, aiToEditor, editorToAi } from "@/lib/builder/form-model"
 import { FormPreview, type PartialForm } from "@/components/builder/form-preview"
+import { FormEditor } from "@/components/builder/form-editor"
 import { AiLottie } from "@/components/builder/ai-lottie"
 import { Composer, type ComposerImage } from "@/components/builder/composer"
 import { Button } from "@/components/ui/button"
@@ -30,7 +32,7 @@ export function FormBuilder({
   initialStatus,
   initialPublicId,
 }: {
-  initialForm?: AiForm
+  initialForm?: EditorForm
   initialFormId?: string
   initialStatus?: string
   initialPublicId?: string | null
@@ -50,7 +52,7 @@ export function FormBuilder({
   )
   const [draft, setDraft] = useState("")
   const [image, setImage] = useState<ComposerImage | null>(null)
-  const [currentForm, setCurrentForm] = useState<AiForm | null>(initialForm ?? null)
+  const [currentForm, setCurrentForm] = useState<EditorForm | null>(initialForm ?? null)
   const [formId, setFormId] = useState<string | null>(initialFormId ?? null)
   const [saveState, setSaveState] = useState<SaveState>(initialFormId ? "saved" : "idle")
   const [published, setPublished] = useState(initialStatus === "published")
@@ -67,7 +69,7 @@ export function FormBuilder({
     schema: aiFormSchema,
     onFinish: ({ object }) => {
       if (!object) return
-      const full = object as AiForm
+      const full = aiToEditor(object as AiForm)
       setCurrentForm(full)
       setChat((prev) => {
         const isFirst = !prev.some((m) => m.role === "assistant")
@@ -82,11 +84,17 @@ export function FormBuilder({
     },
   })
 
-  // Prefer the live streaming object; fall back to the committed/loaded form.
-  const form = (object as unknown as PartialForm | undefined) ?? currentForm ?? undefined
+  // The streaming partial (AI building) vs the committed editable form.
+  const streaming = object as unknown as PartialForm | undefined
+  const headerTitle = currentForm?.title || streaming?.title || "New form"
   const started =
     chat.length > 0 || isLoading || Boolean(object) || Boolean(currentForm)
   const shareUrl = publicId && origin ? `${origin}/f/${publicId}` : ""
+
+  function updateForm(next: EditorForm) {
+    setCurrentForm(next)
+    scheduleAutosave(next)
+  }
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" })
@@ -100,7 +108,7 @@ export function FormBuilder({
   }, [])
 
   // ── Persistence ───────────────────────────────────────────────────
-  async function doSave(formToSave: AiForm) {
+  async function doSave(formToSave: EditorForm) {
     setSaveState("saving")
     const res = await saveAiForm({ formId: formIdRef.current, form: formToSave })
     if (res.success) {
@@ -113,7 +121,7 @@ export function FormBuilder({
     }
   }
 
-  function scheduleAutosave(formToSave: AiForm) {
+  function scheduleAutosave(formToSave: EditorForm) {
     if (saveTimer.current) clearTimeout(saveTimer.current)
     saveTimer.current = setTimeout(() => void doSave(formToSave), 800)
   }
@@ -190,7 +198,7 @@ export function FormBuilder({
     submit({
       instruction: text,
       image: image?.url,
-      current: currentForm ?? undefined, // edits build on the committed form
+      current: currentForm ? editorToAi(currentForm) : undefined, // edits build on the committed form
       transcript, // model gets the conversation so far
     })
 
@@ -315,7 +323,7 @@ export function FormBuilder({
         <header className="flex items-center justify-between gap-2 border-b border-border bg-background px-5 py-3">
           <div className="flex min-w-0 items-center gap-2">
             <p className="min-w-0 truncate font-sebenta text-sm font-semibold text-foreground">
-              {form?.title || "New form"}
+              {headerTitle}
             </p>
             <SaveStatus state={saveState} />
           </div>
@@ -382,8 +390,12 @@ export function FormBuilder({
           </div>
         ) : null}
 
-        <div className="thin-scroll flex-1 overflow-y-auto bg-canvas px-6 py-10 sm:px-10">
-          <FormPreview form={form} building={isLoading} />
+        <div className="thin-scroll flex-1 overflow-x-hidden overflow-y-auto bg-canvas px-6 py-10 sm:px-10">
+          {isLoading || !currentForm ? (
+            <FormPreview form={streaming} building={isLoading} />
+          ) : (
+            <FormEditor form={currentForm} onChange={updateForm} />
+          )}
         </div>
       </main>
     </div>

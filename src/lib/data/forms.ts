@@ -2,7 +2,8 @@ import { and, desc, eq, isNull } from "drizzle-orm"
 import { db } from "@/lib/db"
 import { forms, formFields } from "@/lib/db/schema"
 import { getDefaultWorkspace } from "@/lib/auth/session"
-import type { AiForm, AiFieldType } from "@/lib/ai/form-schema"
+import type { AiFieldType } from "@/lib/ai/form-schema"
+import type { EditorForm } from "@/lib/builder/form-model"
 
 /** Forms in the caller's workspace, newest first — for the /forms list. */
 export async function getWorkspaceForms() {
@@ -23,7 +24,7 @@ export async function getWorkspaceForms() {
 
 export type EditableForm = {
   id: string
-  form: AiForm
+  form: EditorForm
   status: string
   publicId: string
 }
@@ -52,15 +53,17 @@ export async function getFormForEdit(id: string): Promise<EditableForm | null> {
     .where(and(eq(formFields.formId, id), isNull(formFields.deletedAt)))
     .orderBy(formFields.position)
 
-  const form: AiForm = {
+  const form: EditorForm = {
     title: row.title,
     fields: fields.map((f) => ({
+      id: f.id,
       type: f.type as AiFieldType,
       label: f.label,
       description: f.description ?? undefined,
       placeholder: f.placeholder ?? undefined,
       required: f.required,
-      options: f.options?.map((o) => o.label),
+      options: f.options ?? undefined,
+      logic: f.logic ?? undefined,
     })),
   }
 
