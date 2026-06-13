@@ -1,25 +1,11 @@
-import type { Metadata } from "next"
-import { notFound } from "next/navigation"
-import { getFormForEdit } from "@/lib/data/forms"
-import { FormBuilder } from "@/components/builder/form-builder"
+import { redirect } from "next/navigation"
 
-export const metadata: Metadata = { title: "Edit form · MakingFlow" }
-
-export default async function EditFormPage({
+/** The form's default management view is Submissions. */
+export default async function FormPage({
   params,
 }: {
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
-  const data = await getFormForEdit(id)
-  if (!data) notFound()
-
-  return (
-    <FormBuilder
-      initialForm={data.form}
-      initialFormId={data.id}
-      initialStatus={data.status}
-      initialPublicId={data.publicId}
-    />
-  )
+  redirect(`/forms/${id}/submissions`)
 }

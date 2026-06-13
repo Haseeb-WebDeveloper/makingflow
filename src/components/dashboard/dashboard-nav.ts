@@ -1,21 +1,31 @@
 import type { IconName } from "@/components/ui/icon"
 
 export type DashboardNavItem = {
-  href: string
+  /** Destination route. Omit for action items (e.g. Search opens a dialog). */
+  href?: string
   label: string
   icon: IconName
+  /** Special behavior instead of navigation. */
+  action?: "search"
+  /** Render a muted "Soon" affordance and disable navigation. */
+  comingSoon?: boolean
 }
 
-// The builder app's primary navigation. Each entry is its own top-level
-// section (no shared root prefix like homei's /contractor).
+// The builder app's primary navigation. Forms are listed separately below these
+// items in the sidebar (see DashboardShell).
 export const MAKINGFLOW_NAV: DashboardNavItem[] = [
-  { href: "/forms", label: "Forms", icon: "document" },
-  { href: "/submissions", label: "Submissions", icon: "folder" },
-  { href: "/analytics", label: "Analytics", icon: "chart" },
-  { href: "/templates", label: "Templates", icon: "category" },
+  { href: "/forms", label: "Home", icon: "home" },
+  { label: "Search", icon: "search", action: "search" },
+  { href: "/domains", label: "Domains", icon: "discovery", comingSoon: true },
+  { href: "/integrations", label: "Integrations", icon: "swap" },
   { href: "/settings", label: "Settings", icon: "setting" },
 ]
 
 export function isDashboardNavActive(pathname: string, href: string): boolean {
+  // Home (/forms) stays active across the whole forms area EXCEPT a specific
+  // form's detail/edit pages (those light up the form in the Forms list).
+  if (href === "/forms") {
+    return pathname === "/forms" || pathname === "/forms/new"
+  }
   return pathname === href || pathname.startsWith(`${href}/`)
 }

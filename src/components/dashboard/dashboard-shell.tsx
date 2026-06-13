@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -9,6 +10,7 @@ import {
   SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
+  SidebarGroupLabel,
   SidebarHeader,
   SidebarInset,
   SidebarMenu,
@@ -23,11 +25,18 @@ import {
   type DashboardNavItem,
   isDashboardNavActive,
 } from "@/components/dashboard/dashboard-nav";
+import {
+  CommandMenu,
+  type FormSummary,
+} from "@/components/dashboard/command-menu";
 import { UserMenu } from "@/components/dashboard/user-menu";
 import { WorkspaceChip } from "@/components/dashboard/workspace-chip";
 
+const FORMS_IN_SIDEBAR = 10;
+
 export type DashboardShellProps = {
   navItems: DashboardNavItem[];
+  forms: FormSummary[];
   user: { email: string; name: string; avatarUrl: string | null };
   workspace: { name: string; plan: string } | null;
   children: React.ReactNode;
@@ -35,11 +44,27 @@ export type DashboardShellProps = {
 
 export function DashboardShell({
   navItems,
+  forms,
   user,
   workspace,
   children,
 }: DashboardShellProps) {
   const pathname = usePathname() ?? "";
+  const [searchOpen, setSearchOpen] = useState(false);
+
+  // ⌘K / Ctrl-K opens the form search from anywhere.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "k" && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        setSearchOpen((o) => !o);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  const shownForms = forms.slice(0, FORMS_IN_SIDEBAR);
 
   return (
     <TooltipProvider delayDuration={300}>
@@ -56,33 +81,99 @@ export function DashboardShell({
               <SidebarGroupContent>
                 <SidebarMenu>
                   {navItems.map((item) => {
-                    const active = isDashboardNavActive(pathname, item.href);
+                    const key = item.href ?? item.label;
+                    const active = item.href
+                      ? isDashboardNavActive(pathname, item.href)
+                      : false;
+                    const inner = (
+                      <>
+                        <Icon name={item.icon} className="size-5 shrink-0" />
+                        <span className="min-w-0 flex-1 truncate">
+                          {item.label}
+                        </span>
+                        {item.comingSoon ? (
+                          <span className="shrink-0 rounded border border-sidebar-border px-1.5 py-px text-[10px] font-medium uppercase tracking-wide text-muted-foreground group-data-[collapsible=icon]:hidden">
+                            Soon
+                          </span>
+                        ) : null}
+                      </>
+                    );
                     return (
-                      <SidebarMenuItem key={item.href}>
+                      <SidebarMenuItem key={key}>
                         <SidebarMenuButton
-                          asChild
+                          asChild={!item.action}
                           isActive={active}
                           tooltip={item.label}
+                          onClick={
+                            item.action === "search"
+                              ? () => setSearchOpen(true)
+                              : undefined
+                          }
                           className="text-sidebar-foreground/70 hover:text-sidebar-foreground data-active:bg-sidebar-accent data-active:font-medium data-active:text-sidebar-foreground"
                         >
-                          <Link
-                            href={item.href}
-                            prefetch
-                            className="flex w-full min-w-0 items-center gap-2.5"
-                          >
-                            <Icon
-                              name={item.icon}
-                              className="size-5 shrink-0"
-                            />
-                            <span className="min-w-0 flex-1 truncate">
-                              {item.label}
+                          {item.action ? (
+                            <span className="flex w-full min-w-0 items-center gap-2.5">
+                              {inner}
                             </span>
-                          </Link>
+                          ) : (
+                            <Link
+                              href={item.href!}
+                              prefetch
+                              className="flex w-full min-w-0 items-center gap-2.5"
+                            >
+                              {inner}
+                            </Link>
+                          )}
                         </SidebarMenuButton>
                       </SidebarMenuItem>
                     );
                   })}
                 </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+
+            <SidebarGroup className="group-data-[collapsible=icon]:hidden">
+              <SidebarGroupLabel>Forms</SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  {shownForms.length === 0 ? (
+                    <p className="px-2 py-1.5 text-xs text-muted-foreground">
+                      No forms yet
+                    </p>
+                  ) : (
+                    shownForms.map((f) => {
+                      const active = pathname.startsWith(`/forms/${f.id}`);
+                      return (
+                        <SidebarMenuItem key={f.id}>
+                          <SidebarMenuButton
+                            asChild
+                            isActive={active}
+                            tooltip={f.title || "Untitled form"}
+                            className="text-sidebar-foreground/70 hover:text-sidebar-foreground data-active:bg-sidebar-accent data-active:font-medium data-active:text-sidebar-foreground"
+                          >
+                            <Link
+                              href={`/forms/${f.id}`}
+                              prefetch
+                              className="flex w-full min-w-0 items-center"
+                            >
+                              <span className="min-w-0 flex-1 truncate">
+                                {f.title || "Untitled form"}
+                              </span>
+                            </Link>
+                          </SidebarMenuButton>
+                        </SidebarMenuItem>
+                      );
+                    })
+                  )}
+                </SidebarMenu>
+                <button
+                  type="button"
+                  onClick={() => setSearchOpen(true)}
+                  className="mt-1 flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                >
+                  <Icon name="search" className="size-4 shrink-0" />
+                  <span>Search forms{forms.length > FORMS_IN_SIDEBAR ? ` (${forms.length})` : ""}</span>
+                </button>
               </SidebarGroupContent>
             </SidebarGroup>
           </SidebarContent>
@@ -122,6 +213,8 @@ export function DashboardShell({
           </div>
         </SidebarInset>
       </SidebarProvider>
+
+      <CommandMenu open={searchOpen} onOpenChange={setSearchOpen} forms={forms} />
     </TooltipProvider>
   );
 }

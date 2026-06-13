@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { submitForm } from "@/lib/actions/submissions"
 import type { PublicForm, PublicField } from "@/lib/data/public-form"
 import type { AnswerValue } from "@/lib/db/schema"
@@ -8,6 +8,39 @@ import { isFieldVisible } from "@/lib/builder/logic"
 import { cn } from "@/lib/utils"
 
 const NON_ANSWER = new Set(["heading", "paragraph", "image", "embed", "page_break"])
+
+/** Original referrer + UTM/query params, read from the browser at submit time. */
+function collectClientMeta(): { referrer?: string; urlParams?: Record<string, string> } {
+  if (typeof window === "undefined") return {}
+  const referrer = document.referrer || undefined
+  const urlParams: Record<string, string> = {}
+  try {
+    const params = new URLSearchParams(window.location.search)
+    for (const [k, v] of params) {
+      if (/^(utm_|ref$|gclid$|fbclid$|source$)/i.test(k) && v) urlParams[k] = v.slice(0, 200)
+    }
+  } catch {
+    /* ignore */
+  }
+  return {
+    referrer,
+    urlParams: Object.keys(urlParams).length > 0 ? urlParams : undefined,
+  }
+}
+
+/** Fire-and-forget funnel beacon — never blocks or surfaces errors. */
+function track(publicId: string, type: "view" | "start") {
+  try {
+    fetch("/api/track", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ publicId, type }),
+      keepalive: true,
+    }).catch(() => {})
+  } catch {
+    /* ignore */
+  }
+}
 
 export function FormRuntime({
   form,
@@ -22,15 +55,27 @@ export function FormRuntime({
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState(false)
+  const startedRef = useRef(false)
 
   const answerable = useMemo(
     () => form.fields.filter((f) => !NON_ANSWER.has(f.type)),
     [form.fields],
   )
 
+  // Funnel: count a view once per render of a real (non-preview) form.
+  useEffect(() => {
+    if (testMode) return
+    track(form.publicId, "view")
+  }, [testMode, form.publicId])
+
   function setValue(id: string, value: AnswerValue) {
     setValues((prev) => ({ ...prev, [id]: value }))
     if (errors[id]) setErrors((prev) => ({ ...prev, [id]: false }))
+    // Funnel: first interaction = a "start".
+    if (!testMode && !startedRef.current) {
+      startedRef.current = true
+      track(form.publicId, "start")
+    }
   }
 
   function isEmpty(v: AnswerValue | undefined) {
@@ -68,7 +113,11 @@ export function FormRuntime({
       .filter((f) => !isEmpty(values[f.id]))
       .map((f) => ({ fieldId: f.id, value: values[f.id]! }))
 
-    const res = await submitForm({ publicId: form.publicId, answers: payload })
+    const res = await submitForm({
+      publicId: form.publicId,
+      answers: payload,
+      meta: collectClientMeta(),
+    })
     setSubmitting(false)
     if (!res.success) {
       setError(res.error)

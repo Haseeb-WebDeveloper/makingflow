@@ -2,7 +2,17 @@
 
 import { and, eq, isNull, sql } from "drizzle-orm"
 import { db } from "@/lib/db"
-import { forms, formFields, submissions, answers, type AnswerValue } from "@/lib/db/schema"
+import {
+  forms,
+  formFields,
+  submissions,
+  answers,
+  type AnswerValue,
+  type SubmissionMeta,
+} from "@/lib/db/schema"
+import { getVisitorKey, logFormEvent } from "@/lib/analytics/track"
+import { getServerSubmissionMeta } from "@/lib/analytics/request-meta"
+import { syncSubmissionToSheets } from "@/lib/integrations/sync"
 
 /** Field types that don't collect an answer (content/layout only). */
 const NON_ANSWER_TYPES = new Set(["heading", "paragraph", "image", "embed", "page_break"])
@@ -21,6 +31,8 @@ function isEmpty(v: AnswerValue | undefined): boolean {
 export async function submitForm(input: {
   publicId: string
   answers: { fieldId: string; value: AnswerValue }[]
+  /** Client-captured context: original referrer + UTM/query params. */
+  meta?: { referrer?: string; urlParams?: Record<string, string> }
 }): Promise<SubmitResult> {
   const [form] = await db
     .select()
@@ -63,6 +75,16 @@ export async function submitForm(input: {
     if (count >= form.submissionLimit) return { success: false, error: "This form is closed." }
   }
 
+  // Respondent context: device/country/UA from headers + referrer/UTM from the client.
+  const serverMeta = await getServerSubmissionMeta()
+  const meta: SubmissionMeta = { ...serverMeta }
+  const referrer = input.meta?.referrer?.trim()
+  if (referrer) meta.referrer = referrer.slice(0, 500)
+  const urlParams = input.meta?.urlParams
+  if (urlParams && Object.keys(urlParams).length > 0) meta.urlParams = urlParams
+  const metaValue = Object.keys(meta).length > 0 ? meta : null
+
+  let submissionId: string | null = null
   try {
     await db.transaction(async (tx) => {
       const [sub] = await tx
@@ -73,8 +95,10 @@ export async function submitForm(input: {
           status: "completed",
           mode: "classic",
           completedAt: new Date(),
+          meta: metaValue,
         })
         .returning({ id: submissions.id })
+      submissionId = sub.id
 
       if (accepted.length > 0) {
         await tx.insert(answers).values(
@@ -95,6 +119,25 @@ export async function submitForm(input: {
     console.error("[submitForm] failed", err)
     return { success: false, error: "Couldn't submit your response. Please try again." }
   }
+
+  // Funnel: record the completion (best-effort, never fails the submit).
+  const visitorKey = await getVisitorKey()
+  await logFormEvent({
+    formId: form.id,
+    type: "complete",
+    submissionId: submissionId ?? undefined,
+    visitorKey,
+  })
+
+  // Deliver to connected integrations (Google Sheets). Best-effort — a sync
+  // failure must never turn a stored submission into an error for the
+  // respondent, so it runs after commit and swallows its own errors. The
+  // workspace's Google connection auto-syncs every form (sheet created lazily).
+  await syncSubmissionToSheets(
+    { id: form.id, workspaceId: form.workspaceId, title: form.title },
+    accepted,
+    new Date(),
+  )
 
   return { success: true }
 }

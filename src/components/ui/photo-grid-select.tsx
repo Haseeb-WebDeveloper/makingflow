@@ -66,7 +66,7 @@ export function PhotoGridSelect<T extends string>({
             aria-checked={selected}
             onClick={() => onChange(opt.value)}
             className={cn(
-              'group relative flex flex-col overflow-hidden rounded-xl lg:rounded-[0.926vw] border bg-background text-left outline-none transition-all',
+              'group relative flex flex-col overflow-hidden rounded lg:rounded-[0.3vw] border bg-background text-left outline-none transition-all',
               'hover:border-primary/40 hover:shadow-sm',
               'focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:ring-offset-2',
               selected

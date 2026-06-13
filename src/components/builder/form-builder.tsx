@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { experimental_useObject as useObject } from "@ai-sdk/react"
 import { aiFormSchema, type AiForm } from "@/lib/ai/form-schema"
-import { saveAiForm, publishForm, unpublishForm } from "@/lib/actions/forms"
+import { saveAiForm, publishForm, unpublishForm, deleteForm } from "@/lib/actions/forms"
 import { type EditorForm, editorToAi, mergeAiIntoEditor } from "@/lib/builder/form-model"
 import { FormPreview, type PartialForm } from "@/components/builder/form-preview"
 import { FormEditor } from "@/components/builder/form-editor"
@@ -13,6 +13,25 @@ import type { PublicForm } from "@/lib/data/public-form"
 import { AiLottie } from "@/components/builder/ai-lottie"
 import { Composer, type ComposerImage } from "@/components/builder/composer"
 import { Button } from "@/components/ui/button"
+import { Icon } from "@/components/ui/icon"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import { PublishDialog } from "@/components/builder/publish-dialog"
 import { showToast } from "@/components/ui/toast"
 import { cn } from "@/lib/utils"
 
@@ -60,6 +79,9 @@ export function FormBuilder({
   const [published, setPublished] = useState(initialStatus === "published")
   const [publicId, setPublicId] = useState<string | null>(initialPublicId ?? null)
   const [publishing, setPublishing] = useState(false)
+  const [publishOpen, setPublishOpen] = useState(false)
+  const [deleteOpen, setDeleteOpen] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const [origin, setOrigin] = useState("")
   const [mode, setMode] = useState<"edit" | "preview">("edit")
 
@@ -200,14 +222,20 @@ export function FormBuilder({
     else showToast(res.error ?? "Could not unpublish", { type: "error" })
   }
 
-  async function copyLink() {
-    if (!shareUrl) return
-    try {
-      await navigator.clipboard.writeText(shareUrl)
-      showToast("Link copied", { type: "success" })
-    } catch {
-      showToast("Couldn't copy the link", { type: "error" })
+  async function handleDelete() {
+    setDeleting(true)
+    if (saveTimer.current) clearTimeout(saveTimer.current)
+    const id = formIdRef.current
+    if (id) {
+      const res = await deleteForm(id)
+      if (!res.success) {
+        setDeleting(false)
+        showToast(res.error ?? "Could not delete the form", { type: "error" })
+        return
+      }
     }
+    showToast("Form deleted", { type: "success" })
+    router.push("/forms")
   }
 
   // ── Conversation ──────────────────────────────────────────────────
@@ -275,10 +303,10 @@ export function FormBuilder({
   // ── Empty state — describe the form ───────────────────────────────
   if (!started) {
     return (
-      <div className="flex min-h-[calc(100dvh-3.5rem)] flex-col items-center justify-center px-6 py-16">
+      <div className="flex min-h-[calc(100dvh-3.5rem)] flex-col items-center justify-center px-6 py-12">
         <div className="w-full max-w-2xl">
           <div className="mb-6 flex flex-col items-center text-center">
-            <AiLottie className="size-20" />
+            <AiLottie className="size-32" />
             <h1 className="mt-2 font-sebenta text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
               Describe your form
             </h1>
@@ -353,11 +381,27 @@ export function FormBuilder({
       </aside>
 
       <main className="flex h-1/2 min-w-0 flex-1 flex-col lg:h-full">
-        <header className="flex items-center justify-between gap-2 border-b border-border bg-background px-5 py-3">
-          <div className="flex min-w-0 items-center gap-2">
+        <header className="flex items-center justify-between gap-2 border-b border-border bg-background px-4 py-3 sm:px-5">
+          <div className="flex min-w-0 items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => router.push(formId ? `/forms/${formId}` : "/forms")}
+              aria-label="Back"
+              className="grid size-8 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            >
+              <svg viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M15 18l-6-6 6-6" />
+              </svg>
+            </button>
             <p className="min-w-0 truncate font-sebenta text-sm font-semibold text-foreground">
               {headerTitle}
             </p>
+            {published ? (
+              <span className="flex shrink-0 items-center gap-1 rounded-full bg-success/10 px-2 py-0.5 text-xs font-medium text-success">
+                <span className="size-1.5 rounded-full bg-success" />
+                Live
+              </span>
+            ) : null}
             <SaveStatus state={saveState} />
           </div>
           <div className="flex shrink-0 items-center gap-2">
@@ -367,14 +411,6 @@ export function FormBuilder({
               disabled={isLoading || !currentForm}
             />
             <Button
-              variant="ghost"
-              onClick={startOver}
-              disabled={isLoading}
-              className="h-8 px-2.5 text-muted-foreground"
-            >
-              New
-            </Button>
-            <Button
               variant="outline"
               onClick={saveNow}
               disabled={!currentForm || isLoading || saveState === "saving"}
@@ -382,51 +418,50 @@ export function FormBuilder({
             >
               {saveState === "saving" ? "Saving…" : saveState === "saved" ? "Saved" : "Save"}
             </Button>
-            {!published ? (
-              <Button
-                onClick={publish}
-                disabled={!currentForm || isLoading || publishing}
-                className="h-8 px-3"
-              >
-                {publishing ? "Publishing…" : "Publish"}
-              </Button>
-            ) : null}
+            <Button
+              onClick={() => setPublishOpen(true)}
+              disabled={!currentForm || isLoading}
+              className="h-8 px-3"
+            >
+              {published ? "Share" : "Publish"}
+            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  aria-label="More options"
+                  className="size-8 px-0 text-muted-foreground"
+                >
+                  <svg viewBox="0 0 24 24" className="size-5" fill="currentColor" aria-hidden>
+                    <circle cx="12" cy="5" r="1.6" />
+                    <circle cx="12" cy="12" r="1.6" />
+                    <circle cx="12" cy="19" r="1.6" />
+                  </svg>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-44">
+                <DropdownMenuItem onSelect={startOver}>
+                  <Icon name="plus" className="size-4 text-muted-foreground" />
+                  New form
+                </DropdownMenuItem>
+                {published ? (
+                  <DropdownMenuItem onSelect={unpublish}>
+                    <Icon name="hide" className="size-4 text-muted-foreground" />
+                    Unpublish
+                  </DropdownMenuItem>
+                ) : null}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onSelect={() => setDeleteOpen(true)}
+                  className="text-destructive focus:text-destructive"
+                >
+                  <Icon name="delete" className="size-4 text-destructive" />
+                  Delete form
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </header>
-
-        {published && publicId ? (
-          <div className="flex items-center gap-2 border-b border-border bg-success/5 px-5 py-2">
-            <span className="flex shrink-0 items-center gap-1.5 text-xs font-medium text-success">
-              <span className="size-1.5 rounded-full bg-success" />
-              Live
-            </span>
-            <code className="min-w-0 flex-1 truncate rounded bg-muted px-2 py-1 text-xs text-muted-foreground">
-              {shareUrl || `/f/${publicId}`}
-            </code>
-            <button
-              type="button"
-              onClick={copyLink}
-              className="shrink-0 rounded-md border border-border px-2.5 py-1 text-xs text-foreground transition-colors hover:bg-muted"
-            >
-              Copy
-            </button>
-            <a
-              href={shareUrl || `/f/${publicId}`}
-              target="_blank"
-              rel="noreferrer"
-              className="shrink-0 rounded-md border border-border px-2.5 py-1 text-xs text-foreground transition-colors hover:bg-muted"
-            >
-              Open
-            </a>
-            <button
-              type="button"
-              onClick={unpublish}
-              className="shrink-0 rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
-            >
-              Unpublish
-            </button>
-          </div>
-        ) : null}
 
         <div className="thin-scroll flex-1 overflow-x-hidden overflow-y-auto bg-canvas px-6 py-10 sm:px-10">
           {isLoading || !currentForm ? (
@@ -438,6 +473,42 @@ export function FormBuilder({
           )}
         </div>
       </main>
+
+      <PublishDialog
+        open={publishOpen}
+        onOpenChange={setPublishOpen}
+        published={published}
+        publishing={publishing}
+        shareUrl={shareUrl}
+        formId={formId}
+        onPublish={publish}
+        onUnpublish={unpublish}
+      />
+
+      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this form?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This permanently removes “{headerTitle}” and all of its submissions. This
+              can&apos;t be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault()
+                void handleDelete()
+              }}
+              disabled={deleting}
+              className="bg-destructive/10 text-destructive hover:bg-destructive/20 focus-visible:ring-destructive/20"
+            >
+              {deleting ? "Deleting…" : "Delete form"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

@@ -1,8 +1,9 @@
 "use server"
 
-import { and, eq } from "drizzle-orm"
+import { and, eq, isNull } from "drizzle-orm"
+import { revalidatePath } from "next/cache"
 import { db } from "@/lib/db"
-import { forms, formFields } from "@/lib/db/schema"
+import { forms, formFields, type FormSettings } from "@/lib/db/schema"
 import { getRequiredUser, getDefaultWorkspace } from "@/lib/auth/session"
 import type { EditorForm } from "@/lib/builder/form-model"
 
@@ -124,5 +125,94 @@ export async function unpublishForm(
     .returning({ id: forms.id })
 
   if (result.length === 0) return { success: false, error: "Form not found" }
+  return { success: true }
+}
+
+/** Soft-delete a form (and hide it everywhere). Workspace-scoped. */
+export async function deleteForm(
+  formId: string,
+): Promise<{ success: boolean; error?: string }> {
+  await getRequiredUser()
+  const workspace = await getDefaultWorkspace()
+  if (!workspace) return { success: false, error: "No workspace" }
+
+  const result = await db
+    .update(forms)
+    .set({ deletedAt: new Date() })
+    .where(
+      and(
+        eq(forms.id, formId),
+        eq(forms.workspaceId, workspace.id),
+        isNull(forms.deletedAt),
+      ),
+    )
+    .returning({ id: forms.id })
+
+  if (result.length === 0) return { success: false, error: "Form not found" }
+  revalidatePath("/forms")
+  return { success: true }
+}
+
+export type FormSettingsPatch = {
+  closed?: boolean
+  submissionLimit?: number | null
+  closesAt?: string | null // ISO string, or null to clear
+  redirectUrl?: string | null
+  oneResponsePerPerson?: boolean
+  showProgressBar?: boolean
+  submitButtonLabel?: string | null
+}
+
+/**
+ * Update a form's response-collection settings from the Settings tab. The
+ * submission-control columns are enforced server-side on every submit; the
+ * jsonb `settings` holds presentation knobs. Workspace-scoped.
+ */
+export async function updateFormSettings(
+  formId: string,
+  patch: FormSettingsPatch,
+): Promise<{ success: boolean; error?: string }> {
+  await getRequiredUser()
+  const workspace = await getDefaultWorkspace()
+  if (!workspace) return { success: false, error: "No workspace" }
+
+  const [row] = await db
+    .select({ status: forms.status, settings: forms.settings })
+    .from(forms)
+    .where(and(eq(forms.id, formId), eq(forms.workspaceId, workspace.id)))
+    .limit(1)
+  if (!row) return { success: false, error: "Form not found" }
+
+  const set: Record<string, unknown> = {}
+
+  // "Close form" only toggles between published and closed — never touches a
+  // draft (which still needs a real publish to go live).
+  if (patch.closed !== undefined) {
+    if (patch.closed) {
+      if (row.status === "published") set.status = "closed"
+    } else if (row.status === "closed") {
+      set.status = "published"
+    }
+  }
+  if (patch.submissionLimit !== undefined) set.submissionLimit = patch.submissionLimit
+  if (patch.closesAt !== undefined)
+    set.closesAt = patch.closesAt ? new Date(patch.closesAt) : null
+  if (patch.redirectUrl !== undefined)
+    set.redirectUrl = patch.redirectUrl?.trim() || null
+  if (patch.oneResponsePerPerson !== undefined)
+    set.oneResponsePerPerson = patch.oneResponsePerPerson
+
+  if (patch.showProgressBar !== undefined || patch.submitButtonLabel !== undefined) {
+    const settings: FormSettings = { ...(row.settings ?? {}) }
+    if (patch.showProgressBar !== undefined) settings.showProgressBar = patch.showProgressBar
+    if (patch.submitButtonLabel !== undefined)
+      settings.submitButtonLabel = patch.submitButtonLabel?.trim() || undefined
+    set.settings = settings
+  }
+
+  if (Object.keys(set).length === 0) return { success: true }
+
+  await db.update(forms).set(set).where(eq(forms.id, formId))
+  revalidatePath(`/forms/${formId}`, "layout")
   return { success: true }
 }

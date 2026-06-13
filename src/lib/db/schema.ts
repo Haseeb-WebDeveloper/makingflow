@@ -235,7 +235,12 @@ export type WebhookIntegrationConfig = {
 export type GoogleSheetsIntegrationConfig = {
   connectionId: string // workspace_connections.id holding the OAuth grant
   spreadsheetId: string
-  sheetName?: string
+  spreadsheetUrl?: string // deep link shown in the UI ("Open spreadsheet")
+  sheetName?: string // tab name (default "Submissions")
+  // Column order frozen at enable time — values are appended in this order so
+  // they stay aligned with the header row already written to the sheet. Fields
+  // added to the form afterwards are picked up by re-enabling the integration.
+  columns?: { fieldId: string; label: string }[]
 }
 
 export type EmailIntegrationConfig = {
