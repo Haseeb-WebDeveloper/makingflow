@@ -8,7 +8,14 @@ import { cn } from "@/lib/utils"
 
 const NON_ANSWER = new Set(["heading", "paragraph", "image", "embed", "page_break"])
 
-export function FormRuntime({ form }: { form: PublicForm }) {
+export function FormRuntime({
+  form,
+  testMode = false,
+}: {
+  form: PublicForm
+  /** Builder preview: validate + show the thank-you, but never record a submission. */
+  testMode?: boolean
+}) {
   const [values, setValues] = useState<Record<string, AnswerValue>>({})
   const [errors, setErrors] = useState<Record<string, boolean>>({})
   const [submitting, setSubmitting] = useState(false)
@@ -43,6 +50,12 @@ export function FormRuntime({ form }: { form: PublicForm }) {
       // Scroll to the first missing field.
       const firstId = answerable.find((f) => missing[f.id])?.id
       if (firstId) document.getElementById(`field-${firstId}`)?.scrollIntoView({ behavior: "smooth", block: "center" })
+      return
+    }
+
+    // Test mode (builder preview): behave like a real submit, but don't persist.
+    if (testMode) {
+      setDone(true)
       return
     }
 

@@ -8,6 +8,8 @@ import { saveAiForm, publishForm, unpublishForm } from "@/lib/actions/forms"
 import { type EditorForm, aiToEditor, editorToAi } from "@/lib/builder/form-model"
 import { FormPreview, type PartialForm } from "@/components/builder/form-preview"
 import { FormEditor } from "@/components/builder/form-editor"
+import { FormRuntime } from "@/components/forms/form-runtime"
+import type { PublicForm } from "@/lib/data/public-form"
 import { AiLottie } from "@/components/builder/ai-lottie"
 import { Composer, type ComposerImage } from "@/components/builder/composer"
 import { Button } from "@/components/ui/button"
@@ -59,6 +61,7 @@ export function FormBuilder({
   const [publicId, setPublicId] = useState<string | null>(initialPublicId ?? null)
   const [publishing, setPublishing] = useState(false)
   const [origin, setOrigin] = useState("")
+  const [mode, setMode] = useState<"edit" | "preview">("edit")
 
   const formIdRef = useRef<string | null>(initialFormId ?? null)
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -90,6 +93,25 @@ export function FormBuilder({
   const started =
     chat.length > 0 || isLoading || Boolean(object) || Boolean(currentForm)
   const shareUrl = publicId && origin ? `${origin}/f/${publicId}` : ""
+
+  // The committed form mapped to the public runtime shape, for the test preview.
+  const previewForm: PublicForm | null = currentForm
+    ? {
+        publicId: publicId ?? "preview",
+        title: currentForm.title || "Untitled form",
+        submitLabel: "Submit",
+        thankYou: "Looks good — this was a test, no response was recorded.",
+        fields: currentForm.fields.map((f) => ({
+          id: f.id,
+          type: f.type,
+          label: f.label,
+          description: f.description,
+          placeholder: f.placeholder,
+          required: f.required,
+          options: f.options,
+        })),
+      }
+    : null
 
   function updateForm(next: EditorForm) {
     setCurrentForm(next)
@@ -219,6 +241,7 @@ export function FormBuilder({
     setSaveState("idle")
     setPublished(false)
     setPublicId(null)
+    setMode("edit")
     router.replace("/forms/new")
   }
 
@@ -327,7 +350,12 @@ export function FormBuilder({
             </p>
             <SaveStatus state={saveState} />
           </div>
-          <div className="flex shrink-0 items-center gap-1">
+          <div className="flex shrink-0 items-center gap-2">
+            <ModeToggle
+              mode={mode}
+              onChange={setMode}
+              disabled={isLoading || !currentForm}
+            />
             <Button
               variant="ghost"
               onClick={startOver}
@@ -393,11 +421,44 @@ export function FormBuilder({
         <div className="thin-scroll flex-1 overflow-x-hidden overflow-y-auto bg-canvas px-6 py-10 sm:px-10">
           {isLoading || !currentForm ? (
             <FormPreview form={streaming} building={isLoading} />
+          ) : mode === "preview" && previewForm ? (
+            <FormRuntime form={previewForm} testMode />
           ) : (
             <FormEditor form={currentForm} onChange={updateForm} />
           )}
         </div>
       </main>
+    </div>
+  )
+}
+
+function ModeToggle({
+  mode,
+  onChange,
+  disabled,
+}: {
+  mode: "edit" | "preview"
+  onChange: (m: "edit" | "preview") => void
+  disabled?: boolean
+}) {
+  return (
+    <div className="flex items-center rounded-md border border-border bg-muted/50 p-0.5">
+      {(["edit", "preview"] as const).map((m) => (
+        <button
+          key={m}
+          type="button"
+          disabled={disabled}
+          onClick={() => onChange(m)}
+          className={cn(
+            "rounded px-2.5 py-1 text-xs font-medium capitalize transition-colors disabled:opacity-50",
+            mode === m
+              ? "bg-background text-foreground"
+              : "text-muted-foreground hover:text-foreground",
+          )}
+        >
+          {m}
+        </button>
+      ))}
     </div>
   )
 }
