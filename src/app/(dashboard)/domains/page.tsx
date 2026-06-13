@@ -1,20 +1,24 @@
 import type { Metadata } from "next"
-import { PageContainer, PageHeader, EmptyState } from "@/components/dashboard/page-shell"
+import { redirect } from "next/navigation"
+import { PageContainer, PageHeader } from "@/components/dashboard/page-shell"
+import { DomainsPanel } from "@/components/domains/domains-panel"
+import { getWorkspaceDomains } from "@/lib/data/domains"
 
 export const metadata: Metadata = { title: "Domains · MakingFlow" }
 
-export default function DomainsPage() {
+export default async function DomainsPage() {
+  const data = await getWorkspaceDomains()
+  if (!data) redirect("/auth/login")
+
   return (
     <PageContainer>
       <PageHeader
         title="Domains"
-        description="Serve your forms from your own custom domain."
+        description="Serve your forms from your own subdomain, like forms.yourbrand.com/feedback."
       />
-      <EmptyState
-        icon="discovery"
-        title="Custom domains are coming soon"
-        description="Soon you'll be able to publish forms at forms.yourbrand.com instead of the default link. We'll let you know when it's ready."
-      />
+      <div className="mt-6">
+        <DomainsPanel data={data} />
+      </div>
     </PageContainer>
   )
 }

@@ -8,6 +8,13 @@
       "when": 1781266211897,
       "tag": "0000_heavy_catseye",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1781343468616,
+      "tag": "0001_tidy_barracuda",
+      "breakpoints": true
     }
   ]
 }

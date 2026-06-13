@@ -40,23 +40,23 @@ export default async function FormManageLayout({
                 </span>
               </div>
             </div>
-            <Link
-              href={`/forms/${id}/edit`}
-              className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md bg-foreground px-3.5 text-sm font-medium text-background transition-colors hover:bg-foreground/90"
-            >
-              <Icon name="edit" className="size-4" />
-              Edit
-            </Link>
+            <div className="flex shrink-0 items-center gap-2">
+              <FormAssistant formId={id} formTitle={shell.title || "this form"} />
+              <Link
+                href={`/forms/${id}/edit`}
+                className="inline-flex h-9 items-center gap-1.5 rounded-md bg-foreground px-3.5 text-sm font-medium text-background transition-colors hover:bg-foreground/90"
+              >
+                <Icon name="edit" className="size-4" />
+                Edit
+              </Link>
+            </div>
           </div>
           <FormDetailTabs formId={id} />
         </div>
       </div>
 
-      <div className="relative flex min-h-0 flex-1 flex-col">
-        <div className="mx-auto w-full max-w-6xl flex-1 px-6 py-8 pb-40 sm:px-8">
-          {children}
-        </div>
-        <FormAssistant formId={id} formTitle={shell.title || "this form"} />
+      <div className="flex min-h-0 flex-1 flex-col">
+        <div className="mx-auto w-full max-w-6xl flex-1 px-6 py-8 sm:px-8">{children}</div>
       </div>
     </div>
   )

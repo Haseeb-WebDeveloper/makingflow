@@ -5,21 +5,6 @@ import { Switch } from "@/components/ui/switch"
 import { Icon } from "@/components/ui/icon"
 import type { FormSyncStatus } from "@/lib/data/integrations"
 
-/** Recognizable Google Sheets brand tile (kept inline — no brand-icon pack). */
-export function SheetsGlyph({ className = "size-9" }: { className?: string }) {
-  return (
-    <span className={`flex items-center justify-center rounded-lg bg-[#0f9d58]/10 ${className}`}>
-      <svg viewBox="0 0 24 24" className="size-5" aria-hidden="true">
-        <path fill="#0f9d58" d="M6 2h7l5 5v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Z" />
-        <path fill="#fff" d="M13 2v5h5z" opacity=".4" />
-        <path
-          fill="#fff"
-          d="M8 11h8v6H8v-6Zm1.2 1.2v1.3h2.2v-1.3H9.2Zm3.4 0v1.3H15v-1.3h-2.4ZM9.2 14.7V16h2.2v-1.3H9.2Zm3.4 0V16H15v-1.3h-2.4Z"
-        />
-      </svg>
-    </span>
-  )
-}
 
 /** The shared card container — identical chrome on every integration card. */
 export function CardShell({ children }: { children: React.ReactNode }) {
@@ -50,11 +35,11 @@ export function StatusBadge({ status }: { status: FormSyncStatus }) {
 }
 
 const COMING_SOON = [
-  { name: "Webhooks", domain: "Send a POST on every submission" },
-  { name: "Email", domain: "Notify your team of new responses" },
-  { name: "Slack", domain: "Post submissions to a channel" },
-  { name: "Notion", domain: "Append responses to a database" },
-  { name: "Zapier", domain: "Connect to 5,000+ apps" },
+  { name: "Webhooks", domain: "Send a POST on every submission", icon: "webhook" },
+  { name: "Email", domain: "Notify your team of new responses", icon: "email" },
+  { name: "Discord", domain: "Post submissions to a channel", icon: "discord" },
+  { name: "Notion", domain: "Append responses to a database", icon: "notion" },
+  { name: "Zapier", domain: "Connect to 5,000+ apps", icon: "zapier" },
 ] as const
 
 /** The "coming soon" placeholder cards shared by both integration surfaces. */

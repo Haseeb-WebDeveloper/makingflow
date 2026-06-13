@@ -5,7 +5,17 @@ import { submitForm } from "@/lib/actions/submissions"
 import type { PublicForm, PublicField } from "@/lib/data/public-form"
 import type { AnswerValue } from "@/lib/db/schema"
 import { isFieldVisible } from "@/lib/builder/logic"
+import { uploadToCloudinary } from "@/lib/cloudinary/upload"
+import { showToast } from "@/components/ui/toast"
 import { cn } from "@/lib/utils"
+
+export type UploadedFile = {
+  storageKey: string
+  url: string
+  name: string
+  mime: string
+  bytes: number
+}
 
 const NON_ANSWER = new Set(["heading", "paragraph", "image", "embed", "page_break"])
 
@@ -156,6 +166,7 @@ export function FormRuntime({
               value={values[field.id]}
               invalid={!!errors[field.id]}
               onChange={(v) => setValue(field.id, v)}
+              testMode={testMode}
             />
           ) : null,
         )}
@@ -190,11 +201,13 @@ function Field({
   value,
   invalid,
   onChange,
+  testMode,
 }: {
   field: PublicField
   value: AnswerValue | undefined
   invalid: boolean
   onChange: (v: AnswerValue) => void
+  testMode?: boolean
 }) {
   if (field.type === "heading") {
     return <h2 className="pt-2 font-sebenta text-lg font-semibold text-foreground">{field.label}</h2>
@@ -212,7 +225,7 @@ function Field({
       {field.description ? (
         <p className="-mt-1 text-xs text-muted-foreground">{field.description}</p>
       ) : null}
-      <Control field={field} value={value} invalid={invalid} onChange={onChange} />
+      <Control field={field} value={value} invalid={invalid} onChange={onChange} testMode={testMode} />
     </div>
   )
 }
@@ -225,11 +238,13 @@ function Control({
   value,
   invalid,
   onChange,
+  testMode,
 }: {
   field: PublicField
   value: AnswerValue | undefined
   invalid: boolean
   onChange: (v: AnswerValue) => void
+  testMode?: boolean
 }) {
   const opts = field.options ?? []
   const border = invalid ? "border-destructive" : "border-input"
@@ -392,22 +407,144 @@ function Control({
     }
 
     case "file_upload":
-      return (
-        <label className={cn("flex h-24 cursor-pointer items-center justify-center rounded-md border border-dashed text-sm text-muted-foreground hover:bg-muted", invalid ? "border-destructive" : "border-border")}>
-          {str ? <span className="text-foreground">{str}</span> : "Click to choose a file"}
-          <input
-            type="file"
-            className="hidden"
-            onChange={(e) => onChange(e.target.files?.[0]?.name ?? "")}
-          />
-        </label>
-      )
+      return <FileControl field={field} value={value} invalid={invalid} onChange={onChange} testMode={testMode} />
+
 
     default:
       return (
         <input value={str} onChange={(e) => onChange(e.target.value)} className={cn(inputBase, border)} />
       )
   }
+}
+
+function FileControl({
+  field,
+  value,
+  invalid,
+  onChange,
+  testMode,
+}: {
+  field: PublicField
+  value: AnswerValue | undefined
+  invalid: boolean
+  onChange: (v: AnswerValue) => void
+  testMode?: boolean
+}) {
+  const inputRef = useRef<HTMLInputElement>(null)
+  const [uploading, setUploading] = useState(false)
+
+  const files: UploadedFile[] =
+    value && typeof value === "object" && Array.isArray((value as { files?: unknown }).files)
+      ? (value as { files: UploadedFile[] }).files
+      : []
+  const maxFiles = Math.max(1, field.config?.maxFiles ?? 1)
+  const maxBytes = (field.config?.maxFileSizeMb ?? 10) * 1024 * 1024
+  const accept = field.config?.allowedFileTypes?.join(",") || undefined
+
+  const commit = (next: UploadedFile[]) =>
+    onChange(
+      next.length > 0
+        ? ({ files: next } as unknown as AnswerValue)
+        : (undefined as unknown as AnswerValue),
+    )
+
+  async function pick(list: FileList | null) {
+    if (!list || list.length === 0) return
+    const room = maxFiles - files.length
+    if (room <= 0) return
+    const incoming = Array.from(list).slice(0, room)
+    setUploading(true)
+    let acc = files
+    try {
+      for (const file of incoming) {
+        if (file.size > maxBytes) {
+          showToast(`${file.name} is too large (max ${Math.round(maxBytes / 1048576)}MB).`, {
+            type: "error",
+          })
+          continue
+        }
+        if (testMode) {
+          // Builder preview — validate UX without pushing junk to Cloudinary.
+          acc = [...acc, { storageKey: "", url: "", name: file.name, mime: file.type, bytes: file.size }]
+          commit(acc)
+          continue
+        }
+        try {
+          const r = await uploadToCloudinary(file, "submissions")
+          acc = [
+            ...acc,
+            { storageKey: r.publicId, url: r.secureUrl, name: file.name, mime: file.type || r.format, bytes: r.bytes },
+          ]
+          commit(acc)
+        } catch (err) {
+          console.error("[FileControl] upload failed", err)
+          showToast(`Couldn't upload ${file.name}. Please try again.`, { type: "error" })
+        }
+      }
+    } finally {
+      setUploading(false)
+      if (inputRef.current) inputRef.current.value = ""
+    }
+  }
+
+  return (
+    <div className="space-y-2">
+      {files.map((f, i) => (
+        <div
+          key={i}
+          className="flex items-center gap-2.5 rounded-md border border-border bg-background px-3 py-2 text-sm"
+        >
+          <FileIcon />
+          <span className="min-w-0 flex-1 truncate text-foreground">{f.name}</span>
+          <span className="shrink-0 text-xs text-muted-foreground">{prettyBytes(f.bytes)}</span>
+          <button
+            type="button"
+            onClick={() => commit(files.filter((_, j) => j !== i))}
+            aria-label={`Remove ${f.name}`}
+            className="grid size-6 shrink-0 place-items-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+          >
+            <svg viewBox="0 0 24 24" className="size-3.5" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" aria-hidden>
+              <path d="M6 6l12 12M18 6L6 18" />
+            </svg>
+          </button>
+        </div>
+      ))}
+      {files.length < maxFiles ? (
+        <label
+          className={cn(
+            "flex h-24 cursor-pointer flex-col items-center justify-center gap-1 rounded-md border border-dashed text-sm text-muted-foreground transition-colors hover:bg-muted",
+            invalid ? "border-destructive" : "border-border",
+            uploading && "pointer-events-none opacity-70",
+          )}
+        >
+          {uploading ? "Uploading…" : files.length > 0 ? "Add another file" : "Click to choose a file"}
+          <input
+            ref={inputRef}
+            type="file"
+            accept={accept}
+            multiple={maxFiles > 1}
+            disabled={uploading}
+            className="hidden"
+            onChange={(e) => void pick(e.target.files)}
+          />
+        </label>
+      ) : null}
+    </div>
+  )
+}
+
+function FileIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="size-4 shrink-0 text-muted-foreground" fill="none" stroke="currentColor" strokeWidth={1.8} aria-hidden>
+      <path d="M14 3v5h5M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-5z" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+function prettyBytes(n: number): string {
+  if (!n || n < 1024) return `${n || 0} B`
+  if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`
 }
 
 function Check({ className }: { className?: string }) {

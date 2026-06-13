@@ -1,10 +1,25 @@
 import type { Metadata } from "next"
 import { notFound } from "next/navigation"
 import { getFormShell, getFormSubmissions } from "@/lib/data/forms"
-import { SubmissionsTable } from "@/components/forms/submissions-table"
+import { SubmissionsTable, type Cell } from "@/components/forms/submissions-table"
 import type { AnswerValue } from "@/lib/db/schema"
 
 export const metadata: Metadata = { title: "Submissions · MakingFlow" }
+
+const FILE_TYPES = new Set(["file_upload", "signature"])
+
+function toCell(v: AnswerValue | undefined, type: string): Cell {
+  if (FILE_TYPES.has(type) && v && typeof v === "object" && !Array.isArray(v)) {
+    const raw = (v as { files?: unknown }).files
+    if (Array.isArray(raw)) {
+      const files = raw
+        .map((f) => ({ name: String((f as { name?: unknown }).name ?? "file"), url: String((f as { url?: unknown }).url ?? "") }))
+        .filter((f) => f.url)
+      return { kind: "files", files }
+    }
+  }
+  return formatAnswer(v)
+}
 
 function formatAnswer(v: AnswerValue | undefined): string {
   if (v == null) return ""
@@ -26,7 +41,7 @@ export default async function SubmissionsPage({
   const rows = data.rows.map((r) => ({
     id: r.id,
     submittedAt: r.submittedAt.toISOString(),
-    cells: data.columns.map((c) => formatAnswer(r.values[c.id])),
+    cells: data.columns.map((c) => toCell(r.values[c.id], c.type)),
   }))
 
   return (

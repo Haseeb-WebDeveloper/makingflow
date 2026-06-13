@@ -18,10 +18,10 @@ export type FormOverviewRow = {
 const SPARK_DAYS = 14
 
 /** Canonical marketing channels — always shown (0-filled) so users know the set. */
-const SOURCE_CHANNELS = ["Direct", "Search", "Social", "Referral", "Email", "Paid"] as const
+export const SOURCE_CHANNELS = ["Direct", "Search", "Social", "Referral", "Email", "Paid"] as const
 
 /** YYYY-MM-DD keys for the last n days (UTC), oldest → newest. */
-function lastNDayKeys(n: number): string[] {
+export function lastNDayKeys(n: number): string[] {
   const keys: string[] = []
   const today = new Date()
   for (let i = n - 1; i >= 0; i--) {
@@ -33,6 +33,20 @@ function lastNDayKeys(n: number): string[] {
 }
 
 export type Bucket = { key: string; count: number }
+
+// Shared submission-metadata SQL expressions (referrer/UTM → marketing channel),
+// reused by the workspace dashboard and the per-form insights.
+const metaHost = sql`lower(coalesce(nullif(regexp_replace(split_part(split_part(${submissions.meta}->>'referrer', '://', 2), '/', 1), '^www\\.', ''), ''), ''))`
+const metaUtmMedium = sql`lower(coalesce(${submissions.meta}->'urlParams'->>'utm_medium', ''))`
+const metaUtmSource = sql`lower(coalesce(${submissions.meta}->'urlParams'->>'utm_source', ''))`
+export const channelExpr = sql<string>`case
+  when ${metaUtmMedium} in ('cpc','ppc','paid','paidsearch','paid_social','display','cpm') then 'Paid'
+  when ${metaUtmMedium} in ('email','newsletter') or ${metaUtmSource} like '%newsletter%' or ${metaUtmSource} like '%email%' then 'Email'
+  when ${metaHost} ~ '(google|bing|duckduckgo|yahoo|yandex|baidu|ecosia)' then 'Search'
+  when ${metaHost} ~ '(t\\.co|twitter|x\\.com|facebook|instagram|linkedin|lnkd|reddit|youtube|tiktok|pinterest|whatsapp|telegram)' then 'Social'
+  when ${metaHost} = '' then 'Direct'
+  else 'Referral'
+end`
 
 export type FormsDashboard = {
   totals: {
@@ -106,18 +120,6 @@ export async function getFormsDashboard(): Promise<FormsDashboard | null> {
     eq(submissions.status, "completed"),
     sql`${submissions.meta} is not null`,
   )
-  // Roll raw referrers + UTM params into marketing channels (GA-style).
-  const host = sql`lower(coalesce(nullif(regexp_replace(split_part(split_part(${submissions.meta}->>'referrer', '://', 2), '/', 1), '^www\\.', ''), ''), ''))`
-  const utmMedium = sql`lower(coalesce(${submissions.meta}->'urlParams'->>'utm_medium', ''))`
-  const utmSource = sql`lower(coalesce(${submissions.meta}->'urlParams'->>'utm_source', ''))`
-  const channelExpr = sql<string>`case
-    when ${utmMedium} in ('cpc','ppc','paid','paidsearch','paid_social','display','cpm') then 'Paid'
-    when ${utmMedium} in ('email','newsletter') or ${utmSource} like '%newsletter%' or ${utmSource} like '%email%' then 'Email'
-    when ${host} ~ '(google|bing|duckduckgo|yahoo|yandex|baidu|ecosia)' then 'Search'
-    when ${host} ~ '(t\\.co|twitter|x\\.com|facebook|instagram|linkedin|lnkd|reddit|youtube|tiktok|pinterest|whatsapp|telegram)' then 'Social'
-    when ${host} = '' then 'Direct'
-    else 'Referral'
-  end`
 
   const [subAgg, evAgg, winRows, series, perFormSeries, devices, countries, sources] =
     await Promise.all([

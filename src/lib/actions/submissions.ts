@@ -7,6 +7,7 @@ import {
   formFields,
   submissions,
   answers,
+  uploads,
   type AnswerValue,
   type SubmissionMeta,
 } from "@/lib/db/schema"
@@ -21,6 +22,23 @@ type SubmitResult = { success: true } | { success: false; error: string }
 
 function isEmpty(v: AnswerValue | undefined): boolean {
   return v == null || v === "" || (Array.isArray(v) && v.length === 0)
+}
+
+type StoredFile = { storageKey: string; url: string; name: string; mime: string; bytes: number }
+
+/** Extract uploaded-file metadata from a file_upload/signature answer value. */
+function filesFromValue(v: AnswerValue | undefined): StoredFile[] {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return []
+  const files = (v as { files?: unknown }).files
+  if (!Array.isArray(files)) return []
+  return files.filter(
+    (f): f is StoredFile =>
+      !!f &&
+      typeof f === "object" &&
+      typeof (f as StoredFile).storageKey === "string" &&
+      (f as StoredFile).storageKey !== "" &&
+      typeof (f as StoredFile).url === "string",
+  )
 }
 
 /**
@@ -114,6 +132,23 @@ export async function submitForm(input: {
           }),
         )
       }
+
+      // Track respondent uploads (file_upload/signature) for storage/quota.
+      const uploadRows = accepted.flatMap((a) => {
+        const f = fieldById.get(a.fieldId)!
+        if (f.type !== "file_upload" && f.type !== "signature") return []
+        return filesFromValue(a.value).map((file) => ({
+          workspaceId: form.workspaceId,
+          formId: form.id,
+          submissionId: sub.id,
+          storageKey: file.storageKey,
+          url: file.url,
+          fileName: file.name,
+          mimeType: file.mime || "application/octet-stream",
+          bytes: Math.round(file.bytes) || 0,
+        }))
+      })
+      if (uploadRows.length > 0) await tx.insert(uploads).values(uploadRows)
     })
   } catch (err) {
     console.error("[submitForm] failed", err)

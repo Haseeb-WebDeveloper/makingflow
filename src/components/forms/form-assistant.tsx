@@ -1,30 +1,36 @@
 "use client"
 
 import { useRef, useState } from "react"
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet"
 import { Icon } from "@/components/ui/icon"
 import { Composer } from "@/components/builder/composer"
-import { cn } from "@/lib/utils"
+import { MemoizedMarkdown } from "@/components/forms/memoized-markdown"
 
 type Msg = { role: "user" | "assistant"; text: string }
 
+const SUGGESTIONS = [
+  "Summarize the submissions",
+  "How many responses so far?",
+  "What are the most common answers?",
+]
+
 /**
- * Floating, form-scoped AI assistant. Ask anything about the form or its
- * responses — summaries, counts, aggregates — instead of crunching them by
- * hand. Streams the answer from /api/ai/insights with the form's structure and
- * submissions as context. The input reuses the shared Composer so it matches
- * the new-form prompt box exactly.
+ * Form-scoped AI assistant in a side Sheet. Ask anything about the form or its
+ * responses — summaries, counts, aggregates. Streams from /api/ai/insights and
+ * renders the answer as memoized markdown so streaming stays smooth.
  */
-export function FormAssistant({
-  formId,
-  formTitle,
-}: {
-  formId: string
-  formTitle: string
-}) {
+export function FormAssistant({ formId, formTitle }: { formId: string; formTitle: string }) {
+  const [open, setOpen] = useState(false)
   const [messages, setMessages] = useState<Msg[]>([])
   const [input, setInput] = useState("")
   const [busy, setBusy] = useState(false)
-  const [open, setOpen] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
 
   const scrollToEnd = () =>
@@ -37,7 +43,6 @@ export function FormAssistant({
     const q = question.trim()
     if (!q || busy) return
     setInput("")
-    setOpen(true)
     const history = messages
     setMessages([...history, { role: "user", text: q }, { role: "assistant", text: "" }])
     setBusy(true)
@@ -68,11 +73,10 @@ export function FormAssistant({
         scrollToEnd()
       }
     } catch (err) {
-      const text =
-        err instanceof Error ? err.message : "Something went wrong. Please try again."
+      const text = err instanceof Error ? err.message : "Something went wrong. Please try again."
       setMessages((prev) => {
         const next = [...prev]
-        next[next.length - 1] = { role: "assistant", text: `⚠ ${text}` }
+        next[next.length - 1] = { role: "assistant", text: `⚠️ ${text}` }
         return next
       })
     } finally {
@@ -81,78 +85,100 @@ export function FormAssistant({
     }
   }
 
-  const hasThread = messages.length > 0
-
   return (
-    <div className="pointer-events-none sticky bottom-0 z-20 flex justify-center px-4 pb-5">
-      <div className="pointer-events-auto w-full max-w-2xl">
-        {open && hasThread ? (
-          <div className="mb-2 overflow-hidden rounded-2xl border border-border bg-background shadow-sm">
-            <div className="flex items-center justify-between border-b border-border px-3.5 py-2">
-              <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-                <Icon name="chat" className="size-4 text-primary" />
-                Ask AI
-              </div>
-              <button
-                type="button"
-                onClick={() => setOpen(false)}
-                aria-label="Collapse"
-                className="grid size-7 place-items-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
-              >
-                <Icon name="close-square" className="size-4" />
-              </button>
-            </div>
-            <div
-              ref={scrollRef}
-              className="scrollbar-thin max-h-[46vh] space-y-3 overflow-y-auto px-3.5 py-3"
-            >
-              {messages.map((m, i) => (
-                <div
-                  key={i}
-                  className={cn(
-                    "text-sm",
-                    m.role === "user" ? "flex justify-end" : "flex justify-start",
-                  )}
-                >
-                  <div
-                    className={cn(
-                      "max-w-[85%] whitespace-pre-wrap rounded-lg px-3 py-2",
-                      m.role === "user"
-                        ? "bg-foreground text-background"
-                        : "bg-muted text-foreground",
-                    )}
+    <Sheet open={open} onOpenChange={setOpen}>
+      <SheetTrigger asChild>
+        <button
+          type="button"
+          className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md border border-border px-3 text-sm font-medium text-foreground transition-colors hover:bg-muted"
+        >
+          <Icon name="chat" className="size-4 text-primary" />
+          Ask AI
+        </button>
+      </SheetTrigger>
+
+      <SheetContent
+        side="right"
+        className="flex w-full flex-col gap-0 p-0 sm:max-w-md data-[side=right]:sm:max-w-md"
+      >
+        <SheetHeader className="shrink-0 gap-0.5 border-b border-border px-4 py-3 pr-12">
+          <SheetTitle className="flex items-center gap-2 text-base">
+            <Icon name="chat" className="size-4 text-primary" />
+            Ask AI
+          </SheetTitle>
+          <SheetDescription className="truncate text-xs">
+            Ask anything about {formTitle} — summaries, counts, trends.
+          </SheetDescription>
+        </SheetHeader>
+
+        <div ref={scrollRef} className="scrollbar-thin flex-1 space-y-4 overflow-y-auto px-4 py-4">
+          {messages.length === 0 ? (
+            <div className="flex h-full flex-col items-center justify-center gap-4 text-center">
+              <span className="grid size-11 place-items-center rounded-xl bg-primary/10 text-primary">
+                <Icon name="chat" className="size-5" />
+              </span>
+              <p className="max-w-xs text-sm text-muted-foreground">
+                Ask the AI to summarize responses, count answers, or spot trends — instead of
+                crunching it by hand.
+              </p>
+              <div className="flex flex-col items-stretch gap-1.5">
+                {SUGGESTIONS.map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => ask(s)}
+                    className="rounded-lg border border-border px-3 py-2 text-sm text-foreground transition-colors hover:border-foreground/30 hover:bg-muted"
                   >
-                    {m.text || (busy && i === messages.length - 1 ? "Thinking…" : "")}
+                    {s}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : (
+            messages.map((m, i) =>
+              m.role === "user" ? (
+                <div key={i} className="flex justify-end">
+                  <div className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-md bg-foreground px-3.5 py-2 text-sm text-background">
+                    {m.text}
                   </div>
                 </div>
-              ))}
-            </div>
-          </div>
-        ) : null}
+              ) : (
+                <div key={i} className="flex justify-start">
+                  <div className="max-w-[92%] rounded-2xl rounded-bl-md bg-muted px-3.5 py-2.5">
+                    {m.text ? (
+                      <MemoizedMarkdown content={m.text} id={`msg-${i}`} />
+                    ) : (
+                      <Dots />
+                    )}
+                  </div>
+                </div>
+              ),
+            )
+          )}
+        </div>
 
-        {hasThread && !open ? (
-          <div className="mb-2 flex justify-center">
-            <button
-              type="button"
-              onClick={() => setOpen(true)}
-              className="text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
-            >
-              Show conversation
-            </button>
-          </div>
-        ) : null}
+        <div className="shrink-0 border-t border-border p-3">
+          <Composer
+            value={input}
+            onChange={setInput}
+            onSubmit={() => ask(input)}
+            placeholder={`Ask about ${formTitle}…`}
+            busy={busy}
+            submitLabel=""
+            rows={2}
+          />
+        </div>
+      </SheetContent>
+    </Sheet>
+  )
+}
 
-        <Composer
-          value={input}
-          onChange={setInput}
-          onSubmit={() => ask(input)}
-          placeholder={`Ask AI about ${formTitle}…`}
-          busy={busy}
-          submitLabel=""
-          rows={2}
-          className="shadow-sm"
-        />
-      </div>
-    </div>
+function Dots() {
+  return (
+    <span className="inline-flex gap-1 py-1">
+      <span className="size-1.5 animate-bounce rounded-full bg-muted-foreground [animation-delay:-0.2s]" />
+      <span className="size-1.5 animate-bounce rounded-full bg-muted-foreground [animation-delay:-0.1s]" />
+      <span className="size-1.5 animate-bounce rounded-full bg-muted-foreground" />
+    </span>
   )
 }

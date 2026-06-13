@@ -11,10 +11,12 @@ import {
 } from "@/components/ui/table"
 import { Icon } from "@/components/ui/icon"
 
+export type Cell = string | { kind: "files"; files: { name: string; url: string }[] }
+
 export type SubmissionRow = {
   id: string
   submittedAt: string // ISO
-  cells: string[]
+  cells: Cell[]
 }
 
 /** Responses table — columns are the form's answerable fields, one row per
@@ -88,7 +90,7 @@ export function SubmissionsTable({
                     key={i}
                     className={expanded === r.id ? "whitespace-pre-wrap" : "max-w-xs truncate"}
                   >
-                    {cell || <span className="text-muted-foreground">—</span>}
+                    {renderCell(cell)}
                   </TableCell>
                 ))}
               </TableRow>
@@ -98,6 +100,33 @@ export function SubmissionsTable({
       </div>
     </div>
   )
+}
+
+const EMPTY = <span className="text-muted-foreground">—</span>
+
+function renderCell(cell: Cell) {
+  if (typeof cell === "string") return cell || EMPTY
+  if (cell.files.length === 0) return EMPTY
+  return (
+    <span className="flex flex-wrap gap-x-3 gap-y-0.5">
+      {cell.files.map((f, i) => (
+        <a
+          key={i}
+          href={f.url}
+          target="_blank"
+          rel="noreferrer"
+          onClick={(e) => e.stopPropagation()}
+          className="text-primary hover:underline"
+        >
+          {f.name}
+        </a>
+      ))}
+    </span>
+  )
+}
+
+function cellToText(cell: Cell): string {
+  return typeof cell === "string" ? cell : cell.files.map((f) => f.url).join(" ")
 }
 
 function formatDate(iso: string): string {
@@ -114,7 +143,7 @@ function exportCsv(formTitle: string, columns: string[], rows: SubmissionRow[]) 
   const esc = (s: string) => `"${String(s).replace(/"/g, '""')}"`
   const header = ["Submitted", ...columns].map(esc).join(",")
   const body = rows
-    .map((r) => [formatDate(r.submittedAt), ...r.cells].map(esc).join(","))
+    .map((r) => [formatDate(r.submittedAt), ...r.cells.map(cellToText)].map(esc).join(","))
     .join("\n")
   const csv = `${header}\n${body}`
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })

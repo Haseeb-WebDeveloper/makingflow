@@ -123,6 +123,12 @@ export const integrationTypeEnum = pgEnum('integration_type', [
 
 export const connectionProviderEnum = pgEnum('connection_provider', ['google'])
 
+export const customDomainStatusEnum = pgEnum('custom_domain_status', [
+  'pending', // added; awaiting DNS + Vercel verification
+  'active', // verified, SSL issued, serving forms
+  'error', // misconfigured or verification failed
+])
+
 export const formEventTypeEnum = pgEnum('form_event_type', [
   'view', // form rendered for a respondent
   'start', // first interaction (a submission row is created)
@@ -252,6 +258,15 @@ export type IntegrationConfig =
   | WebhookIntegrationConfig
   | GoogleSheetsIntegrationConfig
   | EmailIntegrationConfig
+
+// One DNS challenge Vercel returns when a domain is added — surfaced in the UI
+// until the user's DNS is configured correctly.
+export type DomainVerification = {
+  type: string // 'TXT' | 'CNAME' | ...
+  domain: string
+  value: string
+  reason: string
+}
 
 // Translated strings for one form+language, keyed by field id. Cached so we
 // don't re-translate on every render; invalidated via source_hash.
@@ -410,6 +425,30 @@ export const workspaceConnections = pgTable(
   (table) => [index('workspace_connections_workspace_idx').on(table.workspaceId)],
 )
 
+// Workspace-owned custom (sub)domains for serving forms, e.g. team.acme.com.
+// Registered on our Vercel project via the Vercel API (Vercel auto-issues SSL).
+// Forms attach to a domain via forms.customDomainId + forms.slug, so one domain
+// serves many forms at {domain}/{slug}.
+export const customDomains = pgTable(
+  'custom_domains',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    domain: text('domain').notNull(), // full host, lowercased (team.acme.com)
+    status: customDomainStatusEnum('status').notNull().default('pending'),
+    // DNS challenges from Vercel, shown until the domain verifies.
+    verification: jsonb('verification').$type<DomainVerification[]>(),
+    lastCheckedAt: timestamp('last_checked_at', { withTimezone: true }),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex('custom_domains_domain_idx').on(table.domain),
+    index('custom_domains_workspace_idx').on(table.workspaceId),
+  ],
+)
+
 // Monthly metering for the things that cost us. One row per workspace per
 // calendar month (period_start = first of month), incremented atomically at
 // submit/AI-call time. Storage is metered from uploads, not here.
@@ -445,6 +484,12 @@ export const forms = pgTable(
     // Short app-generated id for the public runtime URL (/f/[publicId]) —
     // unguessable, decoupled from the internal uuid.
     publicId: text('public_id').notNull(),
+    // Custom-domain publishing: when both are set, the form is ALSO served at
+    // {customDomains.domain}/{slug}. The default /f/{publicId} link always works.
+    customDomainId: uuid('custom_domain_id').references(() => customDomains.id, {
+      onDelete: 'set null',
+    }),
+    slug: text('slug'),
     status: formStatusEnum('status').notNull().default('draft'),
     renderMode: renderModeEnum('render_mode').notNull().default('classic'),
     // Multi-language: base is what the builder wrote; when autoTranslate is on
@@ -469,6 +514,9 @@ export const forms = pgTable(
   (table) => [
     uniqueIndex('forms_public_id_idx').on(table.publicId),
     index('forms_workspace_idx').on(table.workspaceId),
+    // No two forms on the same custom domain may share a slug. (NULLs are
+    // distinct in Postgres, so unassigned forms don't collide.)
+    uniqueIndex('forms_domain_slug_idx').on(table.customDomainId, table.slug),
   ],
 )
 
@@ -720,6 +768,7 @@ export const workspacesRelations = relations(workspaces, ({ one, many }) => ({
   members: many(workspaceMembers),
   invitations: many(workspaceInvitations),
   connections: many(workspaceConnections),
+  customDomains: many(customDomains),
   usage: many(workspaceUsage),
   forms: many(forms),
   submissions: many(submissions),
@@ -768,6 +817,14 @@ export const workspaceUsageRelations = relations(workspaceUsage, ({ one }) => ({
   }),
 }))
 
+export const customDomainsRelations = relations(customDomains, ({ one, many }) => ({
+  workspace: one(workspaces, {
+    fields: [customDomains.workspaceId],
+    references: [workspaces.id],
+  }),
+  forms: many(forms),
+}))
+
 export const formsRelations = relations(forms, ({ one, many }) => ({
   workspace: one(workspaces, {
     fields: [forms.workspaceId],
@@ -776,6 +833,10 @@ export const formsRelations = relations(forms, ({ one, many }) => ({
   createdBy: one(users, {
     fields: [forms.createdById],
     references: [users.id],
+  }),
+  customDomain: one(customDomains, {
+    fields: [forms.customDomainId],
+    references: [customDomains.id],
   }),
   fields: many(formFields),
   translations: many(formTranslations),
@@ -869,6 +930,7 @@ export type Workspace = typeof workspaces.$inferSelect
 export type WorkspaceMember = typeof workspaceMembers.$inferSelect
 export type WorkspaceInvitation = typeof workspaceInvitations.$inferSelect
 export type WorkspaceConnection = typeof workspaceConnections.$inferSelect
+export type CustomDomain = typeof customDomains.$inferSelect
 export type WorkspaceUsage = typeof workspaceUsage.$inferSelect
 export type Form = typeof forms.$inferSelect
 export type FormField = typeof formFields.$inferSelect
