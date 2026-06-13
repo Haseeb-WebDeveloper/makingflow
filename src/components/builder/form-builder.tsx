@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { experimental_useObject as useObject } from "@ai-sdk/react"
 import { aiFormSchema, type AiForm } from "@/lib/ai/form-schema"
-import { saveAiForm } from "@/lib/actions/forms"
+import { saveAiForm, publishForm, unpublishForm } from "@/lib/actions/forms"
 import { FormPreview, type PartialForm } from "@/components/builder/form-preview"
 import { AiLottie } from "@/components/builder/ai-lottie"
 import { Composer, type ComposerImage } from "@/components/builder/composer"
@@ -27,9 +27,13 @@ const rid = () => `m${++_seq}`
 export function FormBuilder({
   initialForm,
   initialFormId,
+  initialStatus,
+  initialPublicId,
 }: {
   initialForm?: AiForm
   initialFormId?: string
+  initialStatus?: string
+  initialPublicId?: string | null
 } = {}) {
   const router = useRouter()
 
@@ -49,6 +53,10 @@ export function FormBuilder({
   const [currentForm, setCurrentForm] = useState<AiForm | null>(initialForm ?? null)
   const [formId, setFormId] = useState<string | null>(initialFormId ?? null)
   const [saveState, setSaveState] = useState<SaveState>(initialFormId ? "saved" : "idle")
+  const [published, setPublished] = useState(initialStatus === "published")
+  const [publicId, setPublicId] = useState<string | null>(initialPublicId ?? null)
+  const [publishing, setPublishing] = useState(false)
+  const [origin, setOrigin] = useState("")
 
   const formIdRef = useRef<string | null>(initialFormId ?? null)
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -78,12 +86,14 @@ export function FormBuilder({
   const form = (object as unknown as PartialForm | undefined) ?? currentForm ?? undefined
   const started =
     chat.length > 0 || isLoading || Boolean(object) || Boolean(currentForm)
+  const shareUrl = publicId && origin ? `${origin}/f/${publicId}` : ""
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" })
   }, [chat, isLoading])
 
   useEffect(() => {
+    setOrigin(window.location.origin)
     return () => {
       if (saveTimer.current) clearTimeout(saveTimer.current)
     }
@@ -112,6 +122,52 @@ export function FormBuilder({
     if (!currentForm || isLoading) return
     if (saveTimer.current) clearTimeout(saveTimer.current)
     void doSave(currentForm)
+  }
+
+  async function publish() {
+    if (!currentForm || isLoading || publishing) return
+    setPublishing(true)
+    // Ensure the form is saved (has an id) before publishing.
+    let id = formIdRef.current
+    if (!id) {
+      const saved = await saveAiForm({ formId: null, form: currentForm })
+      if (!saved.success) {
+        setPublishing(false)
+        showToast(saved.error, { type: "error" })
+        return
+      }
+      id = saved.id
+      formIdRef.current = id
+      setFormId(id)
+      setSaveState("saved")
+    }
+    const res = await publishForm(id)
+    setPublishing(false)
+    if (res.success) {
+      setPublished(true)
+      setPublicId(res.publicId)
+      showToast("Your form is live 🎉", { type: "success" })
+    } else {
+      showToast(res.error, { type: "error" })
+    }
+  }
+
+  async function unpublish() {
+    const id = formIdRef.current
+    if (!id) return
+    const res = await unpublishForm(id)
+    if (res.success) setPublished(false)
+    else showToast(res.error ?? "Could not unpublish", { type: "error" })
+  }
+
+  async function copyLink() {
+    if (!shareUrl) return
+    try {
+      await navigator.clipboard.writeText(shareUrl)
+      showToast("Link copied", { type: "success" })
+    } catch {
+      showToast("Couldn't copy the link", { type: "error" })
+    }
   }
 
   // ── Conversation ──────────────────────────────────────────────────
@@ -153,6 +209,8 @@ export function FormBuilder({
     setFormId(null)
     formIdRef.current = null
     setSaveState("idle")
+    setPublished(false)
+    setPublicId(null)
     router.replace("/forms/new")
   }
 
@@ -271,14 +329,58 @@ export function FormBuilder({
               New
             </Button>
             <Button
+              variant="outline"
               onClick={saveNow}
               disabled={!currentForm || isLoading || saveState === "saving"}
               className="h-8 px-3"
             >
               {saveState === "saving" ? "Saving…" : saveState === "saved" ? "Saved" : "Save"}
             </Button>
+            {!published ? (
+              <Button
+                onClick={publish}
+                disabled={!currentForm || isLoading || publishing}
+                className="h-8 px-3"
+              >
+                {publishing ? "Publishing…" : "Publish"}
+              </Button>
+            ) : null}
           </div>
         </header>
+
+        {published && publicId ? (
+          <div className="flex items-center gap-2 border-b border-border bg-success/5 px-5 py-2">
+            <span className="flex shrink-0 items-center gap-1.5 text-xs font-medium text-success">
+              <span className="size-1.5 rounded-full bg-success" />
+              Live
+            </span>
+            <code className="min-w-0 flex-1 truncate rounded bg-muted px-2 py-1 text-xs text-muted-foreground">
+              {shareUrl || `/f/${publicId}`}
+            </code>
+            <button
+              type="button"
+              onClick={copyLink}
+              className="shrink-0 rounded-md border border-border px-2.5 py-1 text-xs text-foreground transition-colors hover:bg-muted"
+            >
+              Copy
+            </button>
+            <a
+              href={shareUrl || `/f/${publicId}`}
+              target="_blank"
+              rel="noreferrer"
+              className="shrink-0 rounded-md border border-border px-2.5 py-1 text-xs text-foreground transition-colors hover:bg-muted"
+            >
+              Open
+            </a>
+            <button
+              type="button"
+              onClick={unpublish}
+              className="shrink-0 rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
+            >
+              Unpublish
+            </button>
+          </div>
+        ) : null}
 
         <div className="thin-scroll flex-1 overflow-y-auto bg-canvas px-6 py-10 sm:px-10">
           <FormPreview form={form} building={isLoading} />

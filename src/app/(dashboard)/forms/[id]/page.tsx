@@ -14,5 +14,12 @@ export default async function EditFormPage({
   const data = await getFormForEdit(id)
   if (!data) notFound()
 
-  return <FormBuilder initialForm={data.form} initialFormId={data.id} />
+  return (
+    <FormBuilder
+      initialForm={data.form}
+      initialFormId={data.id}
+      initialStatus={data.status}
+      initialPublicId={data.publicId}
+    />
+  )
 }

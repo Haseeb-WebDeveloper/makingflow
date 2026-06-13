@@ -21,7 +21,12 @@ export async function getWorkspaceForms() {
     .orderBy(desc(forms.updatedAt))
 }
 
-export type EditableForm = { id: string; form: AiForm }
+export type EditableForm = {
+  id: string
+  form: AiForm
+  status: string
+  publicId: string
+}
 
 /** Load one form (workspace-scoped) and map it back to the AI form spec. */
 export async function getFormForEdit(id: string): Promise<EditableForm | null> {
@@ -59,5 +64,5 @@ export async function getFormForEdit(id: string): Promise<EditableForm | null> {
     })),
   }
 
-  return { id: row.id, form }
+  return { id: row.id, form, status: row.status, publicId: row.publicId }
 }

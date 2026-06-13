@@ -87,3 +87,46 @@ export async function saveAiForm(input: {
 
   return { success: true, id: formId as string }
 }
+
+type PublishResult =
+  | { success: true; publicId: string }
+  | { success: false; error: string }
+
+/** Make a form live at /f/[publicId]. Workspace-scoped. */
+export async function publishForm(formId: string): Promise<PublishResult> {
+  await getRequiredUser()
+  const workspace = await getDefaultWorkspace()
+  if (!workspace) return { success: false, error: "No workspace" }
+
+  const [row] = await db
+    .select({ id: forms.id, publicId: forms.publicId })
+    .from(forms)
+    .where(and(eq(forms.id, formId), eq(forms.workspaceId, workspace.id)))
+    .limit(1)
+  if (!row) return { success: false, error: "Form not found" }
+
+  await db
+    .update(forms)
+    .set({ status: "published", publishedAt: new Date() })
+    .where(eq(forms.id, formId))
+
+  return { success: true, publicId: row.publicId }
+}
+
+/** Take a form offline (back to draft). Workspace-scoped. */
+export async function unpublishForm(
+  formId: string,
+): Promise<{ success: boolean; error?: string }> {
+  await getRequiredUser()
+  const workspace = await getDefaultWorkspace()
+  if (!workspace) return { success: false, error: "No workspace" }
+
+  const result = await db
+    .update(forms)
+    .set({ status: "draft" })
+    .where(and(eq(forms.id, formId), eq(forms.workspaceId, workspace.id)))
+    .returning({ id: forms.id })
+
+  if (result.length === 0) return { success: false, error: "Form not found" }
+  return { success: true }
+}
