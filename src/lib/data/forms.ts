@@ -9,6 +9,7 @@ import {
   type AnswerValue,
 } from "@/lib/db/schema"
 import { getDefaultWorkspace } from "@/lib/auth/session"
+import { NON_ANSWER_TYPES } from "@/lib/builder/logic"
 import type { AiFieldType } from "@/lib/ai/form-schema"
 import type { EditorForm } from "@/lib/builder/form-model"
 
@@ -138,6 +139,12 @@ export type FormSettingsData = {
   showProgressBar: boolean
   submitButtonLabel: string
   thankYouMessage: string
+  // Response experience (classic vs conversational chat).
+  renderMode: "classic" | "conversational"
+  aiEnabled: boolean
+  persona: string
+  followUpsEnabled: boolean
+  clarifyVagueAnswers: boolean
 }
 
 /** Current response-collection settings for the Settings tab. Workspace-scoped. */
@@ -152,6 +159,9 @@ export async function getFormSettings(id: string): Promise<FormSettingsData | nu
       redirectUrl: forms.redirectUrl,
       oneResponsePerPerson: forms.oneResponsePerPerson,
       settings: forms.settings,
+      renderMode: forms.renderMode,
+      aiEnabled: forms.aiEnabled,
+      aiConfig: forms.aiConfig,
     })
     .from(forms)
     .where(and(eq(forms.id, id), eq(forms.workspaceId, workspace.id), isNull(forms.deletedAt)))
@@ -166,6 +176,11 @@ export async function getFormSettings(id: string): Promise<FormSettingsData | nu
     showProgressBar: row.settings?.showProgressBar ?? false,
     submitButtonLabel: row.settings?.submitButtonLabel ?? "",
     thankYouMessage: row.settings?.thankYouMessage ?? "",
+    renderMode: row.renderMode,
+    aiEnabled: row.aiEnabled,
+    persona: row.aiConfig?.persona ?? "",
+    followUpsEnabled: row.aiConfig?.followUpsEnabled ?? false,
+    clarifyVagueAnswers: row.aiConfig?.clarifyVagueAnswers ?? false,
   }
 }
 
@@ -180,8 +195,6 @@ export type SubmissionsTable = {
   columns: SubmissionColumn[]
   rows: { id: string; submittedAt: Date; values: Record<string, AnswerValue> }[]
 }
-
-const NON_ANSWER = new Set(["heading", "paragraph", "image", "embed", "page_break"])
 
 /** Submissions for the responses table — columns = answerable fields, rows = answers. */
 export async function getFormSubmissions(
@@ -209,7 +222,7 @@ export async function getFormSubmissions(
     .where(and(eq(formFields.formId, id), isNull(formFields.deletedAt)))
     .orderBy(formFields.position)
   const columns: SubmissionColumn[] = fields
-    .filter((f) => !NON_ANSWER.has(f.type))
+    .filter((f) => !NON_ANSWER_TYPES.has(f.type))
     .map((f) => ({
       id: f.id,
       label: f.label,

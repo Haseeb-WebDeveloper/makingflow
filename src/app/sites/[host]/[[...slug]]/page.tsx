@@ -1,6 +1,6 @@
 import type { Metadata } from "next"
 import { getPublicFormByDomain } from "@/lib/data/public-form"
-import { FormRuntime } from "@/components/forms/form-runtime"
+import { FormRenderer } from "@/components/forms/form-renderer"
 
 /**
  * Custom-domain form runtime. `proxy.ts` rewrites requests on an attached
@@ -28,9 +28,12 @@ export default async function CustomDomainFormPage({ params }: { params: Params 
 
   return (
     <div className="min-h-dvh bg-canvas px-4 py-10 sm:py-16">
-      <div className="mx-auto w-full max-w-xl">
+      <div
+        key={res.state === "ok" ? res.form.publicId : "unavailable"}
+        className="mx-auto w-full max-w-xl"
+      >
         {res.state === "ok" ? (
-          <FormRuntime form={res.form} />
+          <FormRenderer form={res.form} />
         ) : (
           <NotAvailable missing={res.state === "missing"} />
         )}

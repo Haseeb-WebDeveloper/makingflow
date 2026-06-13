@@ -2,12 +2,9 @@ import { and, eq, isNull } from "drizzle-orm"
 import { db } from "@/lib/db"
 import { forms, formFields, submissions, answers, type AnswerValue } from "@/lib/db/schema"
 import { getServerSubmissionMeta } from "@/lib/analytics/request-meta"
+import { NON_ANSWER_TYPES, isEmpty } from "@/lib/builder/logic"
 
 export const maxDuration = 15
-
-const NON_ANSWER = new Set(["heading", "paragraph", "image", "embed", "page_break"])
-const isEmpty = (v: AnswerValue | undefined) =>
-  v == null || v === "" || (Array.isArray(v) && v.length === 0)
 
 async function publishedForm(publicId: string) {
   const [form] = await db
@@ -41,7 +38,7 @@ export async function POST(request: Request) {
 
     const accepted = (incoming as { fieldId: string; value: AnswerValue }[]).filter((a) => {
       const f = byId.get(a.fieldId)
-      return f && !NON_ANSWER.has(f.type) && !isEmpty(a.value)
+      return f && !NON_ANSWER_TYPES.has(f.type) && !isEmpty(a.value)
     })
     if (accepted.length === 0) return Response.json({}) // nothing to save yet
 
@@ -72,7 +69,7 @@ export async function POST(request: Request) {
             formId: form.id,
             workspaceId: form.workspaceId,
             status: "partial",
-            mode: "classic",
+            mode: form.renderMode,
             meta: metaValue,
           })
           .returning({ id: submissions.id })

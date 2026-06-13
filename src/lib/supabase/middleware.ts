@@ -12,7 +12,9 @@ const PUBLIC_PATHS = [
   '/', // marketing home (exact match only — see isPublicPath)
   '/f', // public form-fill runtime: /f/[formId]
   '/auth', // login, signup, callback, magic-link, password reset
-  '/api/forms', // public submission endpoint
+  '/api/forms', // public submission + conversational turn endpoint (/api/forms/turn)
+  '/api/partial', // anonymous save-&-resume drafts (both render modes)
+  '/api/track', // anonymous funnel beacons (view/start/complete)
 ]
 
 function isPublicPath(pathname: string): boolean {

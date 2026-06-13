@@ -17,9 +17,21 @@ export const NO_VALUE_OPERATORS = new Set<Operator>(["is_empty", "is_not_empty"]
 
 type Values = Record<string, AnswerValue | undefined>
 
-function isEmptyVal(v: AnswerValue | undefined): boolean {
+/** Field types that don't collect an answer (content/layout only). */
+export const NON_ANSWER_TYPES = new Set([
+  "heading",
+  "paragraph",
+  "image",
+  "embed",
+  "page_break",
+])
+
+/** An answer is "empty" when it's nullish, a blank string, or an empty array. */
+export function isEmpty(v: AnswerValue | undefined): boolean {
   return v == null || v === "" || (Array.isArray(v) && v.length === 0)
 }
+
+const isEmptyVal = isEmpty
 const toStr = (v: unknown) => (v == null ? "" : String(v))
 
 export function conditionComplete(c: FieldCondition): boolean {
@@ -69,4 +81,37 @@ export function isFieldVisible(logic: FieldLogic | undefined, values: Values): b
   const results = valid.map((c) => testCondition(c, values))
   const matched = logic.match === "any" ? results.some(Boolean) : results.every(Boolean)
   return logic.action === "hide" ? !matched : matched
+}
+
+/** Minimal field shape the ordering helper needs — kept structural so both the
+ *  runtime's `PublicField` and the builder's editor field satisfy it. */
+type FieldLike = { id: string; type: string; logic?: FieldLogic | null }
+
+/**
+ * The next field a respondent should answer: scan in document order strictly
+ * AFTER `afterFieldId` (or from the start when null), skipping content/layout
+ * blocks, fields hidden by their conditional logic, and fields already answered
+ * (a non-empty value in `values`). Returns null when no answerable field
+ * remains. This is the single ordering authority shared by the conversational
+ * client and the per-turn AI endpoint; scanning from the start while skipping
+ * answered fields makes resume "land on the first unanswered question" fall out
+ * for free.
+ */
+export function nextAnswerableField<T extends FieldLike>(
+  fields: T[],
+  values: Values,
+  afterFieldId: string | null,
+): T | null {
+  let reached = afterFieldId == null
+  for (const f of fields) {
+    if (!reached) {
+      if (f.id === afterFieldId) reached = true
+      continue
+    }
+    if (NON_ANSWER_TYPES.has(f.type)) continue
+    if (!isFieldVisible(f.logic ?? undefined, values)) continue
+    if (!isEmpty(values[f.id])) continue // already answered
+    return f
+  }
+  return null
 }
