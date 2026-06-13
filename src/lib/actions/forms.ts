@@ -196,6 +196,7 @@ export type FormSettingsPatch = {
   oneResponsePerPerson?: boolean
   showProgressBar?: boolean
   submitButtonLabel?: string | null
+  thankYouMessage?: string | null
 }
 
 /**
@@ -237,11 +238,17 @@ export async function updateFormSettings(
   if (patch.oneResponsePerPerson !== undefined)
     set.oneResponsePerPerson = patch.oneResponsePerPerson
 
-  if (patch.showProgressBar !== undefined || patch.submitButtonLabel !== undefined) {
+  if (
+    patch.showProgressBar !== undefined ||
+    patch.submitButtonLabel !== undefined ||
+    patch.thankYouMessage !== undefined
+  ) {
     const settings: FormSettings = { ...(row.settings ?? {}) }
     if (patch.showProgressBar !== undefined) settings.showProgressBar = patch.showProgressBar
     if (patch.submitButtonLabel !== undefined)
       settings.submitButtonLabel = patch.submitButtonLabel?.trim() || undefined
+    if (patch.thankYouMessage !== undefined)
+      settings.thankYouMessage = patch.thankYouMessage?.trim() || undefined
     set.settings = settings
   }
 

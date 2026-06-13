@@ -106,6 +106,13 @@ function paths(type: AiFieldType) {
       )
     case "heading":
       return <path d="M6 5v14M18 5v14M6 12h12" />
+    case "page_break":
+      return (
+        <>
+          <path d="M3 12h5M16 12h5" strokeDasharray="0.1 3" />
+          <path d="M10 8l4 8" />
+        </>
+      )
     default:
       return <path d="M4 9h16M4 14h9" />
   }

@@ -36,6 +36,8 @@ export const AI_FIELD_TYPES = [
   // content blocks (no answer)
   "heading",
   "paragraph",
+  // layout: splits the form into multiple pages/steps
+  "page_break",
 ] as const
 
 export const fieldTypeSchema = z.enum(AI_FIELD_TYPES)
@@ -119,6 +121,7 @@ Rules:
 - For multiple_choice, dropdown, multi_select, and checkboxes, always provide a sensible "options" list. Never put options on other types.
 - Mark "required" true for fields essential to the form's purpose; leave optional ones unmarked. Content blocks (heading, paragraph) are never required.
 - Open longer forms with a short "heading" or "paragraph" intro when it improves clarity, but keep forms focused — only the fields that serve the stated purpose.
+- MULTI-PAGE: only when the user explicitly asks for a multi-step, multi-page, or wizard-style form, insert "page_break" fields (label empty) between groups of related questions to split it into pages. Otherwise keep everything on one page (no page_break).
 - Prefer a logical order: identity/contact first, then the substantive questions, then anything optional.
 - Keep it calm and minimal. Do not invent fields the user didn't ask for unless they're clearly implied by the use case.
 - If the user provides a reference image (a screenshot of a form), recreate it: read every visible field, infer its type from the control shown (a star row → rating, a 0–10 row → nps or scale, checkboxes → checkboxes, a dropdown → dropdown, etc.), and preserve the labels, order, options, and grouping as closely as the allowed field types permit.

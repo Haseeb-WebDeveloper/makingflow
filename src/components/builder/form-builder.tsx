@@ -5,6 +5,9 @@ import { useRouter } from "next/navigation"
 import { experimental_useObject as useObject } from "@ai-sdk/react"
 import { aiFormSchema, type AiForm } from "@/lib/ai/form-schema"
 import { saveAiForm, publishForm, unpublishForm, deleteForm } from "@/lib/actions/forms"
+import { setFormDomain } from "@/lib/actions/domains"
+import { buildShareUrl } from "@/lib/forms/share"
+import type { FormSettingsData } from "@/lib/data/forms"
 import { type EditorForm, editorToAi, mergeAiIntoEditor } from "@/lib/builder/form-model"
 import { FormPreview, type PartialForm } from "@/components/builder/form-preview"
 import { FormEditor } from "@/components/builder/form-editor"
@@ -34,6 +37,7 @@ import {
 import { PublishDialog } from "@/components/builder/publish-dialog"
 import { showToast } from "@/components/ui/toast"
 import { cn } from "@/lib/utils"
+import { SVGIcon } from "../ui/svg-icon"
 
 type ChatMessage = {
   id: string
@@ -52,11 +56,21 @@ export function FormBuilder({
   initialFormId,
   initialStatus,
   initialPublicId,
+  initialDomainId,
+  initialSlug,
+  initialDomainHost,
+  domains,
+  initialSettings,
 }: {
   initialForm?: EditorForm
   initialFormId?: string
   initialStatus?: string
   initialPublicId?: string | null
+  initialDomainId?: string | null
+  initialSlug?: string | null
+  initialDomainHost?: string | null
+  domains?: { id: string; domain: string }[]
+  initialSettings?: FormSettingsData | null
 } = {}) {
   const router = useRouter()
 
@@ -80,6 +94,9 @@ export function FormBuilder({
   const [publicId, setPublicId] = useState<string | null>(initialPublicId ?? null)
   const [publishing, setPublishing] = useState(false)
   const [publishOpen, setPublishOpen] = useState(false)
+  const [domainId, setDomainId] = useState<string | null>(initialDomainId ?? null)
+  const [slug, setSlug] = useState<string | null>(initialSlug ?? null)
+  const [domainHost, setDomainHost] = useState<string | null>(initialDomainHost ?? null)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [origin, setOrigin] = useState("")
@@ -123,15 +140,20 @@ export function FormBuilder({
   const headerTitle = currentForm?.title || streaming?.title || "New form"
   const started =
     chat.length > 0 || isLoading || Boolean(object) || Boolean(currentForm)
-  const shareUrl = publicId && origin ? `${origin}/f/${publicId}` : ""
+  // A custom domain (if attached) wins over the default link everywhere.
+  const shareUrl = publicId
+    ? buildShareUrl({ origin, publicId, domain: domainHost, slug })
+    : ""
 
   // The committed form mapped to the public runtime shape, for the test preview.
   const previewForm: PublicForm | null = currentForm
     ? {
         publicId: publicId ?? "preview",
         title: currentForm.title || "Untitled form",
-        submitLabel: "Submit",
+        submitLabel: initialSettings?.submitButtonLabel || "Submit",
         thankYou: "Looks good — this was a test, no response was recorded.",
+        redirectUrl: null, // never redirect in the builder preview
+        showProgressBar: initialSettings?.showProgressBar ?? false,
         fields: currentForm.fields.map((f) => ({
           id: f.id,
           type: f.type,
@@ -245,6 +267,31 @@ export function FormBuilder({
     const res = await unpublishForm(id)
     if (res.success) setPublished(false)
     else showToast(res.error ?? "Could not unpublish", { type: "error" })
+  }
+
+  /**
+   * Attach the form to a custom domain (or clear it). Ensures the form is saved
+   * first, then persists; updates local state so the share link reflects it.
+   */
+  async function applyDomain(
+    nextId: string | null,
+    nextSlug: string | null,
+  ): Promise<{ success: boolean; error?: string }> {
+    if (!formIdRef.current) {
+      if (saveTimer.current) clearTimeout(saveTimer.current)
+      pendingSaveRef.current = currentFormRef.current
+      await flushSave()
+    }
+    const id = formIdRef.current
+    if (!id) return { success: false, error: "Save the form first" }
+
+    const res = await setFormDomain(id, { customDomainId: nextId, slug: nextSlug })
+    if (res.success) {
+      setDomainId(nextId)
+      setSlug(res.slug)
+      setDomainHost(res.domain)
+    }
+    return res
   }
 
   async function handleDelete() {
@@ -466,7 +513,7 @@ export function FormBuilder({
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-44">
                 <DropdownMenuItem onSelect={startOver}>
-                  <Icon name="plus" className="size-4 text-muted-foreground" />
+                  <SVGIcon src="/icons/plus.svg" className="size-4 text-muted-foreground" />
                   New form
                 </DropdownMenuItem>
                 {published ? (
@@ -506,6 +553,14 @@ export function FormBuilder({
         publishing={publishing}
         shareUrl={shareUrl}
         formId={formId}
+        formTitle={headerTitle}
+        domains={domains}
+        domainId={domainId}
+        slug={slug}
+        domainHost={domainHost}
+        onSetDomain={applyDomain}
+        settings={initialSettings ?? null}
+        formStatus={published ? "published" : (initialStatus ?? "draft")}
         onPublish={publish}
         onUnpublish={unpublish}
       />

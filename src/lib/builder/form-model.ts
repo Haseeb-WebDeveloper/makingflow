@@ -32,10 +32,13 @@ export const CHOICE_TYPES = new Set<AiFieldType>([
   "multi_select",
 ])
 export const CONTENT_TYPES = new Set<AiFieldType>(["heading", "paragraph"])
+// Layout/structural blocks that never collect an answer (page_break is a
+// multi-page divider, not a question).
+export const NON_ANSWER_TYPES = new Set<AiFieldType>(["heading", "paragraph", "page_break"])
 
 export const isChoice = (t: AiFieldType) => CHOICE_TYPES.has(t)
 export const isContent = (t: AiFieldType) => CONTENT_TYPES.has(t)
-export const isAnswerable = (t: AiFieldType) => !CONTENT_TYPES.has(t)
+export const isAnswerable = (t: AiFieldType) => !NON_ANSWER_TYPES.has(t)
 
 // ── Insert palette catalog ────────────────────────────────────────────
 export type CatalogGroup = "Text" | "Choice" | "Contact" | "Rating" | "Date" | "File" | "Layout"
@@ -66,6 +69,7 @@ export const FIELD_CATALOG: CatalogItem[] = [
   { type: "file_upload", label: "File upload", group: "File", keywords: "attachment image document" },
   { type: "heading", label: "Heading", group: "Layout", keywords: "section title" },
   { type: "paragraph", label: "Text", group: "Layout", keywords: "description note" },
+  { type: "page_break", label: "Page break", group: "Layout", keywords: "page step multi-page next" },
 ]
 
 export const CATALOG_GROUP_ORDER: CatalogGroup[] = [

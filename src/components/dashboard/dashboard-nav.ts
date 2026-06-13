@@ -16,7 +16,7 @@ export type DashboardNavItem = {
 export const MAKINGFLOW_NAV: DashboardNavItem[] = [
   { href: "/forms", label: "Home", icon: "home" },
   { label: "Search", icon: "search", action: "search" },
-  { href: "/domains", label: "Domains", icon: "discovery", comingSoon: true },
+  { href: "/domains", label: "Domains", icon: "discovery" },
   { href: "/integrations", label: "Integrations", icon: "swap" },
   { href: "/settings", label: "Settings", icon: "setting" },
 ]

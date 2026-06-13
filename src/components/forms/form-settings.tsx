@@ -220,6 +220,27 @@ export function FormSettings({
             className="h-9 w-60"
           />
         </SettingRow>
+
+        <SettingRow
+          title="Success message"
+          description={
+            state.redirectUrl
+              ? "Shown after submitting — unless the redirect URL above is set, which takes precedence."
+              : "Shown to respondents after they submit the form."
+          }
+          control={null}
+        >
+          <textarea
+            rows={2}
+            placeholder="Thanks! Your response has been recorded."
+            value={state.thankYouMessage}
+            onChange={(e) => setState((s) => ({ ...s, thankYouMessage: e.target.value }))}
+            onBlur={(e) =>
+              save({ thankYouMessage: e.target.value }, { thankYouMessage: e.target.value })
+            }
+            className="scrollbar-thin w-full resize-none rounded-md border border-input bg-input/30 px-3 py-2 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:border-foreground/40"
+          />
+        </SettingRow>
       </div>
     </div>
   )

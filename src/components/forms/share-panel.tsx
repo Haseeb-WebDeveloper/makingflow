@@ -1,8 +1,14 @@
 "use client"
 
 import { useState } from "react"
+import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { Icon } from "@/components/ui/icon"
 import { cn } from "@/lib/utils"
+import { FormDomainPicker } from "@/components/forms/domain-picker"
+import { setFormDomain } from "@/lib/actions/domains"
+import { publishForm } from "@/lib/actions/forms"
+import { showToast } from "@/components/ui/toast"
 
 function useCopy() {
   const [copied, setCopied] = useState(false)
@@ -64,21 +70,64 @@ function CodeBlock({ code }: { code: string }) {
 }
 
 /** Share + embed surface for a published form. */
-export function SharePanel({ url, published }: { url: string; published: boolean }) {
+export function SharePanel({
+  url,
+  published,
+  formId,
+  formTitle,
+  domains,
+  domainId,
+  slug,
+  domainHost,
+}: {
+  url: string
+  published: boolean
+  formId: string
+  formTitle: string
+  domains: { id: string; domain: string }[]
+  domainId: string | null
+  slug: string | null
+  domainHost: string | null
+}) {
+  const router = useRouter()
+  const [publishing, setPublishing] = useState(false)
   const standard = `<iframe src="${url}" width="100%" height="600" style="border:0" title="Form"></iframe>`
   const fullPage = url
   const popup = `<a href="${url}" target="_blank" rel="noopener">Open form</a>`
 
+  async function handlePublish() {
+    setPublishing(true)
+    const res = await publishForm(formId)
+    setPublishing(false)
+    if (res.success) {
+      showToast("Your form is live 🎉", { type: "success" })
+      router.refresh()
+    } else {
+      showToast(res.error, { type: "error" })
+    }
+  }
+
   return (
     <div className="max-w-2xl">
       {!published ? (
-        <div className="mb-6 flex items-start gap-2.5 rounded-lg border border-border bg-muted/40 p-3.5 text-sm">
-          <Icon name="info-square" className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-          <p className="text-muted-foreground">
-            This form isn&apos;t published yet. The link works once you publish it from the
-            editor — open <span className="font-medium text-foreground">Edit</span> and hit
-            Publish.
-          </p>
+        <div className="mb-6 flex items-center gap-3 rounded-lg border border-border bg-muted/30 p-4">
+          <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-foreground/5 text-foreground">
+            <Icon name="send" className="size-4" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-medium text-foreground">This form isn&apos;t published yet</p>
+            <p className="mt-0.5 text-sm text-muted-foreground">
+              Publish it to make the link live and start collecting responses.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={handlePublish}
+            disabled={publishing}
+            className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md bg-foreground px-3.5 text-sm font-medium text-background transition-colors hover:bg-foreground/90 disabled:opacity-60"
+          >
+            {publishing ? "Publishing…" : "Publish form"}
+          </button>
         </div>
       ) : null}
 
@@ -125,12 +174,29 @@ export function SharePanel({ url, published }: { url: string; published: boolean
 
       <Section
         title="Custom domain"
-        description="Serve your form from your own domain, e.g. forms.yourbrand.com."
+        description="Serve this form from your own domain. Change or remove it anytime."
       >
-        <span className="inline-flex items-center gap-1.5 rounded-md border border-dashed border-border px-3 py-1.5 text-xs text-muted-foreground">
-          <Icon name="discovery" className="size-4" />
-          Coming soon
-        </span>
+        {domains.length > 0 ? (
+          <FormDomainPicker
+            domains={domains}
+            domainId={domainId}
+            slug={slug}
+            domainHost={domainHost}
+            formTitle={formTitle}
+            onApply={(customDomainId, nextSlug) =>
+              setFormDomain(formId, { customDomainId, slug: nextSlug })
+            }
+            onSuccess={() => router.refresh()}
+          />
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            No domains yet. Add one in{" "}
+            <Link href="/domains" className="font-medium text-foreground hover:underline">
+              Domains
+            </Link>{" "}
+            to publish this form on your own URL.
+          </p>
+        )}
       </Section>
     </div>
   )

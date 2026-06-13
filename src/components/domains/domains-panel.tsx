@@ -1,11 +1,11 @@
-"use client"
+"use client";
 
-import * as React from "react"
-import { useRouter } from "next/navigation"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Icon } from "@/components/ui/icon"
-import { showToast } from "@/components/ui/toast"
+import * as React from "react";
+import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Icon } from "@/components/ui/icon";
+import { showToast } from "@/components/ui/toast";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -15,21 +15,27 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from "@/components/ui/alert-dialog"
-import { cn } from "@/lib/utils"
-import { addCustomDomain, checkCustomDomain, removeCustomDomain } from "@/lib/actions/domains"
-import type { WorkspaceDomains, WorkspaceDomain } from "@/lib/data/domains"
+} from "@/components/ui/alert-dialog";
+import { cn } from "@/lib/utils";
+import {
+  addCustomDomain,
+  checkCustomDomain,
+  removeCustomDomain,
+} from "@/lib/actions/domains";
+import type { WorkspaceDomains, WorkspaceDomain } from "@/lib/data/domains";
+import { SVGIcon } from "../ui/svg-icon";
+import { Loading } from "../ui/loading";
 
 function Spinner({ className }: { className?: string }) {
   return (
     <span
       className={cn(
         "inline-block size-3.5 animate-spin rounded-full border-2 border-current border-t-transparent",
-        className,
+        className
       )}
       aria-hidden
     />
-  )
+  );
 }
 
 function StatusPill({ status }: { status: WorkspaceDomain["status"] }) {
@@ -39,7 +45,7 @@ function StatusPill({ status }: { status: WorkspaceDomain["status"] }) {
         <Icon name="tick-square" className="size-3.5" />
         Active
       </span>
-    )
+    );
   }
   if (status === "error") {
     return (
@@ -47,7 +53,7 @@ function StatusPill({ status }: { status: WorkspaceDomain["status"] }) {
         <Icon name="danger-triangle" className="size-3.5" />
         Error
       </span>
-    )
+    );
   }
   return (
     <span className="inline-flex items-center gap-1.5 rounded-full border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
@@ -57,12 +63,12 @@ function StatusPill({ status }: { status: WorkspaceDomain["status"] }) {
       </span>
       Awaiting DNS
     </span>
-  )
+  );
 }
 
 /** A labeled DNS field with one-click copy + per-field "Copied" feedback. */
 function CopyField({ label, value }: { label: string; value: string }) {
-  const [copied, setCopied] = React.useState(false)
+  const [copied, setCopied] = React.useState(false);
   return (
     <div className="grid grid-cols-[4.5rem_1fr] items-center gap-3">
       <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
@@ -79,19 +85,22 @@ function CopyField({ label, value }: { label: string; value: string }) {
           aria-label={`Copy ${label}`}
           onClick={async () => {
             try {
-              await navigator.clipboard.writeText(value)
-              setCopied(true)
-              setTimeout(() => setCopied(false), 1500)
+              await navigator.clipboard.writeText(value);
+              setCopied(true);
+              setTimeout(() => setCopied(false), 1500);
             } catch {
               /* clipboard blocked */
             }
           }}
         >
-          <Icon name={copied ? "tick-square" : "paper"} className={copied ? "text-success" : ""} />
+          <Icon
+            name={copied ? "tick-square" : "paper"}
+            className={copied ? "text-success" : ""}
+          />
         </Button>
       </div>
     </div>
-  )
+  );
 }
 
 function DomainRow({
@@ -102,16 +111,16 @@ function DomainRow({
   onCheck,
   onRemove,
 }: {
-  domain: WorkspaceDomain
-  cnameTarget: string
-  busy: boolean
-  checking: boolean
-  onCheck: (id: string) => void
-  onRemove: (id: string) => void
+  domain: WorkspaceDomain;
+  cnameTarget: string;
+  busy: boolean;
+  checking: boolean;
+  onCheck: (id: string) => void;
+  onRemove: (id: string) => void;
 }) {
-  const [confirmOpen, setConfirmOpen] = React.useState(false)
-  const subLabel = domain.domain.split(".")[0]
-  const active = domain.status === "active"
+  const [confirmOpen, setConfirmOpen] = React.useState(false);
+  const subLabel = domain.domain.split(".")[0];
+  const active = domain.status === "active";
 
   return (
     <div className="overflow-hidden rounded-xl border border-border bg-card">
@@ -121,7 +130,9 @@ function DomainRow({
           <span
             className={cn(
               "mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-lg",
-              active ? "bg-success-bg text-success-foreground" : "bg-muted text-muted-foreground",
+              active
+                ? "bg-success-bg text-success-foreground"
+                : "bg-muted text-muted-foreground"
             )}
           >
             <Icon name="discovery" className="size-5" />
@@ -138,7 +149,8 @@ function DomainRow({
                 <>
                   Live ·{" "}
                   <span className="font-mono">
-                    {domain.domain}/<span className="text-muted-foreground/70">your-form</span>
+                    {domain.domain}/
+                    <span className="text-muted-foreground/70">your-form</span>
                   </span>
                 </>
               ) : (
@@ -147,7 +159,9 @@ function DomainRow({
               {" · "}
               {domain.formsCount === 0
                 ? "no forms yet"
-                : `${domain.formsCount} form${domain.formsCount === 1 ? "" : "s"}`}
+                : `${domain.formsCount} form${
+                    domain.formsCount === 1 ? "" : "s"
+                  }`}
             </p>
           </div>
         </div>
@@ -168,8 +182,8 @@ function DomainRow({
         <div className="border-t border-border bg-muted/20 p-4">
           <div className="flex items-center justify-between gap-3">
             <p className="text-xs text-muted-foreground">
-              Add this record at your DNS provider. We check automatically — SSL is issued once it
-              resolves.
+              Add this record at your DNS provider. We check automatically — SSL
+              is issued once it resolves.
             </p>
             <Button
               variant="outline"
@@ -212,15 +226,16 @@ function DomainRow({
             <AlertDialogTitle>Remove {domain.domain}?</AlertDialogTitle>
             <AlertDialogDescription>
               Forms published here will revert to their default{" "}
-              <span className="font-mono">/f/…</span> links. You can re-add the domain later.
+              <span className="font-mono">/f/…</span> links. You can re-add the
+              domain later.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={busy}>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={(e) => {
-                e.preventDefault()
-                onRemove(domain.id)
+                e.preventDefault();
+                onRemove(domain.id);
               }}
               disabled={busy}
               className="bg-destructive/10 text-destructive hover:bg-destructive/20 focus-visible:ring-destructive/20"
@@ -231,95 +246,100 @@ function DomainRow({
         </AlertDialogContent>
       </AlertDialog>
     </div>
-  )
+  );
 }
 
 export function DomainsPanel({ data }: { data: WorkspaceDomains }) {
-  const router = useRouter()
-  const [value, setValue] = React.useState("")
-  const [busyId, setBusyId] = React.useState<string | null>(null)
-  const [adding, setAdding] = React.useState(false)
-  const [, startTransition] = React.useTransition()
+  const router = useRouter();
+  const [value, setValue] = React.useState("");
+  const [busyId, setBusyId] = React.useState<string | null>(null);
+  const [adding, setAdding] = React.useState(false);
+  const [, startTransition] = React.useTransition();
 
-  const pendingIds = data.domains.filter((d) => d.status !== "active").map((d) => d.id)
-  const pendingKey = pendingIds.join(",")
+  const pendingIds = data.domains
+    .filter((d) => d.status !== "active")
+    .map((d) => d.id);
+  const pendingKey = pendingIds.join(",");
 
   // Auto-detect activation: while any domain is pending, quietly re-check every
   // few seconds so it flips to Active on its own once DNS propagates. Pauses
   // when the tab is hidden; stops when nothing is pending.
   React.useEffect(() => {
-    if (!pendingKey) return
-    let cancelled = false
-    const ids = pendingKey.split(",")
+    if (!pendingKey) return;
+    let cancelled = false;
+    const ids = pendingKey.split(",");
     const interval = setInterval(async () => {
-      if (document.hidden || cancelled) return
+      if (document.hidden || cancelled) return;
       for (const id of ids) {
-        await checkCustomDomain(id)
-        if (cancelled) return
+        await checkCustomDomain(id);
+        if (cancelled) return;
       }
-      if (!cancelled) router.refresh()
-    }, 20000)
+      if (!cancelled) router.refresh();
+    }, 20000);
     return () => {
-      cancelled = true
-      clearInterval(interval)
-    }
-  }, [pendingKey, router])
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [pendingKey, router]);
 
-  const preview = value.trim().toLowerCase() || "forms.yourbrand.com"
-  const busy = adding || busyId !== null
+  const preview = value.trim().toLowerCase() || "forms.yourbrand.com";
+  const busy = adding || busyId !== null;
 
   function onAdd() {
-    const domain = value.trim()
-    if (!domain) return
-    setAdding(true)
+    const domain = value.trim();
+    if (!domain) return;
+    setAdding(true);
     startTransition(async () => {
-      const res = await addCustomDomain(domain)
-      setAdding(false)
+      const res = await addCustomDomain(domain);
+      setAdding(false);
       if (res.success) {
-        showToast("Domain added — set up DNS to finish", { type: "success" })
-        setValue("")
-        router.refresh()
+        showToast("Domain added — set up DNS to finish", { type: "success" });
+        setValue("");
+        router.refresh();
       } else {
-        showToast(res.error, { type: "error" })
+        showToast(res.error, { type: "error" });
       }
-    })
+    });
   }
 
   function onCheck(id: string) {
-    setBusyId(id)
+    setBusyId(id);
     startTransition(async () => {
-      const res = await checkCustomDomain(id)
-      setBusyId(null)
+      const res = await checkCustomDomain(id);
+      setBusyId(null);
       if (res.success) {
-        showToast("Status refreshed", { type: "success" })
-        router.refresh()
+        showToast("Status refreshed", { type: "success" });
+        router.refresh();
       } else {
-        showToast(res.error, { type: "error" })
+        showToast(res.error, { type: "error" });
       }
-    })
+    });
   }
 
   function onRemove(id: string) {
-    setBusyId(id)
+    setBusyId(id);
     startTransition(async () => {
-      const res = await removeCustomDomain(id)
-      setBusyId(null)
+      const res = await removeCustomDomain(id);
+      setBusyId(null);
       if (res.success) {
-        showToast("Domain removed", { type: "success" })
-        router.refresh()
+        showToast("Domain removed", { type: "success" });
+        router.refresh();
       } else {
-        showToast(res.error, { type: "error" })
+        showToast(res.error, { type: "error" });
       }
-    })
+    });
   }
 
   if (!data.configured) {
     return (
       <div className="flex items-start gap-2.5 rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">
         <Icon name="info-square" className="mt-0.5 size-4 shrink-0" />
-        <p>Custom domains aren&apos;t configured on this deployment yet. Check back soon.</p>
+        <p>
+          Custom domains aren&apos;t configured on this deployment yet. Check
+          back soon.
+        </p>
       </div>
-    )
+    );
   }
 
   return (
@@ -331,9 +351,12 @@ export function DomainsPanel({ data }: { data: WorkspaceDomains }) {
             <Icon name="discovery" className="size-5" />
           </span>
           <div>
-            <h2 className="text-sm font-semibold text-foreground">Add a subdomain</h2>
+            <h2 className="text-sm font-semibold text-foreground">
+              Add a subdomain
+            </h2>
             <p className="text-xs text-muted-foreground">
-              Use a subdomain like <span className="font-mono">forms.yourbrand.com</span>. Root
+              Use a subdomain like{" "}
+              <span className="font-mono">forms.yourbrand.com</span>. Root
               domains aren&apos;t supported yet.
             </p>
           </div>
@@ -345,7 +368,7 @@ export function DomainsPanel({ data }: { data: WorkspaceDomains }) {
             value={value}
             onChange={(e) => setValue(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter") onAdd()
+              if (e.key === "Enter") onAdd();
             }}
             placeholder="forms.yourbrand.com"
             autoComplete="off"
@@ -354,8 +377,16 @@ export function DomainsPanel({ data }: { data: WorkspaceDomains }) {
             disabled={busy}
             className="sm:flex-1"
           />
-          <Button onClick={onAdd} disabled={busy || !value.trim()} className="sm:shrink-0">
-            {adding ? <Spinner /> : <Icon name="plus" />}
+          <Button
+            onClick={onAdd}
+            disabled={busy || !value.trim()}
+            className="sm:shrink-0"
+          >
+            {adding ? (
+              <Loading className="size-4" />
+            ) : (
+              <SVGIcon src="/icons/plus.svg" className="size-4" />
+            )}
             Add domain
           </Button>
         </div>
@@ -373,7 +404,9 @@ export function DomainsPanel({ data }: { data: WorkspaceDomains }) {
           <span className="mx-auto mb-3 flex size-10 items-center justify-center rounded-lg bg-muted text-muted-foreground">
             <Icon name="discovery" className="size-5" />
           </span>
-          <p className="text-sm font-medium text-foreground">No custom domains yet</p>
+          <p className="text-sm font-medium text-foreground">
+            No custom domains yet
+          </p>
           <p className="mx-auto mt-1 max-w-sm text-sm text-muted-foreground">
             Add a subdomain above to serve your forms from your own brand.
           </p>
@@ -394,5 +427,5 @@ export function DomainsPanel({ data }: { data: WorkspaceDomains }) {
         </div>
       )}
     </div>
-  )
+  );
 }

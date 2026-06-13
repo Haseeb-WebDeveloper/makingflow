@@ -239,7 +239,13 @@ function Block({
       </div>
 
       <div className={cn("rounded-lg py-2.5 pl-9 pr-2 transition-colors", active ? "bg-muted/50" : "hover:bg-muted/30")}>
-        {field.type === "heading" ? (
+        {field.type === "page_break" ? (
+          <div className="flex items-center gap-3 py-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            <span className="h-px flex-1 border-t border-dashed border-border" />
+            Page break
+            <span className="h-px flex-1 border-t border-dashed border-border" />
+          </div>
+        ) : field.type === "heading" ? (
           <AutoText
             value={field.label}
             onChange={(label) => onChange({ label })}

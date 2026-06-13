@@ -65,12 +65,28 @@ export function FormRuntime({
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState(false)
+  const [pageIndex, setPageIndex] = useState(0)
   const startedRef = useRef(false)
 
   const answerable = useMemo(
     () => form.fields.filter((f) => !NON_ANSWER.has(f.type)),
     [form.fields],
   )
+
+  // Split into pages on page_break (the break itself isn't rendered). Empty
+  // pages are dropped; a form with no breaks is a single page.
+  const pages = useMemo(() => {
+    const result: PublicField[][] = [[]]
+    for (const f of form.fields) {
+      if (f.type === "page_break") result.push([])
+      else result[result.length - 1].push(f)
+    }
+    return result.filter((p) => p.length > 0)
+  }, [form.fields])
+  const pageCount = Math.max(1, pages.length)
+  const idx = Math.min(pageIndex, pageCount - 1) // clamp (form can shrink in preview)
+  const currentPage = pages[idx] ?? form.fields
+  const isLast = idx >= pageCount - 1
 
   // Funnel: count a view once per render of a real (non-preview) form.
   useEffect(() => {
@@ -92,35 +108,63 @@ export function FormRuntime({
     return v == null || v === "" || (Array.isArray(v) && v.length === 0)
   }
 
+  // Required, visible, empty fields on a given page.
+  function missingOn(fields: PublicField[]): string[] {
+    return fields
+      .filter(
+        (f) =>
+          !NON_ANSWER.has(f.type) &&
+          isFieldVisible(f.logic, values) &&
+          f.required &&
+          isEmpty(values[f.id]),
+      )
+      .map((f) => f.id)
+  }
+
+  function flagMissing(ids: string[]) {
+    setErrors((prev) => ({ ...prev, ...Object.fromEntries(ids.map((id) => [id, true])) }))
+    setError("Please answer the required questions.")
+    requestAnimationFrame(() => {
+      document.getElementById(`field-${ids[0]}`)?.scrollIntoView({ behavior: "smooth", block: "center" })
+    })
+  }
+
+  function goBack() {
+    setError(null)
+    setPageIndex(Math.max(0, idx - 1))
+    window.scrollTo({ top: 0, behavior: "smooth" })
+  }
+
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
 
-    // Only validate/submit answers for fields that are currently VISIBLE.
-    const live = answerable.filter((f) => isFieldVisible(f.logic, values))
-
-    const missing: Record<string, boolean> = {}
-    for (const f of live) {
-      if (f.required && isEmpty(values[f.id])) missing[f.id] = true
-    }
-    if (Object.keys(missing).length > 0) {
-      setErrors(missing)
-      setError("Please answer the required questions.")
-      // Scroll to the first missing field.
-      const firstId = live.find((f) => missing[f.id])?.id
-      if (firstId) document.getElementById(`field-${firstId}`)?.scrollIntoView({ behavior: "smooth", block: "center" })
+    // Not the last page → validate this page, then advance.
+    if (!isLast) {
+      const miss = missingOn(currentPage)
+      if (miss.length > 0) return flagMissing(miss)
+      setPageIndex(idx + 1)
+      window.scrollTo({ top: 0, behavior: "smooth" })
       return
     }
 
-    // Test mode (builder preview): behave like a real submit, but don't persist.
+    // Last page → validate every page; jump to the first that has a problem.
+    for (let p = 0; p < pages.length; p++) {
+      const miss = missingOn(pages[p])
+      if (miss.length > 0) {
+        if (p !== idx) setPageIndex(p)
+        return flagMissing(miss)
+      }
+    }
+
     if (testMode) {
       setDone(true)
       return
     }
 
     setSubmitting(true)
-    const payload = live
-      .filter((f) => !isEmpty(values[f.id]))
+    const payload = answerable
+      .filter((f) => isFieldVisible(f.logic, values) && !isEmpty(values[f.id]))
       .map((f) => ({ fieldId: f.id, value: values[f.id]! }))
 
     const res = await submitForm({
@@ -131,6 +175,11 @@ export function FormRuntime({
     setSubmitting(false)
     if (!res.success) {
       setError(res.error)
+      return
+    }
+    // A redirect URL is the form's own thank-you page.
+    if (form.redirectUrl) {
+      window.location.href = form.redirectUrl
       return
     }
     setDone(true)
@@ -155,10 +204,23 @@ export function FormRuntime({
         <h1 className="font-sebenta text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
           {form.title}
         </h1>
+        {form.showProgressBar && pageCount > 1 ? (
+          <div className="mt-4">
+            <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+              <div
+                className="h-full rounded-full bg-foreground transition-all"
+                style={{ width: `${((idx + 1) / pageCount) * 100}%` }}
+              />
+            </div>
+            <p className="mt-1.5 text-xs text-muted-foreground">
+              Step {idx + 1} of {pageCount}
+            </p>
+          </div>
+        ) : null}
       </header>
 
       <div className="space-y-7">
-        {form.fields.map((field) =>
+        {currentPage.map((field) =>
           isFieldVisible(field.logic, values) ? (
             <Field
               key={field.id}
@@ -178,13 +240,25 @@ export function FormRuntime({
         </p>
       ) : null}
 
-      <button
-        type="submit"
-        disabled={submitting}
-        className="mt-8 inline-flex h-11 items-center justify-center rounded-md bg-foreground px-6 text-sm font-medium text-background transition-colors hover:bg-foreground/90 disabled:opacity-60"
-      >
-        {submitting ? "Submitting…" : form.submitLabel}
-      </button>
+      <div className="mt-8 flex items-center gap-3">
+        {idx > 0 ? (
+          <button
+            type="button"
+            onClick={goBack}
+            disabled={submitting}
+            className="inline-flex h-11 items-center justify-center rounded-md border border-border px-5 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-60"
+          >
+            Back
+          </button>
+        ) : null}
+        <button
+          type="submit"
+          disabled={submitting}
+          className="inline-flex h-11 items-center justify-center rounded-md bg-foreground px-6 text-sm font-medium text-background transition-colors hover:bg-foreground/90 disabled:opacity-60"
+        >
+          {isLast ? (submitting ? "Submitting…" : form.submitLabel) : "Next"}
+        </button>
+      </div>
 
       <p className="mt-8 text-center text-xs text-muted-foreground">
         Made with{" "}

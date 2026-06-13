@@ -31,6 +31,7 @@ import {
 } from "@/components/dashboard/command-menu";
 import { UserMenu } from "@/components/dashboard/user-menu";
 import { WorkspaceChip } from "@/components/dashboard/workspace-chip";
+import { SVGIcon } from "../ui/svg-icon";
 
 const FORMS_IN_SIDEBAR = 10;
 
@@ -209,7 +210,7 @@ export function DashboardShell({
                 prefetch
                 className="inline-flex h-9 items-center gap-1.5 rounded-md bg-foreground px-3 text-sm font-medium text-background transition-colors hover:bg-foreground/90"
               >
-                <Icon name="plus" className="size-4" />
+                <SVGIcon src="/icons/plus.svg" className="size-4" />
                 New form
               </Link>
               <UserMenu user={user} />

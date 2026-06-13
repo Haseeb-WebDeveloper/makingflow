@@ -28,6 +28,8 @@ export type PublicForm = {
   title: string
   submitLabel: string
   thankYou: string
+  redirectUrl: string | null
+  showProgressBar: boolean
   fields: PublicField[]
 }
 
@@ -69,6 +71,8 @@ async function resolvePublishedForm(row: FormRow): Promise<PublicFormResult> {
       title: row.title,
       submitLabel: row.settings?.submitButtonLabel || "Submit",
       thankYou: row.settings?.thankYouMessage || "Thanks! Your response has been recorded.",
+      redirectUrl: row.redirectUrl ?? null,
+      showProgressBar: row.settings?.showProgressBar ?? false,
       fields: fields.map((f) => ({
         id: f.id,
         type: f.type,
