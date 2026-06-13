@@ -1,13 +1,16 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
+import { useRouter } from "next/navigation"
 import { experimental_useObject as useObject } from "@ai-sdk/react"
 import { aiFormSchema, type AiForm } from "@/lib/ai/form-schema"
+import { saveAiForm } from "@/lib/actions/forms"
 import { FormPreview, type PartialForm } from "@/components/builder/form-preview"
 import { AiLottie } from "@/components/builder/ai-lottie"
 import { Composer, type ComposerImage } from "@/components/builder/composer"
 import { Button } from "@/components/ui/button"
 import { showToast } from "@/components/ui/toast"
+import { cn } from "@/lib/utils"
 
 type ChatMessage = {
   id: string
@@ -16,13 +19,39 @@ type ChatMessage = {
   image?: string
 }
 
+type SaveState = "idle" | "saving" | "saved" | "error"
+
 let _seq = 0
 const rid = () => `m${++_seq}`
 
-export function FormBuilder() {
-  const [chat, setChat] = useState<ChatMessage[]>([])
+export function FormBuilder({
+  initialForm,
+  initialFormId,
+}: {
+  initialForm?: AiForm
+  initialFormId?: string
+} = {}) {
+  const router = useRouter()
+
+  const [chat, setChat] = useState<ChatMessage[]>(() =>
+    initialForm
+      ? [
+          {
+            id: rid(),
+            role: "assistant",
+            text: `Loaded “${initialForm.title}”. Ask for any changes.`,
+          },
+        ]
+      : [],
+  )
   const [draft, setDraft] = useState("")
   const [image, setImage] = useState<ComposerImage | null>(null)
+  const [currentForm, setCurrentForm] = useState<AiForm | null>(initialForm ?? null)
+  const [formId, setFormId] = useState<string | null>(initialFormId ?? null)
+  const [saveState, setSaveState] = useState<SaveState>(initialFormId ? "saved" : "idle")
+
+  const formIdRef = useRef<string | null>(initialFormId ?? null)
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const endRef = useRef<HTMLDivElement>(null)
 
   const { object, submit, isLoading, error, stop, clear } = useObject({
@@ -30,35 +59,68 @@ export function FormBuilder() {
     schema: aiFormSchema,
     onFinish: ({ object }) => {
       if (!object) return
+      const full = object as AiForm
+      setCurrentForm(full)
       setChat((prev) => {
         const isFirst = !prev.some((m) => m.role === "assistant")
-        const title = (object as Partial<AiForm>).title
         const text = isFirst
-          ? title
-            ? `Here's your form — “${title}”. Ask for any changes.`
+          ? full.title
+            ? `Here's your form — “${full.title}”. Ask for any changes.`
             : "Here's your form. Ask for any changes."
           : "Done — updated the form."
         return [...prev, { id: rid(), role: "assistant", text }]
       })
+      scheduleAutosave(full)
     },
   })
 
-  const form = object as unknown as PartialForm | undefined
-  const started = chat.length > 0 || isLoading || Boolean(form)
+  // Prefer the live streaming object; fall back to the committed/loaded form.
+  const form = (object as unknown as PartialForm | undefined) ?? currentForm ?? undefined
+  const started =
+    chat.length > 0 || isLoading || Boolean(object) || Boolean(currentForm)
 
-  // Keep the conversation pinned to the latest message.
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" })
   }, [chat, isLoading])
 
+  useEffect(() => {
+    return () => {
+      if (saveTimer.current) clearTimeout(saveTimer.current)
+    }
+  }, [])
+
+  // ── Persistence ───────────────────────────────────────────────────
+  async function doSave(formToSave: AiForm) {
+    setSaveState("saving")
+    const res = await saveAiForm({ formId: formIdRef.current, form: formToSave })
+    if (res.success) {
+      formIdRef.current = res.id
+      setFormId(res.id)
+      setSaveState("saved")
+    } else {
+      setSaveState("error")
+      showToast(res.error, { type: "error" })
+    }
+  }
+
+  function scheduleAutosave(formToSave: AiForm) {
+    if (saveTimer.current) clearTimeout(saveTimer.current)
+    saveTimer.current = setTimeout(() => void doSave(formToSave), 800)
+  }
+
+  function saveNow() {
+    if (!currentForm || isLoading) return
+    if (saveTimer.current) clearTimeout(saveTimer.current)
+    void doSave(currentForm)
+  }
+
+  // ── Conversation ──────────────────────────────────────────────────
   function send() {
     if (isLoading) return
     const text = draft.trim()
     if (!text && !image) return
 
-    const hadForm = chat.some((m) => m.role === "assistant")
     const transcript = chat.map((m) => ({ role: m.role, text: m.text }))
-
     setChat((prev) => [
       ...prev,
       {
@@ -72,8 +134,8 @@ export function FormBuilder() {
     submit({
       instruction: text,
       image: image?.url,
-      current: hadForm ? form : undefined, // gives the edit its current state
-      transcript, // gives the model the conversation so far
+      current: currentForm ?? undefined, // edits build on the committed form
+      transcript, // model gets the conversation so far
     })
 
     setDraft("")
@@ -83,9 +145,15 @@ export function FormBuilder() {
   function startOver() {
     stop()
     clear()
+    if (saveTimer.current) clearTimeout(saveTimer.current)
     setChat([])
     setDraft("")
     setImage(null)
+    setCurrentForm(null)
+    setFormId(null)
+    formIdRef.current = null
+    setSaveState("idle")
+    router.replace("/forms/new")
   }
 
   async function pickFile(file: File) {
@@ -144,9 +212,12 @@ export function FormBuilder() {
     <div className="flex h-[calc(100dvh-3.5rem)] flex-col lg:flex-row">
       <aside className="flex h-1/2 shrink-0 flex-col border-b border-border lg:h-full lg:w-[380px] lg:border-b-0 lg:border-r">
         <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
-          <p className="min-w-0 truncate font-sebenta text-sm font-semibold text-foreground">
-            {form?.title || "New form"}
-          </p>
+          <div className="flex min-w-0 items-center gap-2">
+            <p className="min-w-0 truncate font-sebenta text-sm font-semibold text-foreground">
+              {form?.title || "New form"}
+            </p>
+            <SaveStatus state={saveState} />
+          </div>
           <div className="flex shrink-0 items-center gap-1">
             <Button
               variant="ghost"
@@ -157,13 +228,11 @@ export function FormBuilder() {
               New
             </Button>
             <Button
-              onClick={() =>
-                showToast("Saving comes next — persistence is the next step.", { type: "info" })
-              }
-              disabled={isLoading || !form?.title}
+              onClick={saveNow}
+              disabled={!currentForm || isLoading || saveState === "saving"}
               className="h-8 px-3"
             >
-              Save
+              {saveState === "saving" ? "Saving…" : saveState === "saved" ? "Saved" : "Save"}
             </Button>
           </div>
         </div>
@@ -214,6 +283,22 @@ export function FormBuilder() {
         <FormPreview form={form} building={isLoading} />
       </main>
     </div>
+  )
+}
+
+function SaveStatus({ state }: { state: SaveState }) {
+  if (state === "idle") return null
+  const label =
+    state === "saving" ? "Saving…" : state === "saved" ? "Saved" : "Save failed"
+  return (
+    <span
+      className={cn(
+        "shrink-0 text-xs",
+        state === "error" ? "text-destructive" : "text-muted-foreground",
+      )}
+    >
+      {label}
+    </span>
   )
 }
 
