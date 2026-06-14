@@ -9,6 +9,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { Icon } from "@/components/ui/icon"
 
 export type Cell = string | { kind: "files"; files: { name: string; url: string }[] }
 
@@ -23,9 +24,11 @@ export type SubmissionRow = {
 export function SubmissionsTable({
   columns,
   rows,
+  onDelete,
 }: {
   columns: string[]
   rows: SubmissionRow[]
+  onDelete?: (id: string) => void
 }) {
   const [expanded, setExpanded] = useState<string | null>(null)
 
@@ -40,6 +43,11 @@ export function SubmissionsTable({
                 {c || `Question ${i + 1}`}
               </TableHead>
             ))}
+            {onDelete ? (
+              <TableHead className="w-10">
+                <span className="sr-only">Actions</span>
+              </TableHead>
+            ) : null}
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -70,6 +78,21 @@ export function SubmissionsTable({
                   {renderCell(cell)}
                 </TableCell>
               ))}
+              {onDelete ? (
+                <TableCell className="w-10 text-right">
+                  <button
+                    type="button"
+                    aria-label="Delete response"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onDelete(r.id)
+                    }}
+                    className="grid size-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+                  >
+                    <Icon name="delete" className="size-4" />
+                  </button>
+                </TableCell>
+              ) : null}
             </TableRow>
             )
           })}

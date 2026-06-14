@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useMemo, useState, useTransition } from "react"
 import { Icon } from "@/components/ui/icon"
 import {
   SubmissionsTable,
@@ -10,6 +10,18 @@ import {
   type SubmissionRow,
 } from "@/components/forms/submissions-table"
 import { SubmissionsFilterDialog } from "@/components/forms/submissions-filter-dialog"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import { showToast } from "@/components/ui/toast"
+import { deleteSubmission } from "@/lib/actions/submissions"
 import {
   applyFilters,
   type Filter,
@@ -55,10 +67,21 @@ export function SubmissionsView({
   const [filters, setFilters] = useState<Filter[]>([])
   const [match, setMatch] = useState<MatchMode>("all")
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [deletedIds, setDeletedIds] = useState<Set<string>>(() => new Set())
+  const [pendingDelete, setPendingDelete] = useState<string | null>(null)
+  const [isDeleting, startDelete] = useTransition()
+
+  // Locally hide rows the owner has deleted so the table updates instantly; a
+  // server refresh (revalidatePath) already excludes them, so the set is just a
+  // harmless no-op afterwards.
+  const liveRows = useMemo(
+    () => (deletedIds.size === 0 ? rawRows : rawRows.filter((r) => !deletedIds.has(r.id))),
+    [rawRows, deletedIds],
+  )
 
   const filtered = useMemo(
-    () => applyFilters(rawRows, columns, { search, filters, match }),
-    [rawRows, columns, search, filters, match],
+    () => applyFilters(liveRows, columns, { search, filters, match }),
+    [liveRows, columns, search, filters, match],
   )
   const displayRows: SubmissionRow[] = useMemo(
     () =>
@@ -73,7 +96,22 @@ export function SubmissionsView({
   const activeCount = filters.filter(conditionComplete).length
   const columnLabels = columns.map((c) => c.label)
 
-  if (rawRows.length === 0) {
+  function confirmDelete() {
+    const id = pendingDelete
+    if (!id) return
+    startDelete(async () => {
+      const res = await deleteSubmission(id)
+      if (res.success) {
+        setDeletedIds((prev) => new Set(prev).add(id))
+        showToast("Response deleted", { type: "success" })
+      } else {
+        showToast(res.error, { type: "error" })
+      }
+      setPendingDelete(null)
+    })
+  }
+
+  if (liveRows.length === 0) {
     return (
       <EmptyState
         title="No submissions yet"
@@ -121,7 +159,7 @@ export function SubmissionsView({
       </div>
 
       <p className="mb-3 text-sm text-muted-foreground">
-        {displayRows.length} of {rawRows.length} {rawRows.length === 1 ? "response" : "responses"}
+        {displayRows.length} of {liveRows.length} {liveRows.length === 1 ? "response" : "responses"}
         {activeCount > 0 || search.trim() ? " (filtered)" : ""}
       </p>
 
@@ -131,7 +169,11 @@ export function SubmissionsView({
           subtitle="Try adjusting your search or filters."
         />
       ) : (
-        <SubmissionsTable columns={columnLabels} rows={displayRows} />
+        <SubmissionsTable
+          columns={columnLabels}
+          rows={displayRows}
+          onDelete={(id) => setPendingDelete(id)}
+        />
       )}
 
       <SubmissionsFilterDialog
@@ -145,6 +187,36 @@ export function SubmissionsView({
           setMatch(m)
         }}
       />
+
+      <AlertDialog
+        open={pendingDelete !== null}
+        onOpenChange={(open) => {
+          if (!open && !isDeleting) setPendingDelete(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this response?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This permanently removes the response and its answers. If it was synced to a
+              Google Sheet, its row is removed there too. This can&apos;t be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault()
+                confirmDelete()
+              }}
+              disabled={isDeleting}
+              className="bg-destructive/10 text-destructive hover:bg-destructive/20 focus-visible:ring-destructive/20"
+            >
+              {isDeleting ? "Deleting…" : "Delete response"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

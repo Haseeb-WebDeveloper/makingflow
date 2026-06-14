@@ -244,9 +244,16 @@ export type GoogleSheetsIntegrationConfig = {
   spreadsheetId: string
   spreadsheetUrl?: string // deep link shown in the UI ("Open spreadsheet")
   sheetName?: string // tab name (default "Submissions")
-  // Column order frozen at enable time — values are appended in this order so
-  // they stay aligned with the header row already written to the sheet. Fields
-  // added to the form afterwards are picked up by re-enabling the integration.
+  // Inner tab id (gid) — required to delete a row via the Sheets batchUpdate API.
+  sheetId?: number
+  // True once the sheet carries the leading "Submission ID" column that lets us
+  // locate (and delete) the exact row for a given submission. Sheets created
+  // before this feature lack it until reconciled.
+  hasIdColumn?: boolean
+  // Append-only column set (frozen order). Values are appended in this order so
+  // they stay aligned with the header row. New form fields are appended to the
+  // END on the next sync (existing rows stay aligned, blank in the new column);
+  // removed fields keep their column so historical rows still resolve.
   columns?: { fieldId: string; label: string }[]
 }
 

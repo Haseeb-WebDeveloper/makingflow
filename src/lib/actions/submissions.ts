@@ -12,11 +12,13 @@ import {
   type AnswerValue,
   type SubmissionMeta,
 } from "@/lib/db/schema"
+import { revalidatePath } from "next/cache"
 import { getVisitorKey, getRespondentKey, logFormEvent } from "@/lib/analytics/track"
 import { getServerSubmissionMeta } from "@/lib/analytics/request-meta"
-import { syncSubmissionToSheets } from "@/lib/integrations/sync"
+import { syncSubmissionToSheets, deleteSubmissionFromSheet } from "@/lib/integrations/sync"
 import { deliverWebhooks } from "@/lib/integrations/webhook"
 import { sendSubmissionEmails } from "@/lib/integrations/email"
+import { getDefaultWorkspace } from "@/lib/auth/session"
 import { NON_ANSWER_TYPES, isEmpty } from "@/lib/builder/logic"
 
 // Server-side submit guards (the client validates too, but a crafted POST skips
@@ -364,6 +366,7 @@ export async function submitForm(input: {
         { id: form.id, workspaceId: form.workspaceId, title: form.title },
         accepted,
         submittedAt,
+        committedId ?? "",
       ),
       deliverWebhooks(
         { id: form.id, title: form.title, publicId: form.publicId },
@@ -373,6 +376,46 @@ export async function submitForm(input: {
       sendSubmissionEmails({ id: form.id, title: form.title }, webhookAnswers),
     ])
   })
+
+  return { success: true }
+}
+
+/**
+ * Owner-side: permanently delete a submission (and its answers, via cascade).
+ * Workspace-scoped — only a member of the submission's workspace can delete it.
+ * Mirrors the deletion to Google Sheets (best-effort, after commit) so the sheet
+ * stays in sync.
+ */
+export async function deleteSubmission(submissionId: string): Promise<SubmitResult> {
+  const workspace = await getDefaultWorkspace()
+  if (!workspace) return { success: false, error: "Not authorized" }
+
+  const [sub] = await db
+    .select({ id: submissions.id, formId: submissions.formId, workspaceId: submissions.workspaceId })
+    .from(submissions)
+    .where(eq(submissions.id, submissionId))
+    .limit(1)
+  // Never reveal a submission from another tenant — same response as "not found".
+  if (!sub || sub.workspaceId !== workspace.id) {
+    return { success: false, error: "Submission not found" }
+  }
+
+  try {
+    await db.delete(submissions).where(eq(submissions.id, submissionId))
+  } catch (err) {
+    console.error("[deleteSubmission] failed", err)
+    return { success: false, error: "Couldn't delete the response. Please try again." }
+  }
+
+  // Refresh the owner views (insights + submissions table) on next render.
+  revalidatePath(`/forms/${sub.formId}`)
+  revalidatePath(`/forms/${sub.formId}/submissions`)
+
+  // Remove the matching sheet row off the request path — a Sheets outage must
+  // not fail a delete that already committed in our DB.
+  after(() =>
+    deleteSubmissionFromSheet({ id: sub.formId, workspaceId: sub.workspaceId }, submissionId),
+  )
 
   return { success: true }
 }

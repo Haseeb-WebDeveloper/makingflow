@@ -178,15 +178,39 @@ export async function createSpreadsheet(
   accessToken: string,
   title: string,
   sheetName = DEFAULT_SHEET_NAME,
-): Promise<{ spreadsheetId: string; spreadsheetUrl: string }> {
+): Promise<{ spreadsheetId: string; spreadsheetUrl: string; sheetId: number | null }> {
   const data = (await sheetsFetch(accessToken, SHEETS_API, {
     method: "POST",
     body: JSON.stringify({
       properties: { title },
       sheets: [{ properties: { title: sheetName } }],
     }),
-  })) as { spreadsheetId: string; spreadsheetUrl: string }
-  return { spreadsheetId: data.spreadsheetId, spreadsheetUrl: data.spreadsheetUrl }
+  })) as {
+    spreadsheetId: string
+    spreadsheetUrl: string
+    sheets?: { properties?: { sheetId?: number } }[]
+  }
+  return {
+    spreadsheetId: data.spreadsheetId,
+    spreadsheetUrl: data.spreadsheetUrl,
+    sheetId: data.sheets?.[0]?.properties?.sheetId ?? null,
+  }
+}
+
+/** Look up a tab's inner id (gid) by its title — needed for row deletion. */
+export async function getSheetId(
+  accessToken: string,
+  spreadsheetId: string,
+  sheetName: string,
+): Promise<number | null> {
+  const data = (await sheetsFetch(
+    accessToken,
+    `${SHEETS_API}/${spreadsheetId}?fields=${encodeURIComponent("sheets.properties(sheetId,title)")}`,
+    { method: "GET" },
+  )) as { sheets?: { properties?: { sheetId?: number; title?: string } }[] }
+  const match =
+    data.sheets?.find((s) => s.properties?.title === sheetName) ?? data.sheets?.[0]
+  return match?.properties?.sheetId ?? null
 }
 
 /** Overwrite the header row (row 1) with the given column labels. */
@@ -217,4 +241,67 @@ export async function appendRow(
     `${SHEETS_API}/${spreadsheetId}/values/${encodeURIComponent(range)}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
     { method: "POST", body: JSON.stringify({ values: [values] }) },
   )
+}
+
+/** Read a single column top-to-bottom (incl. the header) as a flat string array. */
+export async function getColumnValues(
+  accessToken: string,
+  spreadsheetId: string,
+  sheetName: string,
+  column: string,
+): Promise<string[]> {
+  const range = `${sheetName}!${column}:${column}`
+  const data = (await sheetsFetch(
+    accessToken,
+    `${SHEETS_API}/${spreadsheetId}/values/${encodeURIComponent(range)}?majorDimension=COLUMNS`,
+    { method: "GET" },
+  )) as { values?: string[][] }
+  return data.values?.[0] ?? []
+}
+
+/** Run a batchUpdate (structural edits like insert column / delete row). */
+async function batchUpdate(
+  accessToken: string,
+  spreadsheetId: string,
+  requests: unknown[],
+): Promise<void> {
+  if (requests.length === 0) return
+  await sheetsFetch(accessToken, `${SHEETS_API}/${spreadsheetId}:batchUpdate`, {
+    method: "POST",
+    body: JSON.stringify({ requests }),
+  })
+}
+
+/** Insert `count` blank column(s) at `startIndex` (0-based), shifting data right. */
+export async function insertColumns(
+  accessToken: string,
+  spreadsheetId: string,
+  sheetId: number,
+  startIndex: number,
+  count = 1,
+): Promise<void> {
+  await batchUpdate(accessToken, spreadsheetId, [
+    {
+      insertDimension: {
+        range: { sheetId, dimension: "COLUMNS", startIndex, endIndex: startIndex + count },
+        inheritFromBefore: false,
+      },
+    },
+  ])
+}
+
+/** Delete a single row by 0-based index (row 1 / the header = index 0). */
+export async function deleteRow(
+  accessToken: string,
+  spreadsheetId: string,
+  sheetId: number,
+  rowIndex: number,
+): Promise<void> {
+  await batchUpdate(accessToken, spreadsheetId, [
+    {
+      deleteDimension: {
+        range: { sheetId, dimension: "ROWS", startIndex: rowIndex, endIndex: rowIndex + 1 },
+      },
+    },
+  ])
 }

@@ -4,13 +4,11 @@ import { useState } from "react"
 import Link from "next/link"
 import { cn } from "@/lib/utils"
 
-const LINKS = [
-  { name: "Features", href: "#features" },
-  { name: "Templates", href: "#templates" },
-  { name: "Pricing", href: "#pricing" },
-]
+// Only link to anchors that actually exist on the page. Features/Pricing/etc.
+// pages don't exist yet, so they're left out rather than shipped broken.
+const LINKS = [{ name: "How it works", href: "#how" }]
 
-export function SiteHeader() {
+export function SiteHeader({ isAuthed = false }: { isAuthed?: boolean }) {
   const [open, setOpen] = useState(false)
 
   return (
@@ -40,18 +38,29 @@ export function SiteHeader() {
 
         {/* Desktop actions */}
         <div className="hidden items-center gap-1 md:flex">
-          <Link
-            href="/auth/login"
-            className="rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
-          >
-            Sign in
-          </Link>
-          <Link
-            href="/auth/signup"
-            className="rounded-md bg-foreground px-4 py-2 text-sm font-medium text-background transition-colors hover:bg-foreground/90"
-          >
-            Start for free
-          </Link>
+          {isAuthed ? (
+            <Link
+              href="/forms"
+              className="rounded-md bg-foreground px-4 py-2 text-sm font-medium text-background transition-colors hover:bg-foreground/90"
+            >
+              Dashboard
+            </Link>
+          ) : (
+            <>
+              <Link
+                href="/auth/login"
+                className="rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
+              >
+                Sign in
+              </Link>
+              <Link
+                href="/auth/signup"
+                className="rounded-md bg-foreground px-4 py-2 text-sm font-medium text-background transition-colors hover:bg-foreground/90"
+              >
+                Start for free
+              </Link>
+            </>
+          )}
         </div>
 
         {/* Mobile hamburger → X */}
@@ -104,20 +113,32 @@ export function SiteHeader() {
             </Link>
           ))}
           <div className="mt-2 flex flex-col gap-2 border-t border-border pt-3">
-            <Link
-              href="/auth/login"
-              onClick={() => setOpen(false)}
-              className="rounded-md px-2 py-2.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-            >
-              Sign in
-            </Link>
-            <Link
-              href="/auth/signup"
-              onClick={() => setOpen(false)}
-              className="rounded-md bg-foreground px-4 py-2.5 text-center text-sm font-medium text-background transition-colors hover:bg-foreground/90"
-            >
-              Start for free
-            </Link>
+            {isAuthed ? (
+              <Link
+                href="/forms"
+                onClick={() => setOpen(false)}
+                className="rounded-md bg-foreground px-4 py-2.5 text-center text-sm font-medium text-background transition-colors hover:bg-foreground/90"
+              >
+                Dashboard
+              </Link>
+            ) : (
+              <>
+                <Link
+                  href="/auth/login"
+                  onClick={() => setOpen(false)}
+                  className="rounded-md px-2 py-2.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                >
+                  Sign in
+                </Link>
+                <Link
+                  href="/auth/signup"
+                  onClick={() => setOpen(false)}
+                  className="rounded-md bg-foreground px-4 py-2.5 text-center text-sm font-medium text-background transition-colors hover:bg-foreground/90"
+                >
+                  Start for free
+                </Link>
+              </>
+            )}
           </div>
         </nav>
       </div>
