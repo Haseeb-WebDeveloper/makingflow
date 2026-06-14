@@ -77,7 +77,7 @@ function Toasts({ position = "bottom-right" }: { position: ToastPosition }) {
           return (
             <Toast.Root
               className={cn(
-                "absolute z-[calc(9999-var(--toast-index))] h-(--toast-calc-height) w-full select-none rounded-lg lg:rounded-[0.694vw] border border-foreground/40 bg-popover not-dark:bg-clip-padding text-popover-foreground shadow-lg/5 [transition:transform_.5s_cubic-bezier(.22,1,.36,1),opacity_.5s,height_.15s] before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-lg)-1px)] before:shadow-[0_1px_--theme(--color-black/4%)] dark:before:shadow-[0_-1px_--theme(--color-white/6%)]",
+                "absolute z-[calc(9999-var(--toast-index))] h-(--toast-calc-height) w-full select-none rounded-lg lg:rounded-[10px] border border-foreground/40 bg-popover not-dark:bg-clip-padding text-popover-foreground shadow-lg/5 [transition:transform_.5s_cubic-bezier(.22,1,.36,1),opacity_.5s,height_.15s] before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-lg)-1px)] before:shadow-[0_1px_--theme(--color-black/4%)] dark:before:shadow-[0_-1px_--theme(--color-white/6%)]",
                 // Base positioning using data-position
                 "data-[position*=right]:right-0 data-[position*=right]:left-auto",
                 "data-[position*=left]:right-auto data-[position*=left]:left-0",
@@ -128,9 +128,9 @@ function Toasts({ position = "bottom-right" }: { position: ToastPosition }) {
               }
               toast={toast}
             >
-              <Toast.Content className="pointer-events-auto flex flex-col gap-2 lg:gap-[0.556vw] overflow-hidden px-3.5 lg:px-[0.972vw] py-3 lg:py-[0.833vw] text-sm lg:text-[0.972vw] transition-opacity duration-250 data-behind:not-data-expanded:pointer-events-none data-behind:opacity-0 data-expanded:opacity-100">
-                <div className="flex items-start gap-2 lg:gap-[0.556vw]">
-                  <div className="flex gap-2 lg:gap-[0.556vw] flex-1">
+              <Toast.Content className="pointer-events-auto flex flex-col gap-2 lg:gap-[8px] overflow-hidden px-3.5 lg:px-[14px] py-3 lg:py-[12px] text-sm lg:text-[14px] transition-opacity duration-250 data-behind:not-data-expanded:pointer-events-none data-behind:opacity-0 data-expanded:opacity-100">
+                <div className="flex items-start gap-2 lg:gap-[8px]">
+                  <div className="flex gap-2 lg:gap-[8px] flex-1">
                     {Icon && (
                       <div
                         className="[&>svg]:h-lh [&>svg]:w-4 [&_svg]:pointer-events-none [&_svg]:shrink-0"
@@ -140,7 +140,7 @@ function Toasts({ position = "bottom-right" }: { position: ToastPosition }) {
                       </div>
                     )}
 
-                    <div className="flex flex-col gap-0.5 lg:gap-[0.139vw]">
+                    <div className="flex flex-col gap-0.5 lg:gap-[2px]">
                       <Toast.Title
                         className="font-medium"
                         data-slot="toast-title"
@@ -152,16 +152,16 @@ function Toasts({ position = "bottom-right" }: { position: ToastPosition }) {
                     </div>
                   </div>
                   <Toast.Close
-                    className="cursor-pointer shrink-0 rounded-md lg:rounded-[0.556vw] text-muted-foreground hover:text-foreground transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                    className="cursor-pointer shrink-0 rounded-md lg:rounded-[8px] text-muted-foreground hover:text-foreground transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                     aria-label="Close"
                   >
-                    <X className="h-4 lg:h-[1.111vw] w-4 lg:w-[1.111vw]" />
+                    <X className="h-4 lg:h-[16px] w-4 lg:w-[16px]" />
                   </Toast.Close>
                 </div>
                 {toast.actionProps && (
                   <div className="flex justify-end">
                     <Toast.Action
-                      className="cursor-pointer bg-foreground text-background hover:bg-foreground/90 transition-colors duration-300 px-4 lg:px-[1.111vw] py-2 lg:py-[0.556vw] rounded-md lg:rounded-[0.556vw] text-sm lg:text-[0.972vw]"
+                      className="cursor-pointer bg-foreground text-background hover:bg-foreground/90 transition-colors duration-300 px-4 lg:px-[16px] py-2 lg:py-[8px] rounded-md lg:rounded-[8px] text-sm lg:text-[14px]"
                       data-slot="toast-action"
                     >
                       {toast.actionProps.children}
@@ -217,22 +217,22 @@ function AnchoredToasts() {
             >
               <Toast.Root
                 className={cn(
-                  "relative text-balance border bg-popover not-dark:bg-clip-padding text-popover-foreground text-xs lg:text-[0.833vw] transition-[scale,opacity] before:pointer-events-none before:absolute before:inset-0 before:shadow-[0_1px_--theme(--color-black/4%)] data-ending-style:scale-98 data-starting-style:scale-98 data-ending-style:opacity-0 data-starting-style:opacity-0 dark:before:shadow-[0_-1px_--theme(--color-white/6%)]",
+                  "relative text-balance border bg-popover not-dark:bg-clip-padding text-popover-foreground text-xs lg:text-[12px] transition-[scale,opacity] before:pointer-events-none before:absolute before:inset-0 before:shadow-[0_1px_--theme(--color-black/4%)] data-ending-style:scale-98 data-starting-style:scale-98 data-ending-style:opacity-0 data-starting-style:opacity-0 dark:before:shadow-[0_-1px_--theme(--color-white/6%)]",
                   tooltipStyle
-                    ? "rounded-md lg:rounded-[0.556vw] shadow-md/5 before:rounded-[calc(var(--radius-md)-1px)]"
-                    : "rounded-lg lg:rounded-[0.694vw] shadow-lg/5 before:rounded-[calc(var(--radius-lg)-1px)]"
+                    ? "rounded-md lg:rounded-[8px] shadow-md/5 before:rounded-[calc(var(--radius-md)-1px)]"
+                    : "rounded-lg lg:rounded-[10px] shadow-lg/5 before:rounded-[calc(var(--radius-lg)-1px)]"
                 )}
                 data-slot="toast-popup"
                 toast={toast}
               >
                 {tooltipStyle ? (
-                  <Toast.Content className="pointer-events-auto px-2 lg:px-[0.556vw] py-1 lg:py-[0.278vw]">
+                  <Toast.Content className="pointer-events-auto px-2 lg:px-[8px] py-1 lg:py-[4px]">
                     <Toast.Title data-slot="toast-title" />
                   </Toast.Content>
                 ) : (
-                  <Toast.Content className="pointer-events-auto flex flex-col gap-2 lg:gap-[0.556vw] overflow-hidden px-3.5 lg:px-[0.972vw] py-3 lg:py-[0.833vw] text-sm lg:text-[0.972vw]">
-                    <div className="flex items-start gap-2 lg:gap-[0.556vw]">
-                      <div className="flex gap-2 lg:gap-[0.556vw] flex-1">
+                  <Toast.Content className="pointer-events-auto flex flex-col gap-2 lg:gap-[8px] overflow-hidden px-3.5 lg:px-[14px] py-3 lg:py-[12px] text-sm lg:text-[14px]">
+                    <div className="flex items-start gap-2 lg:gap-[8px]">
+                      <div className="flex gap-2 lg:gap-[8px] flex-1">
                         {Icon && (
                           <div
                             className="[&>svg]:h-lh [&>svg]:w-4 [&_svg]:pointer-events-none [&_svg]:shrink-0"
@@ -242,7 +242,7 @@ function AnchoredToasts() {
                           </div>
                         )}
 
-                        <div className="flex flex-col gap-0.5 lg:gap-[0.139vw]">
+                        <div className="flex flex-col gap-0.5 lg:gap-[2px]">
                           <Toast.Title
                             className="font-medium"
                             data-slot="toast-title"
@@ -254,10 +254,10 @@ function AnchoredToasts() {
                         </div>
                       </div>
                       <Toast.Close
-                        className="cursor-pointer shrink-0 rounded-md lg:rounded-[0.556vw] text-muted-foreground hover:text-foreground transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                        className="cursor-pointer shrink-0 rounded-md lg:rounded-[8px] text-muted-foreground hover:text-foreground transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                         aria-label="Close"
                       >
-                        <X className="h-4 lg:h-[1.111vw] w-4 lg:w-[1.111vw]" />
+                        <X className="h-4 lg:h-[16px] w-4 lg:w-[16px]" />
                       </Toast.Close>
                     </div>
                     {toast.actionProps && (

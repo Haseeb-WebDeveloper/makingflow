@@ -76,7 +76,7 @@ function DialogContent({
       <DialogPrimitive.Content
         data-slot="dialog-content"
         className={cn(
-          "fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-6 lg:gap-[1.667vw] rounded-md lg:rounded-[0.556vw] bg-popover p-6 lg:p-[1.7vw] text-sm lg:text-[0.972vw] text-popover-foreground ring-1 ring-foreground/5 duration-100 outline-none data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
+          "fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-6 lg:gap-[24px] rounded-md lg:rounded-[8px] bg-popover p-6 lg:p-[24px] text-sm lg:text-[14px] text-popover-foreground ring-1 ring-foreground/5 duration-100 outline-none data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
           className
         )}
         {...props}
@@ -86,7 +86,7 @@ function DialogContent({
           <DialogPrimitive.Close data-slot="dialog-close" asChild>
             <Button
               variant="ghost"
-              className="absolute top-4 lg:top-[1.111vw] right-4 lg:right-[1.111vw]"
+              className="absolute top-4 lg:top-[16px] right-4 lg:right-[16px]"
               size="icon-sm"
             >
               <HugeiconsIcon icon={Cancel01Icon} strokeWidth={2} />
@@ -103,7 +103,7 @@ function DialogHeader({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="dialog-header"
-      className={cn("flex flex-col gap-2 lg:gap-[0.5vw] pr-8 lg:pr-[2.222vw]", className)}
+      className={cn("flex flex-col gap-2 lg:gap-[7px] pr-8 lg:pr-[32px]", className)}
       {...props}
     />
   )
@@ -121,7 +121,7 @@ function DialogFooter({
     <div
       data-slot="dialog-footer"
       className={cn(
-        "flex flex-col-reverse gap-2 lg:gap-[0.556vw] sm:flex-row sm:justify-end",
+        "flex flex-col-reverse gap-2 lg:gap-[8px] sm:flex-row sm:justify-end",
         className
       )}
       {...props}
@@ -144,7 +144,7 @@ function DialogTitle({
     <DialogPrimitive.Title
       data-slot="dialog-title"
       className={cn(
-        "font-sebenta text-[1.3rem] lg:text-[1.444vw] leading-none font-semibold",
+        "font-sebenta text-[1.3rem] lg:text-[21px] leading-none font-semibold",
         className
       )}
       {...props}
@@ -160,7 +160,7 @@ function DialogDescription({
     <DialogPrimitive.Description
       data-slot="dialog-description"
       className={cn(
-        "text-sm lg:text-[1vw] text-muted-foreground *:[a]:underline *:[a]:underline-offset-3 *:[a]:hover:text-foreground",
+        "text-sm lg:text-[14px] text-muted-foreground *:[a]:underline *:[a]:underline-offset-3 *:[a]:hover:text-foreground",
         className
       )}
       {...props}

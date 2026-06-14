@@ -31,7 +31,7 @@ export function OptionCard({
       onClick={onClick}
       aria-pressed={active}
       className={cn(
-        "group flex items-center gap-3 lg:gap-[0.833vw] rounded-md lg:rounded-[0.556vw] border bg-card px-4 lg:px-[1.111vw] py-3.5 lg:py-[0.972vw] text-left transition-colors active:translate-y-px",
+        "group flex items-center gap-3 lg:gap-[12px] rounded-md lg:rounded-[8px] border bg-card px-4 lg:px-[16px] py-3.5 lg:py-[14px] text-left transition-colors active:translate-y-px",
         active
           ? "border-primary bg-primary/5"
           : "border-border hover:border-foreground/30",
@@ -40,7 +40,7 @@ export function OptionCard({
     >
       <span
         className={cn(
-          "flex size-9 lg:size-[2.5vw] shrink-0 items-center justify-center rounded-md lg:rounded-[0.417vw] transition-colors",
+          "flex size-9 lg:size-[36px] shrink-0 items-center justify-center rounded-md lg:rounded-[6px] transition-colors",
           active
             ? "bg-primary text-primary-foreground"
             : "bg-muted text-foreground/55 group-hover:text-foreground/80",
@@ -49,16 +49,16 @@ export function OptionCard({
         <HugeiconsIcon
           icon={icon ?? House01Icon}
           strokeWidth={2}
-          className="size-5 lg:size-[1.25vw]"
+          className="size-5 lg:size-[18px]"
         />
       </span>
 
       <span className="min-w-0 flex-1">
-        <span className="block text-sm lg:text-[0.972vw] font-semibold text-foreground">
+        <span className="block text-sm lg:text-[14px] font-semibold text-foreground">
           {label}
         </span>
         {desc && (
-          <span className="block text-[13px] lg:text-[0.833vw] leading-snug text-foreground/55">
+          <span className="block text-[13px] lg:text-[12px] leading-snug text-foreground/55">
             {desc}
           </span>
         )}
@@ -66,7 +66,7 @@ export function OptionCard({
 
       <span
         className={cn(
-          "flex size-5 lg:size-[1.389vw] shrink-0 items-center justify-center rounded-full border transition-colors",
+          "flex size-5 lg:size-[20px] shrink-0 items-center justify-center rounded-full border transition-colors",
           active
             ? "border-primary bg-primary text-primary-foreground"
             : "border-border text-transparent",

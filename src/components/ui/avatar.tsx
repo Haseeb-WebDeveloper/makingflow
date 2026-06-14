@@ -17,7 +17,7 @@ function Avatar({
       data-slot="avatar"
       data-size={size}
       className={cn(
-        "group/avatar relative flex size-8 lg:size-[2.222vw] shrink-0 rounded-full select-none after:absolute after:inset-0 after:rounded-full after:mix-blend-darken data-[size=lg]:size-10 data-[size=sm]:size-6 dark:after:mix-blend-lighten",
+        "group/avatar relative flex size-8 lg:size-[32px] shrink-0 rounded-full select-none after:absolute after:inset-0 after:rounded-full after:mix-blend-darken data-[size=lg]:size-10 data-[size=sm]:size-6 dark:after:mix-blend-lighten",
         className
       )}
       {...props}
@@ -49,7 +49,7 @@ function AvatarFallback({
     <AvatarPrimitive.Fallback
       data-slot="avatar-fallback"
       className={cn(
-        "flex size-full items-center justify-center rounded-full bg-muted text-sm lg:text-[0.972vw] text-muted-foreground group-data-[size=sm]/avatar:text-xs",
+        "flex size-full items-center justify-center rounded-full bg-muted text-sm lg:text-[14px] text-muted-foreground group-data-[size=sm]/avatar:text-xs",
         className
       )}
       {...props}
@@ -78,7 +78,7 @@ function AvatarGroup({ className, ...props }: React.ComponentProps<"div">) {
     <div
       data-slot="avatar-group"
       className={cn(
-        "group/avatar-group flex -space-x-2 lg:-space-x-[0.556vw]",
+        "group/avatar-group flex -space-x-2 lg:-space-x-[8px]",
         className
       )}
       {...props}
@@ -94,7 +94,7 @@ function AvatarGroupCount({
     <div
       data-slot="avatar-group-count"
       className={cn(
-        "relative flex w-8 lg:w-[2.222vw] shrink-0 items-center justify-center rounded-full bg-muted text-xs lg:text-[0.833vw] text-muted-foreground group-has-data-[w=lg]/avatar-group:w-10 group-has-data-[w=sm]/avatar-group:w-6 [&>svg]:w-4 group-has-data-[w=lg]/avatar-group:[&>svg]:w-5 group-has-data-[w=sm]/avatar-group:[&>svg]:w-3",
+        "relative flex w-8 lg:w-[32px] shrink-0 items-center justify-center rounded-full bg-muted text-xs lg:text-[12px] text-muted-foreground group-has-data-[w=lg]/avatar-group:w-10 group-has-data-[w=sm]/avatar-group:w-6 [&>svg]:w-4 group-has-data-[w=lg]/avatar-group:[&>svg]:w-5 group-has-data-[w=sm]/avatar-group:[&>svg]:w-3",
         className
       )}
       {...props}

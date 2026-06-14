@@ -63,7 +63,7 @@ function SheetContent({
         data-slot="sheet-content"
         data-side={side}
         className={cn(
-          "fixed z-50 flex flex-col bg-popover bg-clip-padding text-sm lg:text-[0.972vw] text-popover-foreground shadow-lg",
+          "fixed z-50 flex flex-col bg-popover bg-clip-padding text-sm lg:text-[14px] text-popover-foreground shadow-lg",
           "data-[side=bottom]:inset-x-0 data-[side=bottom]:bottom-0 data-[side=bottom]:h-auto data-[side=bottom]:border-t",
           "data-[side=left]:inset-y-0 data-[side=left]:left-0 data-[side=left]:h-full data-[side=left]:w-3/4 data-[side=left]:border-r data-[side=left]:sm:max-w-sm",
           "data-[side=right]:inset-y-0 data-[side=right]:right-0 data-[side=right]:h-full data-[side=right]:w-3/4 data-[side=right]:border-l data-[side=right]:sm:max-w-sm",
@@ -87,7 +87,7 @@ function SheetContent({
           <SheetPrimitive.Close data-slot="sheet-close" asChild>
             <Button
               variant="ghost"
-              className="absolute top-4 lg:top-[1.111vw] right-4 lg:right-[1.111vw]"
+              className="absolute top-4 lg:top-[16px] right-4 lg:right-[16px]"
               size="icon-sm"
             >
               <HugeiconsIcon icon={Cancel01Icon} strokeWidth={2} />
@@ -104,7 +104,7 @@ function SheetHeader({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="sheet-header"
-      className={cn("flex flex-col gap-1.5 lg:gap-[0.417vw] p-6", className)}
+      className={cn("flex flex-col gap-1.5 lg:gap-[6px] p-6", className)}
       {...props}
     />
   )
@@ -114,7 +114,7 @@ function SheetFooter({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="sheet-footer"
-      className={cn("mt-auto flex flex-col gap-2 lg:gap-[0.556vw] p-6 lg:p-[1.667vw]", className)}
+      className={cn("mt-auto flex flex-col gap-2 lg:gap-[8px] p-6 lg:p-[24px]", className)}
       {...props}
     />
   )
@@ -128,7 +128,7 @@ function SheetTitle({
     <SheetPrimitive.Title
       data-slot="sheet-title"
       className={cn(
-        "text-base lg:text-[1.111vw] font-medium text-foreground",
+        "text-base lg:text-[16px] font-medium text-foreground",
         className
       )}
       {...props}
@@ -143,7 +143,7 @@ function SheetDescription({
   return (
     <SheetPrimitive.Description
       data-slot="sheet-description"
-      className={cn("text-sm lg:text-[0.972vw] text-muted-foreground", className)}
+      className={cn("text-sm lg:text-[14px] text-muted-foreground", className)}
       {...props}
     />
   )

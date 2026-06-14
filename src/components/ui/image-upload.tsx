@@ -95,7 +95,7 @@ export function ImageUpload({
         >
           {children}
           {uploading && (
-            <span className="absolute inset-0 flex items-center justify-center rounded-md lg:rounded-[0.556vw] bg-background/60">
+            <span className="absolute inset-0 flex items-center justify-center rounded-md lg:rounded-[8px] bg-background/60">
               <Spinner />
             </span>
           )}
@@ -105,7 +105,7 @@ export function ImageUpload({
           {uploading ? (
             <Spinner />
           ) : (
-            <Upload className="size-4 lg:size-[1.111vw]" />
+            <Upload className="size-4 lg:size-[16px]" />
           )}
           {uploading ? 'Uploading…' : maxFiles > 1 ? 'Upload files' : 'Upload'}
         </Button>
@@ -118,7 +118,7 @@ function Spinner() {
   return (
     <span
       aria-hidden="true"
-      className="block size-4 lg:size-[1.111vw] animate-spin rounded-full border-2 border-foreground/20 border-t-foreground/70"
+      className="block size-4 lg:size-[16px] animate-spin rounded-full border-2 border-foreground/20 border-t-foreground/70"
     />
   )
 }
@@ -139,7 +139,7 @@ export function UploadedImagePreview({
   return (
     <div
       className={cn(
-        'group relative h-24 lg:h-[6.667vw] w-24 lg:w-[6.667vw] overflow-hidden rounded-md lg:rounded-[0.556vw] border border-border',
+        'group relative h-24 lg:h-[96px] w-24 lg:w-[96px] overflow-hidden rounded-md lg:rounded-[8px] border border-border',
         className,
       )}
     >
@@ -149,10 +149,10 @@ export function UploadedImagePreview({
         <button
           type="button"
           onClick={onRemove}
-          className="absolute right-1 lg:right-[0.278vw] top-1 lg:top-[0.278vw] rounded-full bg-background/80 p-0.5 lg:p-[0.139vw] opacity-0 transition-opacity group-hover:opacity-100"
+          className="absolute right-1 lg:right-[4px] top-1 lg:top-[4px] rounded-full bg-background/80 p-0.5 lg:p-[2px] opacity-0 transition-opacity group-hover:opacity-100"
           aria-label="Remove image"
         >
-          <X className="size-3.5 lg:size-[0.972vw] text-destructive" />
+          <X className="size-3.5 lg:size-[14px] text-destructive" />
         </button>
       )}
     </div>
