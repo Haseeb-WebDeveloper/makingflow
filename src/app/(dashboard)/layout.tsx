@@ -17,7 +17,7 @@ export default async function DashboardLayout({
 }) {
   const user = await getRequiredUser()
   const workspace = await getDefaultWorkspace()
-  const forms = await getWorkspaceForms()
+  const forms = workspace ? await getWorkspaceForms(workspace.id) : []
 
   return (
     <DashboardShell

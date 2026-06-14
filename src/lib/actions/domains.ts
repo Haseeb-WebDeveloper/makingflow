@@ -1,7 +1,7 @@
 "use server"
 
 import { and, eq, isNull, ne } from "drizzle-orm"
-import { revalidatePath } from "next/cache"
+import { revalidatePath, updateTag } from "next/cache"
 import { db } from "@/lib/db"
 import { customDomains, forms } from "@/lib/db/schema"
 import { getDefaultWorkspace } from "@/lib/auth/session"
@@ -89,6 +89,7 @@ export async function addCustomDomain(rawDomain: string): Promise<Result> {
     return { success: false, error: message }
   }
 
+  updateTag(`workspace-domains-${workspace.id}`)
   revalidatePath("/domains")
   return { success: true }
 }
@@ -109,16 +110,27 @@ export async function setFormDomain(
   const workspace = await getDefaultWorkspace()
   if (!workspace) return { success: false, error: "No workspace" }
 
+  // Read the CURRENT host+slug too, so we can invalidate the public cache the
+  // form is moving away from (otherwise the old slug keeps serving this form).
   const [form] = await db
-    .select({ id: forms.id })
+    .select({ id: forms.id, slug: forms.slug, oldHost: customDomains.domain })
     .from(forms)
+    .leftJoin(customDomains, eq(customDomains.id, forms.customDomainId))
     .where(and(eq(forms.id, formId), eq(forms.workspaceId, workspace.id), isNull(forms.deletedAt)))
     .limit(1)
   if (!form) return { success: false, error: "Form not found" }
 
+  const invalidate = () => {
+    updateTag(`form-${formId}`) // the form's shell shows its domain
+    if (form.oldHost && form.slug) {
+      updateTag(`form-domain-${form.oldHost.toLowerCase()}-${form.slug}`)
+    }
+  }
+
   // Clear — revert to the default /f/{publicId} link.
   if (!input.customDomainId) {
     await db.update(forms).set({ customDomainId: null, slug: null }).where(eq(forms.id, formId))
+    invalidate()
     revalidatePath(`/forms/${formId}`, "layout")
     revalidatePath("/domains")
     return { success: true, domain: null, slug: null }
@@ -162,6 +174,7 @@ export async function setFormDomain(
     return { success: false, error: "Couldn't save. Try a different path." }
   }
 
+  invalidate()
   revalidatePath(`/forms/${formId}`, "layout")
   revalidatePath("/domains")
   return { success: true, domain: dom.domain, slug }
@@ -195,6 +208,7 @@ export async function checkCustomDomain(id: string): Promise<Result> {
     return { success: false, error: "Couldn't check the domain. Please try again." }
   }
 
+  updateTag(`workspace-domains-${workspace.id}`) // a domain may have flipped to active
   revalidatePath("/domains")
   return { success: true }
 }
@@ -221,6 +235,9 @@ export async function removeCustomDomain(id: string): Promise<Result> {
   // FK is ON DELETE SET NULL, so any forms on this domain revert to /f links.
   await db.delete(customDomains).where(eq(customDomains.id, id))
 
+  updateTag(`workspace-domains-${workspace.id}`)
+  // Forms that were on this domain now revert to /f links; their cached shells +
+  // public domain caches self-heal within cacheLife('minutes').
   revalidatePath("/domains")
   return { success: true }
 }

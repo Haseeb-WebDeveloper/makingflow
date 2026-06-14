@@ -1,4 +1,4 @@
-import { cache } from "react"
+import { cacheLife, cacheTag } from "next/cache"
 import { and, desc, eq, inArray, isNull } from "drizzle-orm"
 import { db } from "@/lib/db"
 import {
@@ -14,11 +14,16 @@ import { NON_ANSWER_TYPES } from "@/lib/builder/logic"
 import type { AiFieldType } from "@/lib/ai/form-schema"
 import type { EditorForm } from "@/lib/builder/form-model"
 
-/** Forms in the caller's workspace, newest first — for the /forms list. */
-export async function getWorkspaceForms() {
-  const workspace = await getDefaultWorkspace()
-  if (!workspace) return []
-
+/**
+ * Forms in the workspace, newest first — for the /forms list + sidebar. Runs in
+ * the dashboard layout on every navigation, so it's cached per workspace and
+ * invalidated by `updateTag(workspace-forms-${id})` on any form create / edit /
+ * publish / rename / duplicate / delete.
+ */
+export async function getWorkspaceForms(workspaceId: string) {
+  "use cache"
+  cacheLife("minutes")
+  cacheTag(`workspace-forms-${workspaceId}`)
   return db
     .select({
       id: forms.id,
@@ -28,7 +33,7 @@ export async function getWorkspaceForms() {
       updatedAt: forms.updatedAt,
     })
     .from(forms)
-    .where(and(eq(forms.workspaceId, workspace.id), isNull(forms.deletedAt)))
+    .where(and(eq(forms.workspaceId, workspaceId), isNull(forms.deletedAt)))
     .orderBy(desc(forms.updatedAt))
 }
 
@@ -113,14 +118,15 @@ export type FormShell = {
 }
 
 /**
- * Lightweight header for the form-detail pages (no fields). Workspace-scoped.
- * React cache() deduplicates it across the request — the manage layout and the
- * tab page both call it (and it doubles as the tenancy guard), so they share one
- * query instead of three.
+ * Lightweight header for the form-detail pages (no fields). Cached per form;
+ * invalidated by `updateTag(form-${id})` on any form mutation (incl. domain
+ * attach). Doubles as the tenancy guard — the manage layout and tab pages all
+ * call it and share the cached result.
  */
-export const getFormShell = cache(async (id: string): Promise<FormShell | null> => {
-  const workspace = await getDefaultWorkspace()
-  if (!workspace) return null
+export async function getFormShell(id: string, workspaceId: string): Promise<FormShell | null> {
+  "use cache"
+  cacheLife("minutes")
+  cacheTag(`form-${id}`)
   const [row] = await db
     .select({
       id: forms.id,
@@ -133,10 +139,10 @@ export const getFormShell = cache(async (id: string): Promise<FormShell | null> 
     })
     .from(forms)
     .leftJoin(customDomains, eq(customDomains.id, forms.customDomainId))
-    .where(and(eq(forms.id, id), eq(forms.workspaceId, workspace.id), isNull(forms.deletedAt)))
+    .where(and(eq(forms.id, id), eq(forms.workspaceId, workspaceId), isNull(forms.deletedAt)))
     .limit(1)
   return row ?? null
-})
+}
 
 export type FormSettingsData = {
   status: string
@@ -158,11 +164,12 @@ export type FormSettingsData = {
   coverImageUrl: string | null
 }
 
-/** Current response-collection settings for the Settings tab. Workspace-scoped.
- *  cache()-deduped: the manage layout and the Settings page both read it. */
-export const getFormSettings = cache(async (id: string): Promise<FormSettingsData | null> => {
-  const workspace = await getDefaultWorkspace()
-  if (!workspace) return null
+/** Current response-collection settings for the Settings tab. Cached per form
+ *  (`form-${id}` tag); invalidated whenever the form's settings change. */
+export async function getFormSettings(id: string, workspaceId: string): Promise<FormSettingsData | null> {
+  "use cache"
+  cacheLife("minutes")
+  cacheTag(`form-${id}`)
   const [row] = await db
     .select({
       status: forms.status,
@@ -177,7 +184,7 @@ export const getFormSettings = cache(async (id: string): Promise<FormSettingsDat
       theme: forms.theme,
     })
     .from(forms)
-    .where(and(eq(forms.id, id), eq(forms.workspaceId, workspace.id), isNull(forms.deletedAt)))
+    .where(and(eq(forms.id, id), eq(forms.workspaceId, workspaceId), isNull(forms.deletedAt)))
     .limit(1)
   if (!row) return null
   return {
@@ -197,7 +204,7 @@ export const getFormSettings = cache(async (id: string): Promise<FormSettingsDat
     logoUrl: row.theme?.logoUrl ?? null,
     coverImageUrl: row.theme?.coverImageUrl ?? null,
   }
-})
+}
 
 export type SubmissionColumn = {
   id: string

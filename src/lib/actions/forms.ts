@@ -136,6 +136,7 @@ export async function saveAiForm(input: {
 
   // Field/title edits change the public form definition — drop its cache.
   updateTag(`form-${formId as string}`)
+  updateTag(`workspace-forms-${workspace.id}`) // list shows title/status
   return { success: true, id: formId as string }
 }
 
@@ -162,6 +163,7 @@ export async function publishForm(formId: string): Promise<PublishResult> {
     .where(eq(forms.id, formId))
 
   updateTag(`form-${formId}`)
+  updateTag(`workspace-forms-${workspace.id}`)
   return { success: true, publicId: row.publicId }
 }
 
@@ -181,6 +183,7 @@ export async function unpublishForm(
 
   if (result.length === 0) return { success: false, error: "Form not found" }
   updateTag(`form-${formId}`)
+  updateTag(`workspace-forms-${workspace.id}`)
   return { success: true }
 }
 
@@ -202,6 +205,7 @@ export async function renameForm(
 
   if (result.length === 0) return { success: false, error: "Form not found" }
   updateTag(`form-${formId}`) // title shows on the public form
+  updateTag(`workspace-forms-${workspace.id}`)
   revalidatePath("/forms")
   revalidatePath(`/forms/${formId}`, "layout")
   return { success: true }
@@ -287,6 +291,7 @@ export async function duplicateForm(
       }
       return created.id
     })
+    updateTag(`workspace-forms-${workspace.id}`)
     revalidatePath("/forms")
     return { success: true, id: newId }
   } catch (err) {
@@ -317,6 +322,7 @@ export async function deleteForm(
 
   if (result.length === 0) return { success: false, error: "Form not found" }
   updateTag(`form-${formId}`)
+  updateTag(`workspace-forms-${workspace.id}`)
   revalidatePath("/forms")
   return { success: true }
 }
@@ -430,6 +436,7 @@ export async function updateFormSettings(
 
   await db.update(forms).set(set).where(eq(forms.id, formId))
   updateTag(`form-${formId}`) // status/settings/theme affect the public form
+  updateTag(`workspace-forms-${workspace.id}`) // close form changes the list status
   revalidatePath(`/forms/${formId}`, "layout")
   return { success: true }
 }

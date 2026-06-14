@@ -1,3 +1,4 @@
+import { cacheLife, cacheTag } from "next/cache"
 import { and, desc, eq, sql } from "drizzle-orm"
 import { db } from "@/lib/db"
 import { customDomains, forms, type DomainVerification } from "@/lib/db/schema"
@@ -51,13 +52,18 @@ export async function getWorkspaceDomains(): Promise<WorkspaceDomains | null> {
   }
 }
 
-/** Active domains a form can be published to (for the form's domain picker). */
-export async function getActiveDomains(): Promise<{ id: string; domain: string }[]> {
-  const workspace = await getDefaultWorkspace()
-  if (!workspace) return []
+/** Active domains a form can be published to (for the form's domain picker).
+ *  Runs in the form-detail layout; cached per workspace and invalidated by
+ *  `updateTag(workspace-domains-${id})` on any domain add/check/remove. */
+export async function getActiveDomains(
+  workspaceId: string,
+): Promise<{ id: string; domain: string }[]> {
+  "use cache"
+  cacheLife("minutes")
+  cacheTag(`workspace-domains-${workspaceId}`)
   return db
     .select({ id: customDomains.id, domain: customDomains.domain })
     .from(customDomains)
-    .where(and(eq(customDomains.workspaceId, workspace.id), eq(customDomains.status, "active")))
+    .where(and(eq(customDomains.workspaceId, workspaceId), eq(customDomains.status, "active")))
     .orderBy(customDomains.domain)
 }

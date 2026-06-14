@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation"
 import { headers } from "next/headers"
 import Link from "next/link"
+import { getDefaultWorkspace } from "@/lib/auth/session"
 import { getFormShell, getFormSettings } from "@/lib/data/forms"
 import { getActiveDomains } from "@/lib/data/domains"
 import { FormDetailTabs } from "@/components/forms/form-detail-tabs"
@@ -25,10 +26,12 @@ export default async function FormManageLayout({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
+  const workspace = await getDefaultWorkspace()
+  if (!workspace) notFound()
   const [shell, domains, settings] = await Promise.all([
-    getFormShell(id),
-    getActiveDomains(),
-    getFormSettings(id),
+    getFormShell(id, workspace.id),
+    getActiveDomains(workspace.id),
+    getFormSettings(id, workspace.id),
   ])
   if (!shell) notFound()
 

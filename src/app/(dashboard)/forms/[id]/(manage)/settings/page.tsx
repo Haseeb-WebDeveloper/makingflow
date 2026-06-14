@@ -1,5 +1,6 @@
 import type { Metadata } from "next"
 import { notFound } from "next/navigation"
+import { getDefaultWorkspace } from "@/lib/auth/session"
 import { getFormSettings } from "@/lib/data/forms"
 import { FormSettings } from "@/components/forms/form-settings"
 
@@ -11,7 +12,9 @@ export default async function FormSettingsPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
-  const settings = await getFormSettings(id)
+  const workspace = await getDefaultWorkspace()
+  if (!workspace) notFound()
+  const settings = await getFormSettings(id, workspace.id)
   if (!settings) notFound()
 
   return <FormSettings formId={id} initial={settings} />

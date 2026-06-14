@@ -703,7 +703,7 @@ export function FormBuilder({
         {isLoading && currentForm ? (
           <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center">
             <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-background/95 px-3.5 py-1.5 text-xs font-medium text-muted-foreground shadow-md backdrop-blur">
-              <Loading className="size-1" />
+              <Loading size={12} />
               Updating…
             </span>
           </div>
