@@ -254,8 +254,12 @@ function Block({
               Conditional logic
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={onDuplicate}>Duplicate</DropdownMenuItem>
+            <DropdownMenuItem onClick={onDuplicate}>
+              <Copy className="size-4" />
+              Duplicate
+            </DropdownMenuItem>
             <DropdownMenuItem onClick={onRemove} className="text-destructive focus:text-destructive">
+              <Trash className="size-4" />
               Delete
             </DropdownMenuItem>
           </DropdownMenuContent>
@@ -494,6 +498,21 @@ function Flow({ className }: { className?: string }) {
       <circle cx="6" cy="18" r="2" />
       <circle cx="18" cy="12" r="2" />
       <path d="M6 8v8M8 6h6a2 2 0 012 2v2M8 18h6a2 2 0 002-2v-2" />
+    </svg>
+  )
+}
+function Copy({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <rect x="9" y="9" width="11" height="11" rx="2" />
+      <path d="M5 15V5a2 2 0 012-2h8" />
+    </svg>
+  )
+}
+function Trash({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M4 7h16M10 11v6M14 11v6M6 7l1 13a2 2 0 002 2h8a2 2 0 002-2l1-13M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3" />
     </svg>
   )
 }

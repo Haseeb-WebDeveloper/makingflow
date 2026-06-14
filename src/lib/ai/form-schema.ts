@@ -109,6 +109,12 @@ export const aiFormSchema = z.object({
   fields: z
     .array(aiFieldSchema)
     .describe("The ordered list of fields and content blocks that make up the form."),
+  summary: z
+    .string()
+    .optional()
+    .describe(
+      "A short, first-person note (1-2 sentences) describing what you just built or changed, shown to the user in the chat. Use Markdown — wrap field names/labels in **bold** (e.g. 'Made **Email** required and added a **Phone number** field.'), and use a short bullet list if you changed several things. On a first build, summarize the form (e.g. 'Built a 6-question job application with a **Portfolio link** and **Availability**.'). On an edit, describe ONLY what changed. Conversational and specific — never generic like 'Done' or 'Updated the form.'",
+    ),
 })
 export type AiForm = z.infer<typeof aiFormSchema>
 
@@ -128,4 +134,5 @@ Rules:
 - CONDITIONAL LOGIC: to show or hide a field based on another field's answer, put the rule on the field being shown/hidden (the TARGET) in its "logic", and name the trigger field by its EXACT label.
   Simple example: a yes_no field labeled "Do you have a pet?" and a short_text field labeled "What's your pet's name?". To reveal the name field only after a "Yes", set logic ON THE NAME FIELD:
   { "action": "show", "conditions": [{ "fieldLabel": "Do you have a pet?", "operator": "equals", "value": "Yes" }] }
-  The trigger field ("Do you have a pet?") gets NO logic — only the target does. For choice/yes_no fields, "value" must be the option's exact text. Operators: equals, not_equals, contains, not_contains, greater_than, less_than, is_empty, is_not_empty. When editing an existing form, keep any existing logic unless the user asks to change it.`
+  The trigger field ("Do you have a pet?") gets NO logic — only the target does. For choice/yes_no fields, "value" must be the option's exact text. Operators: equals, not_equals, contains, not_contains, greater_than, less_than, is_empty, is_not_empty. When editing an existing form, keep any existing logic unless the user asks to change it.
+- ALWAYS fill "summary" with a brief, first-person, conversational note of what you did this turn — on an edit, describe ONLY what changed (the specific fields you added/removed/edited), not the whole form. Keep it to 1-2 sentences. Use Markdown: wrap any field name/label you mention in **bold** (never plain quotes), and use a short bullet list when you changed several things. Never write generic filler like "Done" or "I've updated your form."`

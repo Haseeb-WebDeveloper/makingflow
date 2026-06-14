@@ -1,4 +1,5 @@
-import Link from "next/link"
+import Link from "next/link";
+import { SVGIcon } from "../ui/svg-icon";
 
 /** Clean centered auth card — border only, no shadow, small radius. */
 export function AuthShell({
@@ -7,10 +8,10 @@ export function AuthShell({
   children,
   footer,
 }: {
-  title: string
-  subtitle?: React.ReactNode
-  children: React.ReactNode
-  footer?: React.ReactNode
+  title: string;
+  subtitle?: React.ReactNode;
+  children: React.ReactNode;
+  footer?: React.ReactNode;
 }) {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-background px-5 py-12">
@@ -21,11 +22,15 @@ export function AuthShell({
             className="font-sebenta text-xl font-bold tracking-tight text-foreground"
             aria-label="MakingFlow home"
           >
-            MakingFlow
+            <SVGIcon
+              src="/logo/logo.svg"
+              preserveColors
+              className="size-8 rounded"
+            />
           </Link>
         </div>
 
-        <div className="rounded-lg border border-border bg-background p-6 sm:p-7">
+        <div className="rounded-lg bg-background p-6 sm:p-7">
           <div className="mb-6 space-y-1.5 text-center">
             <h1 className="text-xl font-semibold tracking-tight text-foreground">
               {title}
@@ -38,16 +43,18 @@ export function AuthShell({
         </div>
 
         {footer ? (
-          <p className="mt-6 text-center text-sm text-muted-foreground">{footer}</p>
+          <p className="mt-6 text-center text-sm text-muted-foreground">
+            {footer}
+          </p>
         ) : null}
       </div>
     </div>
-  )
+  );
 }
 
 /** Inline, accessible error banner for the top of a form. */
 export function AuthError({ message }: { message?: string | null }) {
-  if (!message) return null
+  if (!message) return null;
   return (
     <p
       role="alert"
@@ -55,7 +62,7 @@ export function AuthError({ message }: { message?: string | null }) {
     >
       {message}
     </p>
-  )
+  );
 }
 
 /** Labelled rule, e.g. "or". */
@@ -71,5 +78,5 @@ export function AuthDivider({ label }: { label: string }) {
         </span>
       </div>
     </div>
-  )
+  );
 }

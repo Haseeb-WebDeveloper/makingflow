@@ -56,7 +56,7 @@ export function ConversationalRuntime({ form }: { form: PublicForm }) {
   const startedRef = useRef(false)
   const bootedRef = useRef(false)
   const partialTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const scrollRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
   const resumeKey = `mf:resume:${form.publicId}`
 
   const fieldById = useMemo(
@@ -71,10 +71,11 @@ export function ConversationalRuntime({ form }: { form: PublicForm }) {
     setMessages(messagesRef.current)
     scrollToEnd()
   }
+  // The whole page scrolls (no inner scroll container) — pin the window to the
+  // bottom so the latest message stays in view as the AI streams.
   const scrollToEnd = () =>
     requestAnimationFrame(() => {
-      const el = scrollRef.current
-      if (el) el.scrollTop = el.scrollHeight
+      window.scrollTo({ top: document.documentElement.scrollHeight })
     })
 
   // Clear the per-question input scaffolding (pill selection, file draft, text)
@@ -161,13 +162,21 @@ export function ConversationalRuntime({ form }: { form: PublicForm }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.publicId])
 
-  // Keep the thread pinned to the latest message (streaming text, new pills,
+  // Keep the page pinned to the latest message (streaming text, new pills,
   // status changes) — the rAF nudges in runTurn cover mid-stream chunks; this
   // catches every committed render.
   useEffect(() => {
-    const el = scrollRef.current
-    if (el) el.scrollTop = el.scrollHeight
+    window.scrollTo({ top: document.documentElement.scrollHeight })
   }, [messages, status])
+
+  // Auto-grow the answer box: rest at one line, expand with content up to a few
+  // lines, then scroll. CSS min/max-height bound it.
+  useEffect(() => {
+    const el = inputRef.current
+    if (!el) return
+    el.style.height = "auto"
+    el.style.height = `${el.scrollHeight}px`
+  }, [input])
 
   // ── One turn: stream the assistant message, then apply the structured meta ──
   async function runTurn(prev: TurnPrev | undefined) {
@@ -367,72 +376,75 @@ export function ConversationalRuntime({ form }: { form: PublicForm }) {
   const composerDisabled = status !== "ready"
 
   return (
-    <div className="fixed inset-0 z-10 flex flex-col bg-canvas">
-      <div className="mx-auto flex h-full w-full max-w-2xl flex-col px-4 sm:px-6">
-        <header className="shrink-0 pb-3 pt-6">
-          <FormBranding theme={form.theme} />
-          <h1 className="font-sebenta text-lg font-bold tracking-tight text-foreground">
-            {form.title}
-          </h1>
-        </header>
+    // The page itself scrolls (no inner scroll container). Bottom padding clears
+    // the viewport-fixed composer so the last message is never hidden behind it.
+    <div className={cn(showComposer ? "pb-40" : "pb-10")}>
+      <header className="pb-3">
+        <FormBranding theme={form.theme} />
+        <h1 className="font-sebenta text-lg font-bold tracking-tight text-foreground">
+          {form.title}
+        </h1>
+      </header>
 
-        <div ref={scrollRef} className="scrollbar-thin flex-1 space-y-4 overflow-y-auto py-2">
-          {resumed ? (
-            <div className="mx-auto w-fit rounded-md border border-border bg-muted/40 px-3 py-1 text-xs text-muted-foreground">
-              Picking up where you left off.
-            </div>
-          ) : null}
+      <div className="space-y-4">
+        {resumed ? (
+          <div className="mx-auto w-fit rounded-md border border-border bg-muted/40 px-3 py-1 text-xs text-muted-foreground">
+            Picking up where you left off.
+          </div>
+        ) : null}
 
-          {messages.map((m, i) =>
-            m.role === "user" ? (
-              <div key={i} className="flex justify-end">
-                <div className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-md bg-foreground px-3.5 py-2 text-sm text-background">
-                  {m.text}
-                </div>
+        {messages.map((m, i) =>
+          m.role === "user" ? (
+            <div key={i} className="flex justify-end">
+              <div className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-md bg-foreground px-3.5 py-2 text-sm text-background">
+                {m.text}
               </div>
-            ) : (
-              <div key={i} className="flex justify-start">
-                <div className="max-w-[90%] whitespace-pre-wrap rounded-2xl rounded-bl-md bg-muted px-3.5 py-2.5 text-sm text-foreground">
-                  {m.text ? m.text : <Dots />}
-                </div>
-              </div>
-            ),
-          )}
-
-          {/* Suggested answers under the latest question — left-aligned, like the assistant. */}
-          {status === "ready" && currentField ? (
-            <Pills field={currentField} multi={multi} setMulti={setMulti} onSend={send} />
-          ) : null}
-
-          {status === "ready" && currentField?.type === "file_upload" ? (
-            <div className="space-y-2">
-              <Control
-                field={currentField}
-                value={fileDraft}
-                invalid={false}
-                onChange={(v) => setFileDraft(v)}
-              />
-              <button
-                type="button"
-                disabled={fileDraft == null || isEmpty(fileDraft)}
-                onClick={() => send({ pillValue: fileDraft!, display: "📎 File attached" })}
-                className="inline-flex h-9 items-center rounded-md bg-foreground px-4 text-sm font-medium text-background disabled:opacity-50"
-              >
-                Send
-              </button>
             </div>
-          ) : null}
+          ) : (
+            <div key={i} className="flex justify-start">
+              <div className="max-w-[90%] whitespace-pre-wrap rounded-2xl rounded-bl-md bg-muted px-3.5 py-2.5 text-sm text-foreground">
+                {m.text ? m.text : <Dots />}
+              </div>
+            </div>
+          ),
+        )}
 
-          {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
-          {status === "submitting" ? (
-            <p className="text-center text-xs text-muted-foreground">Recording your response…</p>
-          ) : null}
-        </div>
+        {/* Suggested answers under the latest question — left-aligned, like the assistant. */}
+        {status === "ready" && currentField ? (
+          <Pills field={currentField} multi={multi} setMulti={setMulti} onSend={send} />
+        ) : null}
 
-        {showComposer ? (
-          <div className="shrink-0 pb-5 pt-3">
-            <div className="rounded-2xl border border-border bg-background p-2.5 transition-colors focus-within:border-foreground/30">
+        {status === "ready" && currentField?.type === "file_upload" ? (
+          <div className="space-y-2">
+            <Control
+              field={currentField}
+              value={fileDraft}
+              invalid={false}
+              onChange={(v) => setFileDraft(v)}
+            />
+            <button
+              type="button"
+              disabled={fileDraft == null || isEmpty(fileDraft)}
+              onClick={() => send({ pillValue: fileDraft!, display: "📎 File attached" })}
+              className="inline-flex h-9 items-center rounded-md bg-foreground px-4 text-sm font-medium text-background disabled:opacity-50"
+            >
+              Send
+            </button>
+          </div>
+        ) : null}
+
+        {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
+        {status === "submitting" ? (
+          <p className="text-center text-xs text-muted-foreground">Recording your response…</p>
+        ) : null}
+      </div>
+
+      {showComposer ? (
+        <div className="fixed inset-x-0 bottom-0 z-10 bg-gradient-to-t from-canvas via-canvas to-transparent pt-8">
+          <div className="mx-auto w-full max-w-2xl px-4 pb-5 sm:px-6">
+            <div className="rounded-2xl border border-border bg-background p-2.5 shadow-sm transition-colors focus-within:border-foreground/30">
               <textarea
+                ref={inputRef}
                 rows={1}
                 value={input}
                 disabled={composerDisabled}
@@ -444,7 +456,8 @@ export function ConversationalRuntime({ form }: { form: PublicForm }) {
                     sendTyped()
                   }
                 }}
-                className="thin-scroll block max-h-40 w-full resize-none border-0 bg-transparent px-2 pt-1 text-base text-foreground outline-none placeholder:text-muted-foreground disabled:opacity-60"
+                style={{ maxHeight: "7.5rem" }}
+                className="thin-scroll block w-full resize-none border-0 bg-transparent px-2 pt-1 text-base text-foreground outline-none placeholder:text-muted-foreground disabled:opacity-60"
               />
               <div className="flex items-center justify-end pl-1 pr-0.5 pt-1">
                 <button
@@ -459,8 +472,8 @@ export function ConversationalRuntime({ form }: { form: PublicForm }) {
               </div>
             </div>
           </div>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
     </div>
   )
 }

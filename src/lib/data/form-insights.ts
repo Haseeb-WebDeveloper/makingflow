@@ -68,7 +68,8 @@ export async function getFormInsights(formId: string): Promise<FormInsights | nu
   const completed = and(eq(submissions.formId, formId), eq(submissions.status, "completed"))
   const metaWhere = and(completed, sql`${submissions.meta} is not null`)
 
-  const [funnel, subCount, series, devices, countries, sources, fieldRows] = await Promise.all([
+  const [funnel, subCount, series, devices, countries, sources, fieldRows, answerRows] =
+    await Promise.all([
     db
       .select({
         views: sql<number>`count(*) filter (where ${formEvents.type} = 'view')::int`,
@@ -123,6 +124,16 @@ export async function getFormInsights(formId: string): Promise<FormInsights | nu
       .from(formFields)
       .where(and(eq(formFields.formId, formId), isNull(formFields.deletedAt)))
       .orderBy(formFields.position),
+
+    // Per-question answers — runs in parallel with the aggregations above (not
+    // sequentially after) to save a remote round-trip. Used only when the form
+    // has answerable fields; the post-processing below guards that.
+    db
+      .select({ fieldId: answers.fieldId, value: answers.value })
+      .from(answers)
+      .innerJoin(submissions, eq(answers.submissionId, submissions.id))
+      .where(completed)
+      .orderBy(desc(submissions.createdAt)), // recent-first → samples are recent
   ])
 
   const submissionsCount = subCount[0]?.n ?? 0
@@ -144,15 +155,8 @@ export async function getFormInsights(formId: string): Promise<FormInsights | nu
   const answerable = fieldRows.filter((r) => !NON_ANSWER.has(r.type))
   let fields: FieldInsight[] = []
   if (answerable.length > 0) {
-    const rows = await db
-      .select({ fieldId: answers.fieldId, value: answers.value })
-      .from(answers)
-      .innerJoin(submissions, eq(answers.submissionId, submissions.id))
-      .where(completed)
-      .orderBy(desc(submissions.createdAt)) // recent-first → samples are recent
-
     const byField = new Map<string, AnswerValue[]>()
-    for (const r of rows) {
+    for (const r of answerRows) {
       if (!r.fieldId) continue
       const arr = byField.get(r.fieldId)
       if (arr) arr.push(r.value)

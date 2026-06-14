@@ -72,12 +72,12 @@ export function DashboardShell({
     <TooltipProvider delayDuration={300}>
       <SidebarProvider defaultOpen>
         <Sidebar collapsible="icon" variant="sidebar">
-          <SidebarHeader className="p-4 flex-row gap-2 border-b border-background">
+          <SidebarHeader className="h-14 flex-row items-center gap-2 border-b border-border px-4 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0">
             {/* {workspace ? (
               <WorkspaceChip name={workspace.name} plan={workspace.plan} />
             ) : null} */}
-            <SVGIcon src="/logo/logo.svg" preserveColors className="size-6 rounded" />
-            <span className="text-lg font-semibold tracking-tight">
+            <SVGIcon src="/logo/logo.svg" preserveColors className="size-6 shrink-0 rounded" />
+            <span className="truncate text-lg font-semibold tracking-tight group-data-[collapsible=icon]:hidden">
               MakingFlow
             </span>
           </SidebarHeader>
@@ -93,8 +93,11 @@ export function DashboardShell({
                       : false;
                     const inner = (
                       <>
-                        <Icon name={item.icon} className="size-5 shrink-0" />
-                        <span className="min-w-0 flex-1 truncate">
+                        <Icon
+                          name={item.icon}
+                          className="size-5 shrink-0 group-data-[collapsible=icon]:size-4"
+                        />
+                        <span className="min-w-0 flex-1 truncate group-data-[collapsible=icon]:hidden">
                           {item.label}
                         </span>
                         {item.comingSoon ? (
@@ -118,14 +121,14 @@ export function DashboardShell({
                           className="text-sidebar-foreground/70 hover:text-sidebar-foreground data-active:bg-sidebar-accent data-active:font-medium data-active:text-sidebar-foreground"
                         >
                           {item.action ? (
-                            <span className="flex w-full min-w-0 items-center gap-2.5">
+                            <span className="flex w-full min-w-0 items-center gap-2.5 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-0">
                               {inner}
                             </span>
                           ) : (
                             <Link
                               href={item.href!}
                               prefetch
-                              className="flex w-full min-w-0 items-center gap-2.5"
+                              className="flex w-full min-w-0 items-center gap-2.5 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-0"
                             >
                               {inner}
                             </Link>

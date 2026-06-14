@@ -1,6 +1,6 @@
 "use client"
 
-import { useRef, type ChangeEvent } from "react"
+import { useEffect, useRef, type ChangeEvent } from "react"
 import { SVGIcon } from "@/components/ui/svg-icon"
 import { cn } from "@/lib/utils"
 
@@ -22,6 +22,7 @@ export function Composer({
   busy = false,
   submitLabel = "Generate form",
   rows = 5,
+  maxRows = 6,
   autoFocus = false,
   className,
 }: {
@@ -35,13 +36,26 @@ export function Composer({
   busy?: boolean
   /** Empty string → icon-only round button (compact, for the chat box). */
   submitLabel?: string
+  /** Min visible rows (the resting height). */
   rows?: number
+  /** Grow with content up to this many rows, then scroll. */
+  maxRows?: number
   autoFocus?: boolean
   className?: string
 }) {
   const fileRef = useRef<HTMLInputElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
   const canSubmit = !busy && (value.trim() !== "" || Boolean(image))
   const attachable = Boolean(onPickFile)
+
+  // Auto-grow: rest at `rows`, expand with content up to `maxRows`, then scroll.
+  // CSS min/max-height bound it; JS sets the exact height to the content.
+  useEffect(() => {
+    const el = textareaRef.current
+    if (!el) return
+    el.style.height = "auto"
+    el.style.height = `${el.scrollHeight}px`
+  }, [value])
 
   function handleFile(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -81,6 +95,7 @@ export function Composer({
       ) : null}
 
       <textarea
+        ref={textareaRef}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={(e) => {
@@ -92,7 +107,8 @@ export function Composer({
         placeholder={placeholder}
         rows={rows}
         autoFocus={autoFocus}
-        className="thin-scroll block max-h-72 w-full resize-none border-0 bg-transparent px-2 pt-1 text-base text-foreground outline-none placeholder:text-muted-foreground"
+        style={{ minHeight: `${rows * 1.5}rem`, maxHeight: `${maxRows * 1.5}rem` }}
+        className="thin-scroll block w-full resize-none border-0 bg-transparent px-2 pt-1 text-sm text-foreground outline-none placeholder:text-muted-foreground"
       />
 
       <div className="flex items-center justify-between pl-1 pr-0.5 pt-1.5">

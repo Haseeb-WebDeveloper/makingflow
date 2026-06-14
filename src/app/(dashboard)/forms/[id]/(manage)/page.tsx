@@ -12,6 +12,10 @@ export const metadata: Metadata = { title: "Insights · MakingFlow" }
 
 const pct = (r: number | null) => (r == null ? "—" : `${Math.min(100, Math.round(r * 100))}%`)
 
+/**
+ * The form's default management view (Insights) — served directly at
+ * /forms/[id], no redirect hop. Opening a form is a single navigation.
+ */
 export default async function InsightsPage({
   params,
 }: {

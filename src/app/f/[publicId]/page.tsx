@@ -21,16 +21,23 @@ export default async function PublicFormPage({
   const { publicId } = await params;
   const res = await getPublicForm(publicId);
 
-  return (
-    <div
-      key={publicId}
-      className="bg-canvas px-4 py-10 min-h-dvh mx-auto min-w-full h-full max-w-2xl flex flex-col justify-center items-center"
-    >
-      {res.state === "ok" ? (
-        <FormRenderer form={res.form} />
-      ) : (
+  if (res.state !== "ok") {
+    return (
+      <div className="flex min-h-dvh flex-col items-center justify-center bg-canvas px-4 py-10">
         <NotAvailable missing={res.state === "missing"} />
-      )}
+      </div>
+    );
+  }
+
+  // Top-aligned, full-width max-w-2xl column. The form/chat owns its own vertical
+  // rhythm (the conversational runtime fixes its input to the screen bottom), so
+  // the wrapper must NOT center — otherwise content floats to the middle and
+  // shrinks to fit-content as it streams.
+  return (
+    <div key={publicId} className="min-h-dvh bg-canvas px-4 py-10">
+      <div className="mx-auto w-full max-w-2xl">
+        <FormRenderer form={res.form} />
+      </div>
     </div>
   );
 }

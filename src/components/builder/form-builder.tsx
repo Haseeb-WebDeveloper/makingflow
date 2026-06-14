@@ -25,6 +25,7 @@ import {
 } from "@/components/builder/form-preview";
 import { FormEditor } from "@/components/builder/form-editor";
 import { FormRuntime } from "@/components/forms/form-runtime";
+import { MemoizedMarkdown } from "@/components/forms/memoized-markdown";
 import type { PublicForm } from "@/lib/data/public-form";
 import { Lottie } from "@/components/builder/lottie";
 import { Composer, type ComposerImage } from "@/components/builder/composer";
@@ -51,6 +52,7 @@ import { PublishDialog } from "@/components/builder/publish-dialog";
 import { showToast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
 import { SVGIcon } from "../ui/svg-icon";
+import { Loading } from "../ui/loading";
 
 type ChatMessage = {
   id: string;
@@ -135,6 +137,9 @@ export function FormBuilder({
   const savingRef = useRef(false);
   const pendingSaveRef = useRef<EditorForm | null>(null);
   const savePromiseRef = useRef<Promise<void> | null>(null);
+  // Gate chat persistence until the saved thread is restored, so the empty
+  // initial state can't overwrite a stored conversation on first render.
+  const chatHydratedRef = useRef(false);
 
   const { object, submit, isLoading, error, stop, clear } = useObject({
     api: "/api/ai/form",
@@ -147,7 +152,12 @@ export function FormBuilder({
       setCurrentForm(full);
       setChat((prev) => {
         const isFirst = !prev.some((m) => m.role === "assistant");
-        const text = isFirst
+        // Prefer the model's own 1-2 line summary of what it did so the chat
+        // reads like a real conversation; fall back to a generic line.
+        const summary = (object as AiForm)?.summary?.trim();
+        const text = summary
+          ? summary
+          : isFirst
           ? full.title
             ? `Here's your form — “${full.title}”. Ask for any changes.`
             : "Here's your form. Ask for any changes."
@@ -215,11 +225,46 @@ export function FormBuilder({
   }, [chat, isLoading]);
 
   useEffect(() => {
+    // Origin is only known on the client (used to build share links).
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setOrigin(window.location.origin);
     return () => {
       if (saveTimer.current) clearTimeout(saveTimer.current);
     };
   }, []);
+
+  // Restore the saved chat thread for this form (so reloading /forms/[id]/edit
+  // keeps the conversation), then allow persistence.
+  useEffect(() => {
+    const id = initialFormId;
+    if (id) {
+      try {
+        const raw = localStorage.getItem(`mf:chat:${id}`);
+        if (raw) {
+          const parsed = JSON.parse(raw) as ChatMessage[];
+          // One-time restore from localStorage after mount (SSR can't read it).
+          // eslint-disable-next-line react-hooks/set-state-in-effect
+          if (Array.isArray(parsed) && parsed.length > 0) setChat(parsed);
+        }
+      } catch {
+        /* ignore corrupt/blocked storage */
+      }
+    }
+    chatHydratedRef.current = true;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Persist the thread per-form. Strip attached image data URLs — they're huge
+  // and would blow the localStorage quota; the conversation text is what matters.
+  useEffect(() => {
+    if (!chatHydratedRef.current || !formId) return;
+    try {
+      const slim = chat.map((m) => ({ ...m, image: undefined }));
+      localStorage.setItem(`mf:chat:${formId}`, JSON.stringify(slim));
+    } catch {
+      /* ignore quota/blocked storage */
+    }
+  }, [chat, formId]);
 
   // Keep the ref in sync so AI edits merge onto the latest form (incl. manual edits).
   useEffect(() => {
@@ -382,6 +427,13 @@ export function FormBuilder({
     stop();
     clear();
     if (saveTimer.current) clearTimeout(saveTimer.current);
+    if (formIdRef.current) {
+      try {
+        localStorage.removeItem(`mf:chat:${formIdRef.current}`);
+      } catch {
+        /* ignore */
+      }
+    }
     setChat([]);
     setDraft("");
     setImage(null);
@@ -447,7 +499,8 @@ export function FormBuilder({
             onPickFile={pickFile}
             busy={isLoading}
             submitLabel="Generate form"
-            rows={5}
+            rows={3}
+            maxRows={10}
             autoFocus
           />
 
@@ -477,7 +530,7 @@ export function FormBuilder({
             m.role === "user" ? (
               <UserBubble key={m.id} message={m} />
             ) : (
-              <AssistantRow key={m.id} text={m.text} />
+              <AssistantRow key={m.id} id={m.id} text={m.text} />
             )
           )}
           {isLoading ? <AssistantRow building /> : null}
@@ -501,6 +554,7 @@ export function FormBuilder({
             busy={isLoading}
             submitLabel=""
             rows={2}
+            maxRows={5}
           />
           {isLoading ? (
             <button
@@ -514,7 +568,7 @@ export function FormBuilder({
         </div>
       </aside>
 
-      <main className="flex h-1/2 min-w-0 flex-1 flex-col lg:h-full">
+      <main className="relative flex h-1/2 min-w-0 flex-1 flex-col lg:h-full">
         <header className="flex items-center justify-between gap-2 border-b border-border bg-background px-4 py-3 sm:px-5">
           <div className="flex min-w-0 items-center gap-1.5">
             <button
@@ -624,14 +678,36 @@ export function FormBuilder({
         </header>
 
         <div className="thin-scroll flex-1 overflow-x-hidden overflow-y-auto bg-canvas px-6 py-10 sm:px-10">
-          {isLoading || !currentForm ? (
+          {!currentForm ? (
+            // First generation only — there's nothing to show yet, so stream the
+            // form in as it builds.
             <FormPreview form={streaming} building={isLoading} />
           ) : mode === "preview" && previewForm ? (
             <FormRuntime form={previewForm} testMode />
           ) : (
-            <FormEditor form={currentForm} onChange={updateForm} />
+            // Editing an existing form: keep it on screen (faded + locked) while
+            // the AI applies changes — never blank it back to a building skeleton.
+            <div
+              className={cn(
+                isLoading &&
+                  "pointer-events-none select-none opacity-50 transition-opacity"
+              )}
+            >
+              <FormEditor form={currentForm} onChange={updateForm} />
+            </div>
           )}
         </div>
+
+        {/* Panel-level so it stays centered and visible no matter where the
+            canvas is scrolled. */}
+        {isLoading && currentForm ? (
+          <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center">
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-background/95 px-3.5 py-1.5 text-xs font-medium text-muted-foreground shadow-md backdrop-blur">
+              <Loading className="size-1" />
+              Updating…
+            </span>
+          </div>
+        ) : null}
       </main>
 
       <PublishDialog
@@ -751,9 +827,11 @@ function UserBubble({ message }: { message: ChatMessage }) {
 }
 
 function AssistantRow({
+  id,
   text,
   building,
 }: {
+  id?: string;
   text?: string;
   building?: boolean;
 }) {
@@ -771,7 +849,11 @@ function AssistantRow({
           <Dots />
         </span>
       ) : (
-        <p className="text-sm leading-relaxed text-muted-foreground">{text}</p>
+        // Render markdown so emphasis (**bold**, *italic*, lists) in the AI's
+        // summary shows as formatted text instead of raw asterisks/quotes.
+        <div className="min-w-0 flex-1 pt-0.5">
+          <MemoizedMarkdown content={text ?? ""} id={id ?? "assistant"} />
+        </div>
       )}
     </div>
   );

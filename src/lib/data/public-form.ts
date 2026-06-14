@@ -1,4 +1,5 @@
 import { and, eq, isNull, sql } from "drizzle-orm"
+import { cacheLife, cacheTag } from "next/cache"
 import { db } from "@/lib/db"
 import {
   forms,
@@ -62,13 +63,56 @@ export type PublicFormResult =
   | { state: "unavailable" }
 
 type FormRow = typeof forms.$inferSelect
+type FormFieldRow = typeof formFields.$inferSelect
+type FormDef = { row: FormRow; fields: PublicField[] }
+
+function mapFields(raw: FormFieldRow[]): PublicField[] {
+  return raw.map((f) => ({
+    id: f.id,
+    type: f.type,
+    label: f.label,
+    description: f.description ?? undefined,
+    placeholder: f.placeholder ?? undefined,
+    required: f.required,
+    options: f.options ?? undefined,
+    logic: f.logic ?? undefined,
+    config: f.config ?? undefined,
+  }))
+}
+
+function mapForm(row: FormRow, fields: PublicField[]): PublicForm {
+  return {
+    publicId: row.publicId,
+    title: row.title,
+    submitLabel: row.settings?.submitButtonLabel || "Submit",
+    thankYou: row.settings?.thankYouMessage || "Thanks! Your response has been recorded.",
+    redirectUrl: row.redirectUrl ?? null,
+    showProgressBar: row.settings?.showProgressBar ?? false,
+    renderMode: row.renderMode,
+    baseLanguage: row.baseLanguage,
+    ai: row.aiEnabled
+      ? {
+          enabled: true,
+          followUpsEnabled: row.aiConfig?.followUpsEnabled ?? false,
+          clarifyVagueAnswers: row.aiConfig?.clarifyVagueAnswers ?? false,
+          persona: row.aiConfig?.persona ?? null,
+        }
+      : null,
+    theme:
+      row.theme && (row.theme.logoUrl || row.theme.coverImageUrl)
+        ? { logoUrl: row.theme.logoUrl, coverImageUrl: row.theme.coverImageUrl }
+        : null,
+    fields,
+  }
+}
 
 /**
- * Shared resolution for an already-loaded form row: enforce PUBLISHED + in-window
- * + under-limit, then map to the runtime shape. Used by both the /f/[publicId]
- * route and the custom-domain route so they behave identically.
+ * Dynamic gating — runs every request (never cached). Enforces PUBLISHED +
+ * in-window + under-limit using the current time and a LIVE submission count.
+ * Kept out of the cache precisely because it's time/count dependent.
  */
-async function resolvePublishedForm(row: FormRow): Promise<PublicFormResult> {
+async function gate(def: FormDef): Promise<PublicFormResult> {
+  const { row, fields } = def
   const now = new Date()
   if (row.status !== "published") return { state: "unavailable" }
   if (row.opensAt && row.opensAt > now) return { state: "unavailable" }
@@ -80,49 +124,62 @@ async function resolvePublishedForm(row: FormRow): Promise<PublicFormResult> {
       .where(and(eq(submissions.formId, row.id), eq(submissions.status, "completed")))
     if (count >= row.submissionLimit) return { state: "unavailable" }
   }
+  return { state: "ok", form: mapForm(row, fields) }
+}
 
-  const fields = await db
+async function loadFields(formId: string): Promise<PublicField[]> {
+  const raw = await db
     .select()
     .from(formFields)
-    .where(and(eq(formFields.formId, row.id), isNull(formFields.deletedAt)))
+    .where(and(eq(formFields.formId, formId), isNull(formFields.deletedAt)))
     .orderBy(formFields.position)
+  return mapFields(raw)
+}
 
-  return {
-    state: "ok",
-    form: {
-      publicId: row.publicId,
-      title: row.title,
-      submitLabel: row.settings?.submitButtonLabel || "Submit",
-      thankYou: row.settings?.thankYouMessage || "Thanks! Your response has been recorded.",
-      redirectUrl: row.redirectUrl ?? null,
-      showProgressBar: row.settings?.showProgressBar ?? false,
-      renderMode: row.renderMode,
-      baseLanguage: row.baseLanguage,
-      ai: row.aiEnabled
-        ? {
-            enabled: true,
-            followUpsEnabled: row.aiConfig?.followUpsEnabled ?? false,
-            clarifyVagueAnswers: row.aiConfig?.clarifyVagueAnswers ?? false,
-            persona: row.aiConfig?.persona ?? null,
-          }
-        : null,
-      theme:
-        row.theme && (row.theme.logoUrl || row.theme.coverImageUrl)
-          ? { logoUrl: row.theme.logoUrl, coverImageUrl: row.theme.coverImageUrl }
-          : null,
-      fields: fields.map((f) => ({
-        id: f.id,
-        type: f.type,
-        label: f.label,
-        description: f.description ?? undefined,
-        placeholder: f.placeholder ?? undefined,
-        required: f.required,
-        options: f.options ?? undefined,
-        logic: f.logic ?? undefined,
-        config: f.config ?? undefined,
-      })),
-    },
-  }
+/**
+ * Cached form DEFINITION (row + fields) by public id. Changes only when the
+ * builder edits/publishes the form — invalidated by `updateTag(form-${id})` in
+ * the form actions. The time-window / submission-limit gating stays OUT of the
+ * cache (see `gate`).
+ */
+async function loadFormDef(publicId: string): Promise<FormDef | null> {
+  "use cache"
+  cacheLife("minutes")
+  cacheTag(`form-public-${publicId}`)
+  const [row] = await db
+    .select()
+    .from(forms)
+    .where(and(eq(forms.publicId, publicId), isNull(forms.deletedAt)))
+    .limit(1)
+  if (!row) return null
+  cacheTag(`form-${row.id}`)
+  return { row, fields: await loadFields(row.id) }
+}
+
+async function loadFormDefByDomain(host: string, slug: string): Promise<FormDef | null> {
+  "use cache"
+  cacheLife("minutes")
+  cacheTag(`form-domain-${host.toLowerCase()}-${slug}`)
+  const [domainRow] = await db
+    .select({ id: customDomains.id })
+    .from(customDomains)
+    .where(and(eq(customDomains.domain, host.toLowerCase()), eq(customDomains.status, "active")))
+    .limit(1)
+  if (!domainRow) return null
+  const [row] = await db
+    .select()
+    .from(forms)
+    .where(
+      and(
+        eq(forms.customDomainId, domainRow.id),
+        eq(forms.slug, slug),
+        isNull(forms.deletedAt),
+      ),
+    )
+    .limit(1)
+  if (!row) return null
+  cacheTag(`form-${row.id}`)
+  return { row, fields: await loadFields(row.id) }
 }
 
 /**
@@ -131,13 +188,9 @@ async function resolvePublishedForm(row: FormRow): Promise<PublicFormResult> {
  */
 export async function getPublicForm(publicId: string): Promise<PublicFormResult> {
   try {
-    const [row] = await db
-      .select()
-      .from(forms)
-      .where(and(eq(forms.publicId, publicId), isNull(forms.deletedAt)))
-      .limit(1)
-    if (!row) return { state: "missing" }
-    return await resolvePublishedForm(row)
+    const def = await loadFormDef(publicId)
+    if (!def) return { state: "missing" }
+    return await gate(def)
   } catch (err) {
     // A transient DB error shouldn't crash the public page — degrade to the
     // "unavailable" screen and log the real cause for diagnosis.
@@ -155,28 +208,9 @@ export async function getPublicFormByDomain(
   slug: string,
 ): Promise<PublicFormResult> {
   try {
-    const [domainRow] = await db
-      .select({ id: customDomains.id })
-      .from(customDomains)
-      .where(
-        and(eq(customDomains.domain, host.toLowerCase()), eq(customDomains.status, "active")),
-      )
-      .limit(1)
-    if (!domainRow) return { state: "missing" }
-
-    const [row] = await db
-      .select()
-      .from(forms)
-      .where(
-        and(
-          eq(forms.customDomainId, domainRow.id),
-          eq(forms.slug, slug),
-          isNull(forms.deletedAt),
-        ),
-      )
-      .limit(1)
-    if (!row) return { state: "missing" }
-    return await resolvePublishedForm(row)
+    const def = await loadFormDefByDomain(host, slug)
+    if (!def) return { state: "missing" }
+    return await gate(def)
   } catch (err) {
     console.error("[getPublicFormByDomain] query failed", err)
     return { state: "unavailable" }

@@ -7,26 +7,29 @@ import { users, workspaceMembers, workspaces } from '@/lib/db/schema'
 
 /**
  * React cache() deduplicates this across the whole render tree — the protected
- * layout calls it, the page calls it, but only ONE Supabase verification + one
- * DB query runs per request. This is the canonical auth read for pages/layouts.
+ * layout calls it, the page calls it, but only ONE verification + one DB query
+ * runs per request. This is the canonical auth read for pages/layouts.
+ *
+ * Uses getClaims() (local JWT verification against the cached JWKS) instead of
+ * getUser() (a network round-trip to Supabase Auth) — saving ~150-250ms on every
+ * authenticated request. We trust only `sub` from the token; the full user row
+ * still comes from our DB. Same trust model as the fast-path session helper.
  */
 const getAuthUser = cache(async () => {
-  const supabase = await createClient()
-  const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser()
-  if (error || !user) return null
-
   try {
+    const supabase = await createClient()
+    const { data, error } = await supabase.auth.getClaims()
+    const userId = data?.claims?.sub
+    if (error || !userId) return null
+
     const [dbUser] = await db
       .select()
       .from(users)
-      .where(eq(users.id, user.id))
+      .where(eq(users.id, userId))
       .limit(1)
     return dbUser ?? null
   } catch {
-    // DB unreachable — treat as unauthenticated rather than 500 the page.
+    // Auth/DB unreachable — treat as unauthenticated rather than 500 the page.
     return null
   }
 })

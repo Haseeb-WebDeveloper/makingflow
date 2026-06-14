@@ -1,7 +1,7 @@
 "use server"
 
 import { and, eq, isNull, notInArray, sql } from "drizzle-orm"
-import { revalidatePath } from "next/cache"
+import { revalidatePath, updateTag } from "next/cache"
 import { db } from "@/lib/db"
 import { forms, formFields, type FormSettings, type FormAiConfig, type FormTheme, type FieldLogic } from "@/lib/db/schema"
 import { getRequiredUser, getDefaultWorkspace } from "@/lib/auth/session"
@@ -134,6 +134,8 @@ export async function saveAiForm(input: {
     return { success: false, error: "Could not save the form" }
   }
 
+  // Field/title edits change the public form definition — drop its cache.
+  updateTag(`form-${formId as string}`)
   return { success: true, id: formId as string }
 }
 
@@ -159,6 +161,7 @@ export async function publishForm(formId: string): Promise<PublishResult> {
     .set({ status: "published", publishedAt: new Date() })
     .where(eq(forms.id, formId))
 
+  updateTag(`form-${formId}`)
   return { success: true, publicId: row.publicId }
 }
 
@@ -177,6 +180,7 @@ export async function unpublishForm(
     .returning({ id: forms.id })
 
   if (result.length === 0) return { success: false, error: "Form not found" }
+  updateTag(`form-${formId}`)
   return { success: true }
 }
 
@@ -197,6 +201,7 @@ export async function renameForm(
     .returning({ id: forms.id })
 
   if (result.length === 0) return { success: false, error: "Form not found" }
+  updateTag(`form-${formId}`) // title shows on the public form
   revalidatePath("/forms")
   revalidatePath(`/forms/${formId}`, "layout")
   return { success: true }
@@ -311,6 +316,7 @@ export async function deleteForm(
     .returning({ id: forms.id })
 
   if (result.length === 0) return { success: false, error: "Form not found" }
+  updateTag(`form-${formId}`)
   revalidatePath("/forms")
   return { success: true }
 }
@@ -423,6 +429,7 @@ export async function updateFormSettings(
   if (Object.keys(set).length === 0) return { success: true }
 
   await db.update(forms).set(set).where(eq(forms.id, formId))
+  updateTag(`form-${formId}`) // status/settings/theme affect the public form
   revalidatePath(`/forms/${formId}`, "layout")
   return { success: true }
 }
