@@ -16,15 +16,9 @@ import { getServerSubmissionMeta } from "@/lib/analytics/request-meta"
 import { syncSubmissionToSheets } from "@/lib/integrations/sync"
 import { deliverWebhooks } from "@/lib/integrations/webhook"
 import { sendSubmissionEmails } from "@/lib/integrations/email"
-
-/** Field types that don't collect an answer (content/layout only). */
-const NON_ANSWER_TYPES = new Set(["heading", "paragraph", "image", "embed", "page_break"])
+import { NON_ANSWER_TYPES, isEmpty } from "@/lib/builder/logic"
 
 type SubmitResult = { success: true } | { success: false; error: string }
-
-function isEmpty(v: AnswerValue | undefined): boolean {
-  return v == null || v === "" || (Array.isArray(v) && v.length === 0)
-}
 
 type StoredFile = { storageKey: string; url: string; name: string; mime: string; bytes: number }
 
@@ -48,13 +42,31 @@ function filesFromValue(v: AnswerValue | undefined): StoredFile[] {
  * re-validated server-side from the form's own fields; the client is never
  * trusted for the workspace, the field set, or which form is open.
  */
+export type SubmitAnswer = {
+  /** Real form field id, or null for an AI follow-up question (conversational). */
+  fieldId: string | null
+  value: AnswerValue
+  /** Conversational multi-language: what the respondent literally said + its
+   *  language, when it differs from the form's base language. */
+  originalValue?: AnswerValue
+  originalLanguage?: string
+  /** Follow-up questions the AI asked that aren't form fields. */
+  isAiFollowUp?: boolean
+  /** Snapshot question text — required for follow-ups (no field to derive it). */
+  question?: string
+  /** Snapshot field type — follow-ups default to long_text. */
+  type?: string
+}
+
 export async function submitForm(input: {
   publicId: string
-  answers: { fieldId: string; value: AnswerValue }[]
+  answers: SubmitAnswer[]
   /** Client-captured context: original referrer + UTM/query params. */
   meta?: { referrer?: string; urlParams?: Record<string, string> }
   /** A partial draft to promote to completed (save & resume), if any. */
   submissionId?: string | null
+  /** Language the respondent answered in (conversational mode). */
+  language?: string | null
 }): Promise<SubmitResult> {
   const [form] = await db
     .select()
@@ -76,11 +88,20 @@ export async function submitForm(input: {
   const fieldById = new Map(fields.map((f) => [f.id, f]))
 
   // Only accept answers for real, answerable fields of THIS form.
-  const accepted = input.answers.filter((a) => {
-    const f = fieldById.get(a.fieldId)
-    return f && !NON_ANSWER_TYPES.has(f.type) && !isEmpty(a.value)
-  })
+  const accepted = input.answers.filter(
+    (a): a is SubmitAnswer & { fieldId: string } => {
+      if (!a.fieldId) return false
+      const f = fieldById.get(a.fieldId)
+      return !!f && !NON_ANSWER_TYPES.has(f.type) && !isEmpty(a.value)
+    },
+  )
   const providedIds = new Set(accepted.map((a) => a.fieldId))
+
+  // AI follow-up answers (conversational): no field id, kept verbatim. Skipped
+  // when empty (answers.value is NOT NULL) or missing a question snapshot.
+  const followUps = input.answers.filter(
+    (a) => !a.fieldId && a.isAiFollowUp && !isEmpty(a.value) && !!a.question?.trim(),
+  )
 
   // Enforce required.
   for (const f of fields) {
@@ -114,7 +135,13 @@ export async function submitForm(input: {
       if (input.submissionId) {
         const promoted = await tx
           .update(submissions)
-          .set({ status: "completed", completedAt: new Date(), meta: metaValue })
+          .set({
+            status: "completed",
+            completedAt: new Date(),
+            meta: metaValue,
+            mode: form.renderMode,
+            language: input.language ?? null,
+          })
           .where(
             and(
               eq(submissions.id, input.submissionId),
@@ -136,7 +163,8 @@ export async function submitForm(input: {
             formId: form.id,
             workspaceId: form.workspaceId,
             status: "completed",
-            mode: "classic",
+            mode: form.renderMode,
+            language: input.language ?? null,
             completedAt: new Date(),
             meta: metaValue,
           })
@@ -145,20 +173,34 @@ export async function submitForm(input: {
       }
       const sid = submissionId as string
 
-      if (accepted.length > 0) {
-        await tx.insert(answers).values(
-          accepted.map((a) => {
-            const f = fieldById.get(a.fieldId)!
-            return {
-              submissionId: sid,
-              fieldId: f.id,
-              question: f.label || "",
-              type: f.type,
-              value: a.value,
-            }
-          }),
-        )
+      const answerRows = accepted.map((a) => {
+        const f = fieldById.get(a.fieldId)!
+        return {
+          submissionId: sid,
+          fieldId: f.id,
+          isAiFollowUp: false,
+          question: f.label || "",
+          type: f.type,
+          value: a.value,
+          originalValue: a.originalValue ?? null,
+          originalLanguage: a.originalLanguage ?? null,
+        }
+      })
+      // AI follow-ups: fieldId NULL (safe under the unique (submissionId,fieldId)
+      // index because Postgres treats NULLs as distinct), type defaults long_text.
+      for (const a of followUps) {
+        answerRows.push({
+          submissionId: sid,
+          fieldId: null as unknown as string,
+          isAiFollowUp: true,
+          question: a.question!.trim(),
+          type: (a.type ?? "long_text") as (typeof answers.$inferInsert)["type"],
+          value: a.value,
+          originalValue: a.originalValue ?? null,
+          originalLanguage: a.originalLanguage ?? null,
+        })
       }
+      if (answerRows.length > 0) await tx.insert(answers).values(answerRows)
 
       // Track respondent uploads (file_upload/signature) for storage/quota.
       const uploadRows = accepted.flatMap((a) => {

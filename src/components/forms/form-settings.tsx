@@ -73,7 +73,77 @@ export function FormSettings({
         </span>
       </div>
 
-      <h2 className="mb-1 text-sm font-semibold text-foreground">Access</h2>
+      <h2 className="mb-1 text-sm font-semibold text-foreground">Response experience</h2>
+      <div className="rounded-lg border border-border px-4">
+        <SettingRow
+          title="How respondents fill the form"
+          description="Classic shows every question on the page. Conversational asks one question at a time in an AI chat that understands natural-language replies."
+          control={null}
+        >
+          <div className="inline-flex rounded-md border border-border p-0.5">
+            {(["classic", "conversational"] as const).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => save({ renderMode: mode }, { renderMode: mode, aiEnabled: mode === "conversational" ? true : state.aiEnabled })}
+                className={
+                  "h-8 rounded px-3 text-sm font-medium transition-colors " +
+                  (state.renderMode === mode
+                    ? "bg-foreground text-background"
+                    : "text-muted-foreground hover:text-foreground")
+                }
+              >
+                {mode === "classic" ? "Classic" : "Conversational"}
+              </button>
+            ))}
+          </div>
+        </SettingRow>
+
+        {state.renderMode === "conversational" ? (
+          <>
+            <SettingRow
+              title="Persona & tone"
+              description="How the AI should sound while asking questions — e.g. “friendly and casual” or “concise and formal”."
+              control={null}
+            >
+              <textarea
+                rows={2}
+                placeholder="Warm, concise, and professional."
+                value={state.persona}
+                onChange={(e) => setState((s) => ({ ...s, persona: e.target.value }))}
+                onBlur={(e) => save({ persona: e.target.value }, { persona: e.target.value })}
+                className="scrollbar-thin w-full resize-none rounded-md border border-input bg-input/30 px-3 py-2 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:border-foreground/40"
+              />
+            </SettingRow>
+
+            <SettingRow
+              title="Adaptive follow-up questions"
+              description="Let the AI ask the occasional natural follow-up to capture the “why” behind an answer."
+              control={
+                <Switch
+                  checked={state.followUpsEnabled}
+                  onCheckedChange={(v) => save({ followUpsEnabled: v }, { followUpsEnabled: v })}
+                />
+              }
+            />
+
+            <SettingRow
+              title="Clarify vague answers"
+              description="When a reply is too vague to record, the AI asks the respondent to clarify before moving on."
+              control={
+                <Switch
+                  checked={state.clarifyVagueAnswers}
+                  onCheckedChange={(v) =>
+                    save({ clarifyVagueAnswers: v }, { clarifyVagueAnswers: v })
+                  }
+                />
+              }
+            />
+          </>
+        ) : null}
+      </div>
+
+      <h2 className="mb-1 mt-8 text-sm font-semibold text-foreground">Access</h2>
       <div className="rounded-lg border border-border px-4">
         <SettingRow
           title="Close form"

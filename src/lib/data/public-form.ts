@@ -23,6 +23,15 @@ export type PublicField = {
   config?: FieldConfig
 }
 
+/** Respondent-safe AI config for the conversational runtime. Deliberately omits
+ *  owner-only knobs (screeningCriteria, summaryEnabled) — never sent to the public. */
+export type PublicAiConfig = {
+  enabled: boolean
+  followUpsEnabled: boolean
+  clarifyVagueAnswers: boolean
+  persona: string | null
+}
+
 export type PublicForm = {
   publicId: string
   title: string
@@ -30,6 +39,12 @@ export type PublicForm = {
   thankYou: string
   redirectUrl: string | null
   showProgressBar: boolean
+  /** How the form is presented to respondents. */
+  renderMode: "classic" | "conversational"
+  /** The form's authoring language; conversational answers normalize back to it. */
+  baseLanguage: string
+  /** Present only when the form has AI enabled; null otherwise. */
+  ai: PublicAiConfig | null
   fields: PublicField[]
 }
 
@@ -73,6 +88,16 @@ async function resolvePublishedForm(row: FormRow): Promise<PublicFormResult> {
       thankYou: row.settings?.thankYouMessage || "Thanks! Your response has been recorded.",
       redirectUrl: row.redirectUrl ?? null,
       showProgressBar: row.settings?.showProgressBar ?? false,
+      renderMode: row.renderMode,
+      baseLanguage: row.baseLanguage,
+      ai: row.aiEnabled
+        ? {
+            enabled: true,
+            followUpsEnabled: row.aiConfig?.followUpsEnabled ?? false,
+            clarifyVagueAnswers: row.aiConfig?.clarifyVagueAnswers ?? false,
+            persona: row.aiConfig?.persona ?? null,
+          }
+        : null,
       fields: fields.map((f) => ({
         id: f.id,
         type: f.type,

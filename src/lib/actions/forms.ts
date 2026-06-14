@@ -3,7 +3,7 @@
 import { and, eq, isNull, notInArray, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { db } from "@/lib/db"
-import { forms, formFields, type FormSettings } from "@/lib/db/schema"
+import { forms, formFields, type FormSettings, type FormAiConfig } from "@/lib/db/schema"
 import { getRequiredUser, getDefaultWorkspace } from "@/lib/auth/session"
 import type { EditorForm } from "@/lib/builder/form-model"
 
@@ -197,6 +197,11 @@ export type FormSettingsPatch = {
   showProgressBar?: boolean
   submitButtonLabel?: string | null
   thankYouMessage?: string | null
+  // Response experience (classic vs conversational chat).
+  renderMode?: "classic" | "conversational"
+  persona?: string | null
+  followUpsEnabled?: boolean
+  clarifyVagueAnswers?: boolean
 }
 
 /**
@@ -213,7 +218,7 @@ export async function updateFormSettings(
   if (!workspace) return { success: false, error: "No workspace" }
 
   const [row] = await db
-    .select({ status: forms.status, settings: forms.settings })
+    .select({ status: forms.status, settings: forms.settings, aiConfig: forms.aiConfig })
     .from(forms)
     .where(and(eq(forms.id, formId), eq(forms.workspaceId, workspace.id)))
     .limit(1)
@@ -250,6 +255,25 @@ export async function updateFormSettings(
     if (patch.thankYouMessage !== undefined)
       settings.thankYouMessage = patch.thankYouMessage?.trim() || undefined
     set.settings = settings
+  }
+
+  // Response experience: conversational mode requires AI, so switching to it
+  // turns AI on. Persona/follow-up/clarify knobs merge into the aiConfig jsonb.
+  if (patch.renderMode !== undefined) {
+    set.renderMode = patch.renderMode
+    if (patch.renderMode === "conversational") set.aiEnabled = true
+  }
+  if (
+    patch.persona !== undefined ||
+    patch.followUpsEnabled !== undefined ||
+    patch.clarifyVagueAnswers !== undefined
+  ) {
+    const aiConfig: FormAiConfig = { ...(row.aiConfig ?? {}) }
+    if (patch.persona !== undefined) aiConfig.persona = patch.persona?.trim() || undefined
+    if (patch.followUpsEnabled !== undefined) aiConfig.followUpsEnabled = patch.followUpsEnabled
+    if (patch.clarifyVagueAnswers !== undefined)
+      aiConfig.clarifyVagueAnswers = patch.clarifyVagueAnswers
+    set.aiConfig = aiConfig
   }
 
   if (Object.keys(set).length === 0) return { success: true }

@@ -154,6 +154,11 @@ export function FormBuilder({
         thankYou: "Looks good — this was a test, no response was recorded.",
         redirectUrl: null, // never redirect in the builder preview
         showProgressBar: initialSettings?.showProgressBar ?? false,
+        // The preview always renders classic — conversational needs a published,
+        // AI-enabled form + the live turn endpoint.
+        renderMode: "classic",
+        baseLanguage: "en",
+        ai: null,
         fields: currentForm.fields.map((f) => ({
           id: f.id,
           type: f.type,
