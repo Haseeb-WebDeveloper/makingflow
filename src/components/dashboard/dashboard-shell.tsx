@@ -72,11 +72,14 @@ export function DashboardShell({
     <TooltipProvider delayDuration={300}>
       <SidebarProvider defaultOpen>
         <Sidebar collapsible="icon" variant="sidebar">
-          <SidebarHeader className="gap-3 px-3 pb-3 pt-4">
+          <SidebarHeader className="p-4 flex-row gap-2 border-b border-background">
             {/* {workspace ? (
               <WorkspaceChip name={workspace.name} plan={workspace.plan} />
             ) : null} */}
-            <SVGIcon src="/logo/logo.svg" className="size-6" />
+            <SVGIcon src="/logo/logo.svg" preserveColors className="size-6 rounded" />
+            <span className="text-lg font-semibold tracking-tight">
+              MakingFlow
+            </span>
           </SidebarHeader>
 
           <SidebarContent>
@@ -216,9 +219,9 @@ export function DashboardShell({
               <Link
                 href="/forms/new"
                 prefetch
-                className="inline-flex h-9 items-center gap-1.5 rounded-md bg-foreground px-3 text-sm font-medium text-background transition-colors hover:bg-foreground/90"
+                className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-foreground/90"
               >
-                <SVGIcon src="/icons/plus.svg" className="size-4 text-background" />
+                <SVGIcon src="/icons/plus.svg" className="size-4 text-foreground" />
                 New form
               </Link>
               <UserMenu user={user} />

@@ -292,26 +292,6 @@
     cursor: pointer;
   }
 }
-/* 
-@utility scrollbar-thin {
-  scrollbar-width: thin;
-  scrollbar-color: #4f2fff transparent;
-
-  &::-webkit-scrollbar {
-    width: 9px;
-    height: 9px;
-    border-radius: 9999px;
-  }
-
-  &::-webkit-scrollbar-track {
-    background: transparent;
-  }
-
-  &::-webkit-scrollbar-thumb {
-    background-color: #4f2fff;
-    border-radius: 9999px;
-  }
-} */
 
 /* Animated success check (see AnimatedCheck component) */
 @keyframes homei-pop-in {
