@@ -14,6 +14,7 @@ import {
   type CatalogGroup,
 } from "@/lib/builder/form-model"
 import type { AiFieldType } from "@/lib/ai/form-schema"
+import type { FieldConfig } from "@/lib/db/schema"
 import { FieldGlyph } from "@/components/builder/field-glyph"
 
 const GROUP_LABEL: Record<CatalogGroup, string> = {
@@ -34,7 +35,7 @@ export function InsertPalette({
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
-  onPick: (type: AiFieldType) => void
+  onPick: (type: AiFieldType, config?: FieldConfig) => void
 }) {
   return (
     <CommandDialog
@@ -53,10 +54,10 @@ export function InsertPalette({
             <CommandGroup key={group} heading={GROUP_LABEL[group]}>
               {items.map((item) => (
                 <CommandItem
-                  key={item.type}
+                  key={item.label}
                   value={`${item.label} ${item.keywords ?? ""}`}
                   onSelect={() => {
-                    onPick(item.type)
+                    onPick(item.type, item.config)
                     onOpenChange(false)
                   }}
                   className="gap-2.5"

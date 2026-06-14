@@ -191,6 +191,7 @@ export type FieldConfig = {
   defaultValue?: string // hidden fields / prefill
   imageUrl?: string // image block
   embedUrl?: string // embed block
+  headingLevel?: 'h1' | 'h2' // heading block size (defaults to h2 when unset)
 }
 
 export type FieldCondition = {

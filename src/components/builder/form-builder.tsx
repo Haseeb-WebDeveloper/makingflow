@@ -159,6 +159,13 @@ export function FormBuilder({
         renderMode: "classic",
         baseLanguage: "en",
         ai: null,
+        theme:
+          initialSettings && (initialSettings.logoUrl || initialSettings.coverImageUrl)
+            ? {
+                logoUrl: initialSettings.logoUrl ?? undefined,
+                coverImageUrl: initialSettings.coverImageUrl ?? undefined,
+              }
+            : null,
         fields: currentForm.fields.map((f) => ({
           id: f.id,
           type: f.type,
@@ -168,6 +175,7 @@ export function FormBuilder({
           required: f.required,
           options: f.options,
           logic: f.logic,
+          config: f.config,
         })),
       }
     : null

@@ -3,7 +3,7 @@
 import { and, eq, isNull, notInArray, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { db } from "@/lib/db"
-import { forms, formFields, type FormSettings, type FormAiConfig } from "@/lib/db/schema"
+import { forms, formFields, type FormSettings, type FormAiConfig, type FormTheme } from "@/lib/db/schema"
 import { getRequiredUser, getDefaultWorkspace } from "@/lib/auth/session"
 import type { EditorForm } from "@/lib/builder/form-model"
 
@@ -76,6 +76,7 @@ export async function saveAiForm(input: {
               required: f.required ?? false,
               position: i,
               options: f.options && f.options.length > 0 ? f.options : null,
+              config: f.config ?? null,
               logic: f.logic ?? null,
             })),
           )
@@ -89,6 +90,7 @@ export async function saveAiForm(input: {
               required: sql`excluded.required`,
               position: sql`excluded.position`,
               options: sql`excluded.options`,
+              config: sql`excluded.config`,
               logic: sql`excluded.logic`,
               deletedAt: null, // restore if a previously-removed id reappears
               updatedAt: new Date(),
@@ -202,6 +204,9 @@ export type FormSettingsPatch = {
   persona?: string | null
   followUpsEnabled?: boolean
   clarifyVagueAnswers?: boolean
+  // Branding (logo + banner) — null clears the asset.
+  logoUrl?: string | null
+  coverImageUrl?: string | null
 }
 
 /**
@@ -218,7 +223,12 @@ export async function updateFormSettings(
   if (!workspace) return { success: false, error: "No workspace" }
 
   const [row] = await db
-    .select({ status: forms.status, settings: forms.settings, aiConfig: forms.aiConfig })
+    .select({
+      status: forms.status,
+      settings: forms.settings,
+      aiConfig: forms.aiConfig,
+      theme: forms.theme,
+    })
     .from(forms)
     .where(and(eq(forms.id, formId), eq(forms.workspaceId, workspace.id)))
     .limit(1)
@@ -274,6 +284,15 @@ export async function updateFormSettings(
     if (patch.clarifyVagueAnswers !== undefined)
       aiConfig.clarifyVagueAnswers = patch.clarifyVagueAnswers
     set.aiConfig = aiConfig
+  }
+
+  // Branding (logo + banner) merges into the theme jsonb.
+  if (patch.logoUrl !== undefined || patch.coverImageUrl !== undefined) {
+    const theme: FormTheme = { ...(row.theme ?? {}) }
+    if (patch.logoUrl !== undefined) theme.logoUrl = patch.logoUrl?.trim() || undefined
+    if (patch.coverImageUrl !== undefined)
+      theme.coverImageUrl = patch.coverImageUrl?.trim() || undefined
+    set.theme = theme
   }
 
   if (Object.keys(set).length === 0) return { success: true }

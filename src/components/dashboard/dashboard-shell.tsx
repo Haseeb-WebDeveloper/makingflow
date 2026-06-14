@@ -210,7 +210,7 @@ export function DashboardShell({
                 prefetch
                 className="inline-flex h-9 items-center gap-1.5 rounded-md bg-foreground px-3 text-sm font-medium text-background transition-colors hover:bg-foreground/90"
               >
-                <SVGIcon src="/icons/plus.svg" className="size-4" />
+                <SVGIcon src="/icons/plus.svg" className="size-4 text-background" />
                 New form
               </Link>
               <UserMenu user={user} />

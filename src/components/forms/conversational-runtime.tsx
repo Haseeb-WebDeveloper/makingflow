@@ -7,7 +7,7 @@ import type { PublicForm, PublicField } from "@/lib/data/public-form"
 import type { AnswerValue } from "@/lib/db/schema"
 import { isFieldVisible, NON_ANSWER_TYPES, isEmpty } from "@/lib/builder/logic"
 import { collectClientMeta, track } from "@/lib/forms/client-meta"
-import { Control, Check } from "@/components/forms/field-control"
+import { Control, Check, FormBranding } from "@/components/forms/field-control"
 import { FormRuntime } from "@/components/forms/form-runtime"
 import type { Expect, TurnMeta, TurnPrev, TurnRequest } from "@/lib/forms/conversation-types"
 import { cn } from "@/lib/utils"
@@ -160,6 +160,14 @@ export function ConversationalRuntime({ form }: { form: PublicForm }) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.publicId])
+
+  // Keep the thread pinned to the latest message (streaming text, new pills,
+  // status changes) — the rAF nudges in runTurn cover mid-stream chunks; this
+  // catches every committed render.
+  useEffect(() => {
+    const el = scrollRef.current
+    if (el) el.scrollTop = el.scrollHeight
+  }, [messages, status])
 
   // ── One turn: stream the assistant message, then apply the structured meta ──
   async function runTurn(prev: TurnPrev | undefined) {
@@ -328,11 +336,11 @@ export function ConversationalRuntime({ form }: { form: PublicForm }) {
 
   if (status === "done") {
     return (
-      <div className="rounded-xl border border-border bg-background p-8 text-center sm:p-10">
-        <div className="mx-auto mb-4 flex size-12 items-center justify-center rounded-full bg-success/10 text-success">
-          <Check className="size-6" />
+      <div className="flex min-h-[70dvh] flex-col items-center justify-center text-center">
+        <div className="mx-auto mb-4 flex size-14 items-center justify-center rounded-full bg-success/10 text-success">
+          <Check className="size-7" />
         </div>
-        <h2 className="font-sebenta text-xl font-bold tracking-tight text-foreground">
+        <h2 className="font-sebenta text-2xl font-bold tracking-tight text-foreground">
           {form.thankYou}
         </h2>
       </div>
@@ -343,14 +351,15 @@ export function ConversationalRuntime({ form }: { form: PublicForm }) {
   const composerDisabled = status !== "ready"
 
   return (
-    <div className="flex h-[80dvh] flex-col overflow-hidden rounded-xl border border-border bg-background">
-      <header className="shrink-0 border-b border-border px-5 py-3.5">
-        <h1 className="font-sebenta text-base font-bold tracking-tight text-foreground">
+    <div className="flex h-[82dvh] flex-col overflow-hidden">
+      <header className="shrink-0 pb-4">
+        <FormBranding theme={form.theme} />
+        <h1 className="font-sebenta text-lg font-bold tracking-tight text-foreground">
           {form.title}
         </h1>
       </header>
 
-      <div ref={scrollRef} className="scrollbar-thin flex-1 space-y-4 overflow-y-auto px-4 py-5 sm:px-5">
+      <div ref={scrollRef} className="scrollbar-thin flex-1 space-y-4 overflow-y-auto px-0.5 py-2">
         {resumed ? (
           <div className="mx-auto w-fit rounded-full border border-border bg-muted/40 px-3 py-1 text-xs text-muted-foreground">
             Picking up where you left off.
@@ -404,7 +413,7 @@ export function ConversationalRuntime({ form }: { form: PublicForm }) {
       </div>
 
       {showComposer && currentField?.type !== "file_upload" ? (
-        <div className="shrink-0 border-t border-border p-3">
+        <div className="shrink-0 pt-3">
           <div className="flex items-end gap-2">
             <textarea
               rows={1}
@@ -418,13 +427,13 @@ export function ConversationalRuntime({ form }: { form: PublicForm }) {
                   sendTyped()
                 }
               }}
-              className="scrollbar-thin max-h-32 min-h-[2.5rem] flex-1 resize-none rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:border-foreground/40"
+              className="scrollbar-thin max-h-32 min-h-[2.75rem] flex-1 resize-none rounded-2xl border border-input bg-background px-4 py-2.5 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:border-foreground/40"
             />
             <button
               type="button"
               onClick={sendTyped}
               disabled={composerDisabled || !input.trim()}
-              className="inline-flex h-10 shrink-0 items-center justify-center rounded-md bg-foreground px-4 text-sm font-medium text-background transition-colors hover:bg-foreground/90 disabled:opacity-50"
+              className="inline-flex h-11 shrink-0 items-center justify-center rounded-xl bg-foreground px-4 text-sm font-medium text-background transition-colors hover:bg-foreground/90 disabled:opacity-50"
             >
               Send
             </button>

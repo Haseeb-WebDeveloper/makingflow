@@ -6,7 +6,7 @@ import { submitForm } from "@/lib/actions/submissions"
 import type { PublicForm, PublicField } from "@/lib/data/public-form"
 import type { AnswerValue } from "@/lib/db/schema"
 import { isFieldVisible, NON_ANSWER_TYPES, isEmpty } from "@/lib/builder/logic"
-import { Field, Check } from "@/components/forms/field-control"
+import { Field, Check, FormBranding } from "@/components/forms/field-control"
 import { collectClientMeta, track } from "@/lib/forms/client-meta"
 
 export function FormRuntime({
@@ -232,11 +232,11 @@ export function FormRuntime({
 
   if (done) {
     return (
-      <div className="rounded-xl border border-border bg-background p-8 text-center sm:p-10">
-        <div className="mx-auto mb-4 flex size-12 items-center justify-center rounded-full bg-success/10 text-success">
-          <Check className="size-6" />
+      <div className="flex min-h-[70dvh] flex-col items-center justify-center text-center">
+        <div className="mx-auto mb-4 flex size-14 items-center justify-center rounded-full bg-success/10 text-success">
+          <Check className="size-7" />
         </div>
-        <h2 className="font-sebenta text-xl font-bold tracking-tight text-foreground">
+        <h2 className="font-sebenta text-2xl font-bold tracking-tight text-foreground">
           {form.thankYou}
         </h2>
       </div>
@@ -244,7 +244,8 @@ export function FormRuntime({
   }
 
   return (
-    <form onSubmit={onSubmit} className="rounded-xl border border-border bg-background p-6 sm:p-8" noValidate>
+    <form onSubmit={onSubmit} noValidate>
+      <FormBranding theme={form.theme} />
       <header className="mb-8">
         <h1 className="font-sebenta text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
           {form.title}

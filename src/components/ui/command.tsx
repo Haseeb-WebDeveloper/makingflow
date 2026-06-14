@@ -51,7 +51,7 @@ function CommandDialog({
       </DialogHeader>
       {/* Inherit the centered position from DialogContent; just round + de-pad. */}
       <DialogContent
-        className={cn("overflow-hidden rounded-lg! p-0 lg:rounded-lg! lg:p-0", className)}
+        className={cn("overflow-hidden rounded-lg! p-0 lg:rounded-lg! lg:p-0 max-w-lg", className)}
         showCloseButton={showCloseButton}
       >
         <Command>{children}</Command>

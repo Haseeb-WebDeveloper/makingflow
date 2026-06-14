@@ -1,10 +1,24 @@
 "use client"
 
 import { useRef, useState } from "react"
-import type { PublicField } from "@/lib/data/public-form"
+import { format, parse } from "date-fns"
+import type { PublicField, PublicTheme } from "@/lib/data/public-form"
 import type { AnswerValue } from "@/lib/db/schema"
 import { uploadToCloudinary } from "@/lib/cloudinary/upload"
 import { showToast } from "@/components/ui/toast"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Slider } from "@/components/ui/slider"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Calendar } from "@/components/ui/calendar"
+import { Rating } from "@/components/reui/rating"
+import { PhoneInput } from "@/components/reui/phone-input"
 import { cn } from "@/lib/utils"
 
 export type UploadedFile = {
@@ -35,7 +49,11 @@ export function Field({
   testMode?: boolean
 }) {
   if (field.type === "heading") {
-    return <h2 className="pt-2 font-sebenta text-lg font-semibold text-foreground">{field.label}</h2>
+    return field.config?.headingLevel === "h1" ? (
+      <h2 className="pt-2 font-sebenta text-2xl font-bold tracking-tight text-foreground">{field.label}</h2>
+    ) : (
+      <h3 className="pt-2 font-sebenta text-lg font-semibold text-foreground">{field.label}</h3>
+    )
   }
   if (field.type === "paragraph") {
     return <p className="text-sm leading-relaxed text-muted-foreground">{field.label}</p>
@@ -51,6 +69,27 @@ export function Field({
         <p className="-mt-1 text-xs text-muted-foreground">{field.description}</p>
       ) : null}
       <Control field={field} value={value} invalid={invalid} onChange={onChange} testMode={testMode} />
+    </div>
+  )
+}
+
+/** Form-level branding (banner + logo) shown above the title in both runtimes. */
+export function FormBranding({ theme }: { theme?: PublicTheme | null }) {
+  if (!theme || (!theme.logoUrl && !theme.coverImageUrl)) return null
+  return (
+    <div className="mb-6">
+      {theme.coverImageUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={theme.coverImageUrl}
+          alt=""
+          className="mb-5 h-32 w-full rounded-xl object-cover sm:h-44"
+        />
+      ) : null}
+      {theme.logoUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={theme.logoUrl} alt="" className="h-10 w-auto object-contain sm:h-12" />
+      ) : null}
     </div>
   )
 }
@@ -88,13 +127,23 @@ export function Control({
         />
       )
 
-    case "email":
     case "phone":
+      return (
+        <PhoneInput
+          value={str}
+          placeholder={field.placeholder}
+          aria-invalid={invalid || undefined}
+          onChange={(v) => onChange((v ?? "") as string)}
+          className="w-full"
+        />
+      )
+
+    case "email":
     case "url":
     case "short_text":
       return (
         <input
-          type={field.type === "email" ? "email" : field.type === "url" ? "url" : field.type === "phone" ? "tel" : "text"}
+          type={field.type === "email" ? "email" : field.type === "url" ? "url" : "text"}
           value={str}
           placeholder={field.placeholder}
           onChange={(e) => onChange(e.target.value)}
@@ -103,26 +152,24 @@ export function Control({
       )
 
     case "date":
-      return <input type="date" value={str} onChange={(e) => onChange(e.target.value)} className={cn(inputBase, border)} />
+      return <DateControl value={str} invalid={invalid} onChange={onChange} />
     case "time":
       return <input type="time" value={str} onChange={(e) => onChange(e.target.value)} className={cn(inputBase, border)} />
 
     case "dropdown":
       return (
-        <select
-          value={str}
-          onChange={(e) => onChange(e.target.value)}
-          className={cn(inputBase, border, "appearance-none")}
-        >
-          <option value="" disabled>
-            Select an option
-          </option>
-          {opts.map((o) => (
-            <option key={o.id} value={o.label}>
-              {o.label}
-            </option>
-          ))}
-        </select>
+        <Select value={str || undefined} onValueChange={(v) => onChange(v)}>
+          <SelectTrigger aria-invalid={invalid || undefined} className="h-11 w-full bg-background">
+            <SelectValue placeholder="Select an option" />
+          </SelectTrigger>
+          <SelectContent>
+            {opts.map((o) => (
+              <SelectItem key={o.id} value={o.label}>
+                {o.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       )
 
     case "yes_no":
@@ -174,20 +221,22 @@ export function Control({
           {opts.map((o) => {
             const checked = arr.includes(o.label)
             return (
-              <button
+              <label
                 key={o.id}
-                type="button"
-                onClick={() => onChange(checked ? arr.filter((v) => v !== o.label) : [...arr, o.label])}
                 className={cn(
-                  "flex w-full items-center gap-3 rounded-md border px-3 py-2.5 text-left text-sm transition-colors",
+                  "flex w-full cursor-pointer items-center gap-3 rounded-md border px-3 py-2.5 text-left text-sm transition-colors",
                   checked ? "border-foreground bg-muted" : cn(border, "hover:bg-muted"),
                 )}
               >
-                <span className={cn("grid size-4 shrink-0 place-items-center rounded-[4px] border", checked ? "border-foreground bg-foreground text-background" : "border-muted-foreground/50")}>
-                  {checked ? <Check className="size-3" /> : null}
-                </span>
+                <Checkbox
+                  checked={checked}
+                  aria-invalid={invalid || undefined}
+                  onCheckedChange={(c) =>
+                    onChange(c ? [...arr, o.label] : arr.filter((v) => v !== o.label))
+                  }
+                />
                 {o.label}
-              </button>
+              </label>
             )
           })}
         </div>
@@ -195,23 +244,49 @@ export function Control({
 
     case "rating": {
       const current = typeof value === "number" ? value : 0
+      const max = Math.max(1, field.config?.ratingMax ?? 5)
       return (
-        <div className="flex gap-1.5">
-          {Array.from({ length: 5 }, (_, i) => i + 1).map((n) => (
-            <button key={n} type="button" onClick={() => onChange(n)} aria-label={`${n} star`}>
-              <Star className={cn("size-7", n <= current ? "text-foreground" : "text-muted-foreground/40")} filled={n <= current} />
-            </button>
-          ))}
+        <Rating
+          rating={current}
+          maxRating={max}
+          size="lg"
+          editable
+          onRatingChange={(n) => onChange(n)}
+        />
+      )
+    }
+
+    case "scale": {
+      const min = field.config?.min ?? 1
+      const max = field.config?.max ?? 5
+      const step = field.config?.step ?? 1
+      const current = typeof value === "number" ? value : null
+      return (
+        <div className="space-y-3 pt-1">
+          <div className="flex items-center gap-4">
+            <Slider
+              value={[current ?? min]}
+              min={min}
+              max={max}
+              step={step}
+              onValueChange={([v]) => onChange(v)}
+              className="flex-1"
+            />
+            <span className="w-8 shrink-0 text-right text-sm font-medium text-foreground">
+              {current ?? "—"}
+            </span>
+          </div>
+          <div className="flex justify-between text-xs text-muted-foreground">
+            <span>{field.config?.minLabel || min}</span>
+            <span>{field.config?.maxLabel || max}</span>
+          </div>
         </div>
       )
     }
 
-    case "scale":
     case "nps": {
-      const from = field.type === "nps" ? 0 : 1
-      const to = field.type === "nps" ? 10 : 5
       const current = typeof value === "number" ? value : null
-      const nums = Array.from({ length: to - from + 1 }, (_, i) => from + i)
+      const nums = Array.from({ length: 11 }, (_, i) => i)
       return (
         <div className="flex flex-wrap gap-1.5">
           {nums.map((n) => (
@@ -240,6 +315,60 @@ export function Control({
         <input value={str} onChange={(e) => onChange(e.target.value)} className={cn(inputBase, border)} />
       )
   }
+}
+
+/** Single-date picker: a styled trigger opening a calendar popover. Stores the
+ *  value as an ISO `yyyy-MM-dd` string (unchanged from the old native input). */
+function DateControl({
+  value,
+  invalid,
+  onChange,
+}: {
+  value: string
+  invalid: boolean
+  onChange: (v: AnswerValue) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const parsed = value ? parse(value, "yyyy-MM-dd", new Date()) : undefined
+  const valid = parsed && !isNaN(parsed.getTime())
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger
+        type="button"
+        className={cn(
+          inputBase,
+          invalid ? "border-destructive" : "border-input",
+          "flex items-center justify-between gap-2 text-left",
+          !valid && "text-muted-foreground",
+        )}
+      >
+        <span>{valid ? format(parsed as Date, "PPP") : "Select a date"}</span>
+        <CalendarGlyph className="size-4 shrink-0 text-muted-foreground" />
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-auto">
+        <Calendar
+          mode="single"
+          selected={valid ? parsed : undefined}
+          defaultMonth={valid ? parsed : undefined}
+          onSelect={(d) => {
+            onChange(d ? format(d, "yyyy-MM-dd") : "")
+            setOpen(false)
+          }}
+          autoFocus
+        />
+      </PopoverContent>
+    </Popover>
+  )
+}
+
+function CalendarGlyph({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <rect x="4" y="5" width="16" height="15" rx="2" />
+      <path d="M4 9h16M8 3v4M16 3v4" />
+    </svg>
+  )
 }
 
 function FileControl({

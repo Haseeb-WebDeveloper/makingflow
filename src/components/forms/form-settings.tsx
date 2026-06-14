@@ -1,10 +1,22 @@
 "use client"
 
-import { useState, useTransition } from "react"
+import {
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+  useTransition,
+} from "react"
 import { Switch } from "@/components/ui/switch"
 import { Input } from "@/components/ui/input"
+import { Button } from "@/components/ui/button"
 import { updateFormSettings, type FormSettingsPatch } from "@/lib/actions/forms"
 import type { FormSettingsData } from "@/lib/data/forms"
+import { uploadToCloudinary } from "@/lib/cloudinary/upload"
+import { showToast } from "@/components/ui/toast"
+import { cn } from "@/lib/utils"
 
 function SettingRow({
   title,
@@ -33,6 +45,93 @@ function SettingRow({
   )
 }
 
+/** Cloudinary-backed image picker for the Branding section (logo / banner). */
+function ImageUpload({
+  label,
+  description,
+  value,
+  onChange,
+  variant,
+}: {
+  label: string
+  description: string
+  value: string | null
+  onChange: (url: string | null) => void
+  variant: "logo" | "banner"
+}) {
+  const inputRef = useRef<HTMLInputElement>(null)
+  const [uploading, setUploading] = useState(false)
+
+  async function pick(file?: File | null) {
+    if (!file) return
+    if (!file.type.startsWith("image/")) {
+      showToast("Please choose an image file.", { type: "error" })
+      return
+    }
+    if (file.size > 8 * 1024 * 1024) {
+      showToast("That image is too large (max 8MB).", { type: "error" })
+      return
+    }
+    setUploading(true)
+    try {
+      const r = await uploadToCloudinary(file, "formAssets")
+      onChange(r.secureUrl)
+    } catch {
+      showToast("Couldn't upload that image. Please try again.", { type: "error" })
+    } finally {
+      setUploading(false)
+      if (inputRef.current) inputRef.current.value = ""
+    }
+  }
+
+  return (
+    <SettingRow
+      title={label}
+      description={description}
+      control={
+        value ? (
+          <button
+            type="button"
+            onClick={() => onChange(null)}
+            className="text-sm font-medium text-destructive hover:underline"
+          >
+            Remove
+          </button>
+        ) : null
+      }
+    >
+      <div className="flex items-center gap-3">
+        {value ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={value}
+            alt=""
+            className={cn(
+              "rounded-md border border-border bg-background",
+              variant === "banner" ? "h-16 w-32 object-cover" : "size-12 object-contain p-1",
+            )}
+          />
+        ) : null}
+        <label
+          className={cn(
+            "inline-flex h-9 cursor-pointer items-center rounded-md border border-border px-3 text-sm font-medium text-foreground transition-colors hover:bg-muted",
+            uploading && "pointer-events-none opacity-70",
+          )}
+        >
+          {uploading ? "Uploading…" : value ? "Replace" : "Upload"}
+          <input
+            ref={inputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => void pick(e.target.files?.[0])}
+          />
+        </label>
+      </div>
+    </SettingRow>
+  )
+}
+
 function toLocalInput(iso: string | null): string {
   if (!iso) return ""
   const d = new Date(iso)
@@ -40,25 +139,89 @@ function toLocalInput(iso: string | null): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
-export function FormSettings({
-  formId,
-  initial,
-}: {
-  formId: string
-  initial: FormSettingsData
-}) {
+/**
+ * Compute the patch to persist by diffing the working state against the last
+ * saved baseline — so we only write what actually changed. "Close form" maps to
+ * the server's published⇄closed toggle (never touches a draft).
+ */
+function diffPatch(base: FormSettingsData, next: FormSettingsData): FormSettingsPatch {
+  const p: FormSettingsPatch = {}
+  if (next.status !== base.status && (next.status === "published" || next.status === "closed")) {
+    p.closed = next.status === "closed"
+  }
+  if (next.submissionLimit !== base.submissionLimit) p.submissionLimit = next.submissionLimit
+  if (next.closesAt !== base.closesAt) p.closesAt = next.closesAt
+  if (next.redirectUrl !== base.redirectUrl) p.redirectUrl = next.redirectUrl
+  if (next.oneResponsePerPerson !== base.oneResponsePerPerson)
+    p.oneResponsePerPerson = next.oneResponsePerPerson
+  if (next.showProgressBar !== base.showProgressBar) p.showProgressBar = next.showProgressBar
+  if (next.submitButtonLabel !== base.submitButtonLabel) p.submitButtonLabel = next.submitButtonLabel
+  if (next.thankYouMessage !== base.thankYouMessage) p.thankYouMessage = next.thankYouMessage
+  if (next.renderMode !== base.renderMode) p.renderMode = next.renderMode
+  if (next.persona !== base.persona) p.persona = next.persona
+  if (next.followUpsEnabled !== base.followUpsEnabled) p.followUpsEnabled = next.followUpsEnabled
+  if (next.clarifyVagueAnswers !== base.clarifyVagueAnswers)
+    p.clarifyVagueAnswers = next.clarifyVagueAnswers
+  if (next.logoUrl !== base.logoUrl) p.logoUrl = next.logoUrl
+  if (next.coverImageUrl !== base.coverImageUrl) p.coverImageUrl = next.coverImageUrl
+  return p
+}
+
+export type FormSettingsHandle = {
+  /** Persist pending changes. Resolves true on success (or when already clean). */
+  save: () => Promise<boolean>
+}
+
+/**
+ * Form response-collection settings. Changes are buffered in local state and
+ * committed explicitly — never auto-saved — so the user is always in control of
+ * when settings go live.
+ *
+ * - Standalone (Settings tab): renders its own sticky Save / Discard bar.
+ * - Embedded (publish dialog): pass `embedded` so the dialog footer owns the
+ *   Save button; it drives saving through the imperative `ref` handle and reads
+ *   the dirty/saving flags via the callbacks.
+ */
+export const FormSettings = forwardRef<
+  FormSettingsHandle,
+  {
+    formId: string
+    initial: FormSettingsData
+    embedded?: boolean
+    onDirtyChange?: (dirty: boolean) => void
+    onSavingChange?: (saving: boolean) => void
+  }
+>(function FormSettings({ formId, initial, embedded = false, onDirtyChange, onSavingChange }, ref) {
+  const [baseline, setBaseline] = useState(initial)
   const [state, setState] = useState(initial)
   const [saving, startSaving] = useTransition()
-  const [savedAt, setSavedAt] = useState(false)
 
-  const save = (patch: FormSettingsPatch, optimistic: Partial<FormSettingsData>) => {
-    setState((s) => ({ ...s, ...optimistic }))
-    startSaving(async () => {
-      await updateFormSettings(formId, patch)
-      setSavedAt(true)
-      setTimeout(() => setSavedAt(false), 1500)
-    })
-  }
+  const patch = useMemo(() => diffPatch(baseline, state), [baseline, state])
+  const dirty = Object.keys(patch).length > 0
+
+  useEffect(() => onDirtyChange?.(dirty), [dirty, onDirtyChange])
+  useEffect(() => onSavingChange?.(saving), [saving, onSavingChange])
+
+  const save = useMemo(
+    () => (): Promise<boolean> =>
+      new Promise((resolve) => {
+        if (!dirty) return resolve(true)
+        startSaving(async () => {
+          const res = await updateFormSettings(formId, patch)
+          if (res.success) {
+            setBaseline(state)
+            showToast("Settings saved", { type: "success" })
+            resolve(true)
+          } else {
+            showToast(res.error ?? "Couldn't save settings", { type: "error" })
+            resolve(false)
+          }
+        })
+      }),
+    [dirty, patch, state, formId],
+  )
+
+  useImperativeHandle(ref, () => ({ save }), [save])
 
   const limitOn = state.submissionLimit != null
   const closeOn = state.closesAt != null
@@ -67,12 +230,6 @@ export function FormSettings({
 
   return (
     <div className="max-w-2xl">
-      <div className="mb-4 flex h-5 items-center justify-end">
-        <span className="text-xs text-muted-foreground">
-          {saving ? "Saving…" : savedAt ? "Saved" : ""}
-        </span>
-      </div>
-
       <h2 className="mb-1 text-sm font-semibold text-foreground">Response experience</h2>
       <div className="rounded-lg border border-border px-4">
         <SettingRow
@@ -85,7 +242,13 @@ export function FormSettings({
               <button
                 key={mode}
                 type="button"
-                onClick={() => save({ renderMode: mode }, { renderMode: mode, aiEnabled: mode === "conversational" ? true : state.aiEnabled })}
+                onClick={() =>
+                  setState((s) => ({
+                    ...s,
+                    renderMode: mode,
+                    aiEnabled: mode === "conversational" ? true : s.aiEnabled,
+                  }))
+                }
                 className={
                   "h-8 rounded px-3 text-sm font-medium transition-colors " +
                   (state.renderMode === mode
@@ -111,7 +274,6 @@ export function FormSettings({
                 placeholder="Warm, concise, and professional."
                 value={state.persona}
                 onChange={(e) => setState((s) => ({ ...s, persona: e.target.value }))}
-                onBlur={(e) => save({ persona: e.target.value }, { persona: e.target.value })}
                 className="scrollbar-thin w-full resize-none rounded-md border border-input bg-input/30 px-3 py-2 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:border-foreground/40"
               />
             </SettingRow>
@@ -122,7 +284,7 @@ export function FormSettings({
               control={
                 <Switch
                   checked={state.followUpsEnabled}
-                  onCheckedChange={(v) => save({ followUpsEnabled: v }, { followUpsEnabled: v })}
+                  onCheckedChange={(v) => setState((s) => ({ ...s, followUpsEnabled: v }))}
                 />
               }
             />
@@ -133,14 +295,30 @@ export function FormSettings({
               control={
                 <Switch
                   checked={state.clarifyVagueAnswers}
-                  onCheckedChange={(v) =>
-                    save({ clarifyVagueAnswers: v }, { clarifyVagueAnswers: v })
-                  }
+                  onCheckedChange={(v) => setState((s) => ({ ...s, clarifyVagueAnswers: v }))}
                 />
               }
             />
           </>
         ) : null}
+      </div>
+
+      <h2 className="mb-1 mt-8 text-sm font-semibold text-foreground">Branding</h2>
+      <div className="rounded-lg border border-border px-4">
+        <ImageUpload
+          label="Logo"
+          description="A small logo shown above the form title."
+          value={state.logoUrl}
+          onChange={(url) => setState((s) => ({ ...s, logoUrl: url }))}
+          variant="logo"
+        />
+        <ImageUpload
+          label="Banner"
+          description="A wide cover image shown at the very top of the form."
+          value={state.coverImageUrl}
+          onChange={(url) => setState((s) => ({ ...s, coverImageUrl: url }))}
+          variant="banner"
+        />
       </div>
 
       <h2 className="mb-1 mt-8 text-sm font-semibold text-foreground">Access</h2>
@@ -157,7 +335,7 @@ export function FormSettings({
               checked={state.status === "closed"}
               disabled={isDraft}
               onCheckedChange={(closed) =>
-                save({ closed }, { status: closed ? "closed" : "published" })
+                setState((s) => ({ ...s, status: closed ? "closed" : "published" }))
               }
             />
           }
@@ -170,10 +348,10 @@ export function FormSettings({
             <Switch
               checked={limitOn}
               onCheckedChange={(on) =>
-                save(
-                  { submissionLimit: on ? state.submissionLimit ?? 100 : null },
-                  { submissionLimit: on ? state.submissionLimit ?? 100 : null },
-                )
+                setState((s) => ({
+                  ...s,
+                  submissionLimit: on ? s.submissionLimit ?? 100 : null,
+                }))
               }
             />
           }
@@ -188,7 +366,7 @@ export function FormSettings({
               }
               onBlur={(e) => {
                 const n = Math.max(1, Number(e.target.value) || 1)
-                save({ submissionLimit: n }, { submissionLimit: n })
+                setState((s) => ({ ...s, submissionLimit: n }))
               }}
               className="h-9 w-40"
             />
@@ -203,7 +381,7 @@ export function FormSettings({
               checked={closeOn}
               onCheckedChange={(on) => {
                 const iso = on ? new Date(Date.now() + 7 * 864e5).toISOString() : null
-                save({ closesAt: iso }, { closesAt: iso })
+                setState((s) => ({ ...s, closesAt: iso }))
               }}
             />
           }
@@ -214,7 +392,7 @@ export function FormSettings({
               value={toLocalInput(state.closesAt)}
               onChange={(e) => {
                 const iso = e.target.value ? new Date(e.target.value).toISOString() : null
-                save({ closesAt: iso }, { closesAt: iso })
+                setState((s) => ({ ...s, closesAt: iso }))
               }}
               className="h-9 w-60"
             />
@@ -227,9 +405,7 @@ export function FormSettings({
           control={
             <Switch
               checked={state.oneResponsePerPerson}
-              onCheckedChange={(v) =>
-                save({ oneResponsePerPerson: v }, { oneResponsePerPerson: v })
-              }
+              onCheckedChange={(v) => setState((s) => ({ ...s, oneResponsePerPerson: v }))}
             />
           }
         />
@@ -244,10 +420,7 @@ export function FormSettings({
             <Switch
               checked={redirectOn}
               onCheckedChange={(on) =>
-                save(
-                  { redirectUrl: on ? state.redirectUrl ?? "" : null },
-                  { redirectUrl: on ? state.redirectUrl ?? "" : null },
-                )
+                setState((s) => ({ ...s, redirectUrl: on ? s.redirectUrl ?? "" : null }))
               }
             />
           }
@@ -258,7 +431,6 @@ export function FormSettings({
               placeholder="https://example.com/thank-you"
               value={state.redirectUrl ?? ""}
               onChange={(e) => setState((s) => ({ ...s, redirectUrl: e.target.value }))}
-              onBlur={(e) => save({ redirectUrl: e.target.value }, { redirectUrl: e.target.value })}
               className="h-9 w-full"
             />
           ) : null}
@@ -270,7 +442,7 @@ export function FormSettings({
           control={
             <Switch
               checked={state.showProgressBar}
-              onCheckedChange={(v) => save({ showProgressBar: v }, { showProgressBar: v })}
+              onCheckedChange={(v) => setState((s) => ({ ...s, showProgressBar: v }))}
             />
           }
         />
@@ -284,9 +456,6 @@ export function FormSettings({
             placeholder="Submit"
             value={state.submitButtonLabel}
             onChange={(e) => setState((s) => ({ ...s, submitButtonLabel: e.target.value }))}
-            onBlur={(e) =>
-              save({ submitButtonLabel: e.target.value }, { submitButtonLabel: e.target.value })
-            }
             className="h-9 w-60"
           />
         </SettingRow>
@@ -305,13 +474,28 @@ export function FormSettings({
             placeholder="Thanks! Your response has been recorded."
             value={state.thankYouMessage}
             onChange={(e) => setState((s) => ({ ...s, thankYouMessage: e.target.value }))}
-            onBlur={(e) =>
-              save({ thankYouMessage: e.target.value }, { thankYouMessage: e.target.value })
-            }
             className="scrollbar-thin w-full resize-none rounded-md border border-input bg-input/30 px-3 py-2 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:border-foreground/40"
           />
         </SettingRow>
       </div>
+
+      {/* Standalone save bar — the embedded (dialog) variant lets the footer drive saving. */}
+      {!embedded && dirty ? (
+        <div className="sticky bottom-4 z-10 mt-6 flex items-center gap-3 rounded-lg border border-border bg-background/95 px-4 py-3 shadow-lg backdrop-blur supports-backdrop-filter:bg-background/80">
+          <span className="mr-auto text-sm text-muted-foreground">You have unsaved changes</span>
+          <Button
+            variant="outline"
+            onClick={() => setState(baseline)}
+            disabled={saving}
+            className="h-9 px-3"
+          >
+            Discard
+          </Button>
+          <Button onClick={() => void save()} disabled={saving} className="h-9 px-3.5">
+            {saving ? "Saving…" : "Save changes"}
+          </Button>
+        </div>
+      ) : null}
     </div>
   )
-}
+})
