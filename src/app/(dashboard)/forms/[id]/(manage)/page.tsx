@@ -5,6 +5,7 @@ import { getFormInsights } from "@/lib/data/form-insights"
 import { StatCard } from "@/components/dashboard/stat-card"
 import { CountryLeaderboard } from "@/components/dashboard/country-leaderboard"
 import { BreakdownPanel } from "@/components/dashboard/breakdown-panel"
+import { DropOffCard } from "@/components/dashboard/drop-off-card"
 import { FieldInsightCard } from "@/components/dashboard/field-insight-card"
 
 // Code-split the recharts charts so they don't weigh down the insights tab's
@@ -33,7 +34,7 @@ export default async function InsightsPage({
   const data = await getFormInsights(id)
   if (!data) notFound()
 
-  const { totals, fields } = data
+  const { totals, fields, dropOff } = data
   const hasResponses = totals.submissions > 0
 
   return (
@@ -54,7 +55,12 @@ export default async function InsightsPage({
         />
       </div>
 
-      <SubmissionsAreaChart data={data.series} />
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
+        <div className="lg:col-span-2">
+          <SubmissionsAreaChart data={data.series} />
+        </div>
+        <DevicesDonut items={data.breakdowns.devices} />
+      </div>
 
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
         <BreakdownPanel
@@ -63,7 +69,7 @@ export default async function InsightsPage({
           empty="No source data yet"
           max={6}
         />
-        <DevicesDonut items={data.breakdowns.devices} />
+        <DropOffCard total={dropOff.total} fields={dropOff.fields} />
         <CountryLeaderboard items={data.breakdowns.countries} />
       </div>
 

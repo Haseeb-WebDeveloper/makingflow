@@ -39,6 +39,16 @@ export type FieldInsight = {
   samples?: string[]
 }
 
+/** One question's share of abandonment: how many people whose LAST answered
+ *  question (on an unfinished draft) was this one — i.e. they stopped here. */
+export type DropOffField = {
+  id: string
+  label: string
+  type: string
+  count: number // respondents who stopped after answering this question
+  percent: number // count ÷ total abandoned
+}
+
 export type FormInsights = {
   totals: {
     views: number
@@ -49,6 +59,9 @@ export type FormInsights = {
   }
   series: { day: string; count: number }[]
   breakdowns: { devices: Bucket[]; countries: Bucket[]; sources: Bucket[] }
+  /** Where respondents abandon, derived from unfinished (partial) drafts.
+   *  `total` is the number of still-unfinished drafts. */
+  dropOff: { total: number; fields: DropOffField[] }
   fields: FieldInsight[]
 }
 
@@ -68,8 +81,17 @@ export async function getFormInsights(formId: string): Promise<FormInsights | nu
   const completed = and(eq(submissions.formId, formId), eq(submissions.status, "completed"))
   const metaWhere = and(completed, sql`${submissions.meta} is not null`)
 
-  const [funnel, subCount, series, devices, countries, sources, fieldRows, answerRows] =
-    await Promise.all([
+  const [
+    funnel,
+    subCount,
+    series,
+    devices,
+    countries,
+    sources,
+    fieldRows,
+    answerRows,
+    partialAnswerRows,
+  ] = await Promise.all([
     db
       .select({
         views: sql<number>`count(*) filter (where ${formEvents.type} = 'view')::int`,
@@ -134,6 +156,15 @@ export async function getFormInsights(formId: string): Promise<FormInsights | nu
       .innerJoin(submissions, eq(answers.submissionId, submissions.id))
       .where(completed)
       .orderBy(desc(submissions.createdAt)), // recent-first → samples are recent
+
+    // Answered fields on UNFINISHED (partial) drafts — the raw material for
+    // drop-off. Partials only ever store non-empty answers, so each row here is
+    // a question the respondent really reached before abandoning.
+    db
+      .select({ submissionId: answers.submissionId, fieldId: answers.fieldId })
+      .from(answers)
+      .innerJoin(submissions, eq(answers.submissionId, submissions.id))
+      .where(and(eq(submissions.formId, formId), eq(submissions.status, "partial"))),
   ])
 
   const submissionsCount = subCount[0]?.n ?? 0
@@ -167,6 +198,45 @@ export async function getFormInsights(formId: string): Promise<FormInsights | nu
     )
   }
 
+  // Drop-off: for each unfinished draft, find the furthest question it answered
+  // (highest position among answerable fields) — that's where the respondent
+  // stopped. Tally how many stopped at each question; percent is of all drafts.
+  const posById = new Map(answerable.map((r) => [r.id, r.position]))
+  const answeredBySub = new Map<string, string[]>()
+  for (const r of partialAnswerRows) {
+    if (!r.fieldId || !posById.has(r.fieldId)) continue
+    const arr = answeredBySub.get(r.submissionId)
+    if (arr) arr.push(r.fieldId)
+    else answeredBySub.set(r.submissionId, [r.fieldId])
+  }
+  const stoppedAt = new Map<string, number>()
+  let abandoned = 0
+  for (const fieldIds of answeredBySub.values()) {
+    let lastId: string | null = null
+    let lastPos = -Infinity
+    for (const fid of fieldIds) {
+      const p = posById.get(fid)!
+      if (p > lastPos) {
+        lastPos = p
+        lastId = fid
+      }
+    }
+    if (lastId) {
+      stoppedAt.set(lastId, (stoppedAt.get(lastId) ?? 0) + 1)
+      abandoned++
+    }
+  }
+  const dropOffFields: DropOffField[] = answerable.map((f) => {
+    const count = stoppedAt.get(f.id) ?? 0
+    return {
+      id: f.id,
+      label: f.label || "Untitled question",
+      type: f.type,
+      count,
+      percent: abandoned > 0 ? count / abandoned : 0,
+    }
+  })
+
   return {
     totals: {
       views,
@@ -177,6 +247,7 @@ export async function getFormInsights(formId: string): Promise<FormInsights | nu
     },
     series: filledSeries,
     breakdowns: { devices, countries, sources: filledSources },
+    dropOff: { total: abandoned, fields: dropOffFields },
     fields,
   }
 }
