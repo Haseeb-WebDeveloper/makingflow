@@ -24,6 +24,10 @@ export default async function EditFormPage({
 
   return (
     <FormBuilder
+      // Remount when switching between forms — under cacheComponents (Activity)
+      // the same [id] route instance is reused, which would otherwise keep the
+      // previous form's chat/draft/save state.
+      key={data.id}
       initialForm={data.form}
       initialFormId={data.id}
       initialStatus={data.status}

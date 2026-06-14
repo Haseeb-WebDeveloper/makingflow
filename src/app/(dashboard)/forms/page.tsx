@@ -1,13 +1,21 @@
 import type { Metadata } from "next"
+import dynamic from "next/dynamic"
 import Link from "next/link"
 import { getFormsDashboard } from "@/lib/data/analytics"
 import { PageContainer, PageHeader, EmptyState } from "@/components/dashboard/page-shell"
 import { StatCard, type Trend } from "@/components/dashboard/stat-card"
-import { SubmissionsAreaChart } from "@/components/dashboard/submissions-area-chart"
-import { DevicesDonut } from "@/components/dashboard/devices-donut"
 import { CountryLeaderboard } from "@/components/dashboard/country-leaderboard"
 import { BreakdownPanel } from "@/components/dashboard/breakdown-panel"
 import { FormsOverviewTable } from "@/components/dashboard/forms-overview-table"
+
+// Code-split the recharts-backed charts (~90KB) into their own chunk — they sit
+// below the stat cards, so deferring them speeds up the dashboard's first paint.
+const SubmissionsAreaChart = dynamic(() =>
+  import("@/components/dashboard/submissions-area-chart").then((m) => m.SubmissionsAreaChart),
+)
+const DevicesDonut = dynamic(() =>
+  import("@/components/dashboard/devices-donut").then((m) => m.DevicesDonut),
+)
 
 export const metadata: Metadata = { title: "Home · MakingFlow" }
 

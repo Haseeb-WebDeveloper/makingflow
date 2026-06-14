@@ -52,27 +52,26 @@ export async function getFormForEdit(id: string): Promise<EditableForm | null> {
   const workspace = await getDefaultWorkspace()
   if (!workspace) return null
 
-  const [row] = await db
-    .select()
-    .from(forms)
-    .where(
-      and(
-        eq(forms.id, id),
-        eq(forms.workspaceId, workspace.id),
-        isNull(forms.deletedAt),
-      ),
-    )
-    .limit(1)
-  if (!row) return null
-
-  const fields = await db
-    .select()
-    .from(formFields)
-    .where(and(eq(formFields.formId, id), isNull(formFields.deletedAt)))
-    .orderBy(formFields.position)
+  // Form row (with its custom domain folded in via leftJoin) and its fields are
+  // independent — one round-trip instead of form → fields → domain in series.
+  const [formRows, fields] = await Promise.all([
+    db
+      .select({ form: forms, domain: customDomains.domain })
+      .from(forms)
+      .leftJoin(customDomains, eq(customDomains.id, forms.customDomainId))
+      .where(and(eq(forms.id, id), eq(forms.workspaceId, workspace.id), isNull(forms.deletedAt)))
+      .limit(1),
+    db
+      .select()
+      .from(formFields)
+      .where(and(eq(formFields.formId, id), isNull(formFields.deletedAt)))
+      .orderBy(formFields.position),
+  ])
+  const row = formRows[0]
+  if (!row) return null // not owned — discard the parallel fields read
 
   const form: EditorForm = {
-    title: row.title,
+    title: row.form.title,
     fields: fields.map((f) => ({
       id: f.id,
       type: f.type as AiFieldType,
@@ -86,24 +85,14 @@ export async function getFormForEdit(id: string): Promise<EditableForm | null> {
     })),
   }
 
-  let domain: string | null = null
-  if (row.customDomainId) {
-    const [d] = await db
-      .select({ domain: customDomains.domain })
-      .from(customDomains)
-      .where(eq(customDomains.id, row.customDomainId))
-      .limit(1)
-    domain = d?.domain ?? null
-  }
-
   return {
-    id: row.id,
+    id: row.form.id,
     form,
-    status: row.status,
-    publicId: row.publicId,
-    customDomainId: row.customDomainId,
-    slug: row.slug,
-    domain,
+    status: row.form.status,
+    publicId: row.form.publicId,
+    customDomainId: row.form.customDomainId,
+    slug: row.form.slug,
+    domain: row.domain ?? null,
   }
 }
 

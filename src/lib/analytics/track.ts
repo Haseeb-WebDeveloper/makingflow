@@ -26,6 +26,26 @@ export async function getVisitorKey(): Promise<string | null> {
   }
 }
 
+/**
+ * Stable (non-rotating) salted hash of IP + user-agent — a coarse device
+ * identity for one-response-per-person enforcement. Unlike the daily visitor key,
+ * this does NOT include the date, so it persists across days. Best-effort and not
+ * PII (hashed); shared IPs/NAT are a known limitation — proper dedup keys on a
+ * collected email when one exists.
+ */
+export async function getRespondentKey(): Promise<string | null> {
+  try {
+    const h = await headers()
+    const ip =
+      h.get("x-forwarded-for")?.split(",")[0]?.trim() || h.get("x-real-ip") || ""
+    const ua = h.get("user-agent") || ""
+    if (!ip && !ua) return null
+    return createHash("sha256").update(`${ip}|${ua}|${SALT}|respondent`).digest("hex").slice(0, 32)
+  } catch {
+    return null
+  }
+}
+
 type EventType = "view" | "start" | "complete"
 
 /** Append a funnel event. Best-effort: analytics must never break a submission. */

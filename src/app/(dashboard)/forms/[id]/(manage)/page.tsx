@@ -1,12 +1,20 @@
 import type { Metadata } from "next"
+import dynamic from "next/dynamic"
 import { notFound } from "next/navigation"
 import { getFormInsights } from "@/lib/data/form-insights"
 import { StatCard } from "@/components/dashboard/stat-card"
-import { SubmissionsAreaChart } from "@/components/dashboard/submissions-area-chart"
-import { DevicesDonut } from "@/components/dashboard/devices-donut"
 import { CountryLeaderboard } from "@/components/dashboard/country-leaderboard"
 import { BreakdownPanel } from "@/components/dashboard/breakdown-panel"
 import { FieldInsightCard } from "@/components/dashboard/field-insight-card"
+
+// Code-split the recharts charts so they don't weigh down the insights tab's
+// initial JS (they render below the stat cards).
+const SubmissionsAreaChart = dynamic(() =>
+  import("@/components/dashboard/submissions-area-chart").then((m) => m.SubmissionsAreaChart),
+)
+const DevicesDonut = dynamic(() =>
+  import("@/components/dashboard/devices-donut").then((m) => m.DevicesDonut),
+)
 
 export const metadata: Metadata = { title: "Insights · MakingFlow" }
 

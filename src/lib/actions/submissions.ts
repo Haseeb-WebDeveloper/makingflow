@@ -12,12 +12,80 @@ import {
   type AnswerValue,
   type SubmissionMeta,
 } from "@/lib/db/schema"
-import { getVisitorKey, logFormEvent } from "@/lib/analytics/track"
+import { getVisitorKey, getRespondentKey, logFormEvent } from "@/lib/analytics/track"
 import { getServerSubmissionMeta } from "@/lib/analytics/request-meta"
 import { syncSubmissionToSheets } from "@/lib/integrations/sync"
 import { deliverWebhooks } from "@/lib/integrations/webhook"
 import { sendSubmissionEmails } from "@/lib/integrations/email"
 import { NON_ANSWER_TYPES, isEmpty } from "@/lib/builder/logic"
+
+// Server-side submit guards (the client validates too, but a crafted POST skips
+// it — never store unbounded or malformed data).
+const MAX_ANSWERS = 1000
+const MAX_VALUE_LEN = 50_000
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+const URL_RE = /^https?:\/\/\S+\.\S+/i
+
+type FieldRow = typeof formFields.$inferSelect
+
+function valueLength(v: AnswerValue): number {
+  if (typeof v === "string") return v.length
+  if (Array.isArray(v)) return v.reduce((n, x) => n + String(x).length, 0)
+  return String(v ?? "").length
+}
+
+/**
+ * Validate one answer against its field type. Returns an error string or null.
+ *
+ * `strict` (classic mode only) additionally enforces format/option membership —
+ * safe there because the classic client already validates with the same rules,
+ * so it never false-rejects a legit submit. Conversational answers are AI-coerced
+ * (and may keep raw free text for unmatched choices), so they get size + type
+ * sanity only.
+ */
+function validateAnswer(field: FieldRow, value: AnswerValue, strict: boolean): string | null {
+  const label = field.label || "a field"
+  if (valueLength(value) > MAX_VALUE_LEN) return `Your answer for "${label}" is too long.`
+
+  // Type sanity — always enforced (a multi-select must be an array, etc.).
+  if (field.type === "multi_select" || field.type === "checkboxes") {
+    if (!Array.isArray(value)) return `Invalid answer for "${label}".`
+  }
+  if (!strict) return null
+
+  const opts = (field.options ?? []).map((o) => o.label)
+  switch (field.type) {
+    case "email":
+      if (typeof value !== "string" || !EMAIL_RE.test(value))
+        return `Enter a valid email for "${label}".`
+      break
+    case "url":
+      if (typeof value !== "string" || !URL_RE.test(value))
+        return `Enter a valid URL for "${label}".`
+      break
+    case "yes_no":
+      if (value !== "Yes" && value !== "No") return `Invalid answer for "${label}".`
+      break
+    case "multiple_choice":
+    case "dropdown":
+      if (typeof value !== "string" || (opts.length > 0 && !opts.includes(value)))
+        return `Invalid option for "${label}".`
+      break
+    case "multi_select":
+    case "checkboxes":
+      if (Array.isArray(value) && opts.length > 0 && value.some((v) => !opts.includes(String(v))))
+        return `Invalid option for "${label}".`
+      break
+    case "nps":
+    case "rating":
+    case "scale": {
+      const n = Number(value)
+      if (!Number.isFinite(n)) return `Invalid value for "${label}".`
+      break
+    }
+  }
+  return null
+}
 
 type SubmitResult = { success: true } | { success: false; error: string }
 
@@ -82,6 +150,10 @@ export async function submitForm(input: {
   if (form.opensAt && form.opensAt > now) return { success: false, error: "This form isn't open yet." }
   if (form.closesAt && form.closesAt < now) return { success: false, error: "This form is closed." }
 
+  if (!Array.isArray(input.answers) || input.answers.length > MAX_ANSWERS) {
+    return { success: false, error: "Couldn't submit your response. Please try again." }
+  }
+
   const fields = await db
     .select()
     .from(formFields)
@@ -104,6 +176,20 @@ export async function submitForm(input: {
     (a) => !a.fieldId && a.isAiFollowUp && !isEmpty(a.value) && !!a.question?.trim(),
   )
 
+  // Re-validate every accepted answer against its field (format, option
+  // membership, size) — the client checks these, but a crafted POST doesn't.
+  // Strict format/option checks apply to classic mode only (see validateAnswer).
+  const strict = form.renderMode === "classic"
+  for (const a of accepted) {
+    const err = validateAnswer(fieldById.get(a.fieldId)!, a.value, strict)
+    if (err) return { success: false, error: err }
+  }
+  for (const a of followUps) {
+    if (valueLength(a.value) > MAX_VALUE_LEN) {
+      return { success: false, error: "One of your answers is too long." }
+    }
+  }
+
   // Enforce required.
   for (const f of fields) {
     if (f.required && !NON_ANSWER_TYPES.has(f.type) && !providedIds.has(f.id)) {
@@ -117,6 +203,29 @@ export async function submitForm(input: {
       .from(submissions)
       .where(and(eq(submissions.formId, form.id), eq(submissions.status, "completed")))
     if (count >= form.submissionLimit) return { success: false, error: "This form is closed." }
+  }
+
+  // One response per person: block a respondent (coarse device identity) who
+  // already has a completed response. Best-effort — stored on the row so it's
+  // enforced and visible going forward.
+  let respondentKey: string | null = null
+  if (form.oneResponsePerPerson) {
+    respondentKey = await getRespondentKey()
+    if (respondentKey) {
+      const [{ count }] = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(submissions)
+        .where(
+          and(
+            eq(submissions.formId, form.id),
+            eq(submissions.status, "completed"),
+            eq(submissions.respondentKey, respondentKey),
+          ),
+        )
+      if (count > 0) {
+        return { success: false, error: "You've already responded to this form." }
+      }
+    }
   }
 
   // Respondent context: device/country/UA from headers + referrer/UTM from the client.
@@ -142,6 +251,7 @@ export async function submitForm(input: {
             meta: metaValue,
             mode: form.renderMode,
             language: input.language ?? null,
+            respondentKey,
           })
           .where(
             and(
@@ -168,6 +278,7 @@ export async function submitForm(input: {
             language: input.language ?? null,
             completedAt: new Date(),
             meta: metaValue,
+            respondentKey,
           })
           .returning({ id: submissions.id })
         submissionId = sub.id
