@@ -77,7 +77,7 @@ export function FormsOverviewTable({ forms }: { forms: FormOverviewRow[] }) {
                 <Link
                   href={`/forms/${f.id}`}
                   aria-label={`Open ${f.title}`}
-                  className="inline-grid size-8 place-items-center rounded-md text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground group-hover:opacity-100"
+                  className="inline-grid size-8 place-items-center rounded-md text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100"
                 >
                   <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                     <path d="M9 18l6-6-6-6" />

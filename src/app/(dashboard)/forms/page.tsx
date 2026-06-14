@@ -51,7 +51,7 @@ export default async function FormsPage() {
               href="/forms/new"
               className="inline-flex h-10 items-center rounded-md bg-foreground px-4 text-sm font-medium text-background transition-colors hover:bg-foreground/90"
             >
-              Build with AI
+              New form
             </Link>
           }
         />

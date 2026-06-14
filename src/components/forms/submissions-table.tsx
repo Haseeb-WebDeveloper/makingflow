@@ -43,11 +43,21 @@ export function SubmissionsTable({
           </TableRow>
         </TableHeader>
         <TableBody>
-          {rows.map((r) => (
+          {rows.map((r) => {
+            const toggle = () => setExpanded(expanded === r.id ? null : r.id)
+            return (
             <TableRow
               key={r.id}
-              onClick={() => setExpanded(expanded === r.id ? null : r.id)}
-              className="cursor-pointer align-top"
+              tabIndex={0}
+              aria-expanded={expanded === r.id}
+              onClick={toggle}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault()
+                  toggle()
+                }
+              }}
+              className="cursor-pointer align-top outline-none focus-visible:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
             >
               <TableCell className="whitespace-nowrap text-muted-foreground">
                 {formatDate(r.submittedAt)}
@@ -61,7 +71,8 @@ export function SubmissionsTable({
                 </TableCell>
               ))}
             </TableRow>
-          ))}
+            )
+          })}
         </TableBody>
       </Table>
     </div>
