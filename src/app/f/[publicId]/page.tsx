@@ -10,7 +10,27 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { publicId } = await params;
   const res = await getPublicForm(publicId);
-  return { title: res.state === "ok" ? res.form.title : "Form · MakingFlow" };
+  // Forms are shared by link to a specific audience — keep them out of search.
+  const robots = { index: false } as const;
+  if (res.state !== "ok") return { title: "Form · MakingFlow", robots };
+
+  const title = res.form.title || "Untitled form";
+  const description = `Fill out “${title}” — it only takes a minute.`;
+  const url = `/f/${publicId}`;
+  return {
+    title,
+    description,
+    robots,
+    alternates: { canonical: url },
+    openGraph: {
+      type: "website",
+      title,
+      description,
+      url,
+      images: [{ url: "/og.png", width: 1080, height: 607 }],
+    },
+    twitter: { card: "summary_large_image", title, description, images: ["/og.png"] },
+  };
 }
 
 export default async function PublicFormPage({

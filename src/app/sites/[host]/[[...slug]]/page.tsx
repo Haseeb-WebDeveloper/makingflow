@@ -14,9 +14,30 @@ type Params = Promise<{ host: string; slug?: string[] }>
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
   const { host, slug } = await params
   const formSlug = slug?.[0]
-  if (!formSlug) return { title: "Forms" }
+  const robots = { index: false } as const
+  if (!formSlug) return { title: "Forms", robots }
+
   const res = await getPublicFormByDomain(host, formSlug)
-  return { title: res.state === "ok" ? res.form.title : "Form" }
+  if (res.state !== "ok") return { title: "Form", robots }
+
+  const title = res.form.title || "Untitled form"
+  const description = `Fill out “${title}” — it only takes a minute.`
+  // Absolute URL on the custom domain (metadataBase points at the main site).
+  const url = `https://${host}/${formSlug}`
+  return {
+    title,
+    description,
+    robots,
+    alternates: { canonical: url },
+    openGraph: {
+      type: "website",
+      title,
+      description,
+      url,
+      images: [{ url: "/og.png", width: 1080, height: 607 }],
+    },
+    twitter: { card: "summary_large_image", title, description, images: ["/og.png"] },
+  }
 }
 
 export default async function CustomDomainFormPage({ params }: { params: Params }) {
