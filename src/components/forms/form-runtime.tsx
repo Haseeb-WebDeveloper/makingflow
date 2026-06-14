@@ -1,13 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
 import { submitForm } from "@/lib/actions/submissions";
 import type { PublicForm, PublicField } from "@/lib/data/public-form";
 import type { AnswerValue } from "@/lib/db/schema";
 import { isValidPhoneNumber } from "react-phone-number-input";
 import { isFieldVisible, NON_ANSWER_TYPES, isEmpty } from "@/lib/builder/logic";
-import { Field, Check, FormBranding } from "@/components/forms/field-control";
+import { Field, FormBranding } from "@/components/forms/field-control";
 import { collectClientMeta, track } from "@/lib/forms/client-meta";
 import { Lottie } from "../builder/lottie";
 
@@ -269,11 +268,11 @@ export function FormRuntime({
 
   if (done) {
     return (
-      <div className="flex min-h-[70dvh] flex-col items-center justify-center text-center">
+      <div className="mx-auto flex min-h-[70dvh] w-full max-w-2xl flex-col items-center justify-center text-center">
         <div className="mx-auto mb-4 flex size-14 items-center justify-center rounded-full bg-success/10 text-success">
-          <Lottie name="success" className="size-40" />
+          <Lottie name="success" className="size-52" />
         </div>
-        <h2 className="font-sebenta text-2xl font-bold tracking-tight text-foreground">
+        <h2 className="mt-4 font-sebenta text-2xl font-bold tracking-tight text-foreground">
           {form.thankYou}
         </h2>
       </div>
@@ -281,7 +280,7 @@ export function FormRuntime({
   }
 
   return (
-    <form onSubmit={onSubmit} noValidate>
+    <form onSubmit={onSubmit} noValidate className="mx-auto w-full max-w-2xl">
       <FormBranding theme={form.theme} />
       <header className="mb-8">
         <h1 className="font-sebenta text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
@@ -355,13 +354,6 @@ export function FormRuntime({
           {isLast ? (submitting ? "Submitting…" : form.submitLabel) : "Next"}
         </button>
       </div>
-
-      <p className="mt-8 text-center text-xs text-muted-foreground">
-        Made with{" "}
-        <Link href="/" className="font-medium text-foreground hover:underline">
-          MakingFlow
-        </Link>
-      </p>
     </form>
   );
 }

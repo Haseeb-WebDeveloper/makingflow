@@ -25,7 +25,7 @@ export function FormPreview({
   const hasContent = Boolean(form?.title) || fields.length > 0
 
   return (
-    <div className="mx-auto w-full max-w-xl">
+    <div className="mx-auto w-full max-w-2xl">
       <header className="mb-8">
         <h1 className="font-sebenta text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
           {form?.title || (building ? "Building…" : "Your form")}

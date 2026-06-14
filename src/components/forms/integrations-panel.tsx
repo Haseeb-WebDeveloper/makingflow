@@ -22,7 +22,11 @@ import {
 } from "@/components/integrations/cards";
 import { WebhooksCard } from "@/components/forms/webhooks-card";
 import { EmailCard } from "@/components/forms/email-card";
-import type { GoogleSheetsState, FormWebhook, FormEmailState } from "@/lib/data/integrations";
+import type {
+  GoogleSheetsState,
+  FormWebhook,
+  FormEmailState,
+} from "@/lib/data/integrations";
 import { SVGIcon } from "../ui/svg-icon";
 
 export function IntegrationsPanel({
@@ -95,7 +99,11 @@ export function IntegrationsPanel({
         {/* ── Google Sheets (active) ── */}
         <CardShell>
           <div className="flex items-start justify-between gap-3">
-            <SVGIcon src="/icons/google-sheet.svg" className="size-9" />
+            <SVGIcon
+              src="/logo/google-sheet.svg"
+              preserveColors
+              className="size-9"
+            />
             {status === "syncing" ? (
               <span className="inline-flex items-center gap-1 rounded-full bg-success-bg px-2 py-0.5 text-[11px] font-medium text-success-foreground">
                 <span className="size-1.5 rounded-full bg-success" />
@@ -115,7 +123,9 @@ export function IntegrationsPanel({
 
           <div className="mt-4 flex items-center justify-between gap-3 border-t border-border pt-3">
             {!configured ? (
-              <span className="text-xs text-muted-foreground">Not available</span>
+              <span className="text-xs text-muted-foreground">
+                Not available
+              </span>
             ) : connected ? (
               <Button
                 variant="outline"
@@ -160,7 +170,11 @@ export function IntegrationsPanel({
         <SheetContent side="right" className="w-full sm:max-w-md">
           <SheetHeader>
             <div className="flex items-center gap-3">
-              <SVGIcon src="/icons/google-sheet.svg" className="size-9" />
+              <SVGIcon
+                src="/logo/google-sheet.svg"
+                preserveColors
+                className="size-9"
+              />
               <div>
                 <SheetTitle>Google Sheets</SheetTitle>
                 <SheetDescription>
@@ -198,8 +212,8 @@ export function IntegrationsPanel({
                   {status === "pending"
                     ? "The sheet is created on the first response."
                     : status === "syncing"
-                      ? "Syncing new submissions automatically."
-                      : "Sync is paused for this form."}
+                    ? "Syncing new submissions automatically."
+                    : "Sync is paused for this form."}
                 </p>
               </div>
               <Switch

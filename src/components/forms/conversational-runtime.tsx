@@ -1,7 +1,6 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from "react"
-import Link from "next/link"
 import { submitForm } from "@/lib/actions/submissions"
 import type { PublicForm, PublicField } from "@/lib/data/public-form"
 import type { AnswerValue } from "@/lib/db/schema"
@@ -337,7 +336,7 @@ export function ConversationalRuntime({ form }: { form: PublicForm }) {
 
   if (status === "done") {
     return (
-      <div className="flex min-h-[70dvh] flex-col items-center justify-center text-center">
+      <div className="mx-auto flex min-h-[70dvh] w-full max-w-2xl flex-col items-center justify-center text-center">
         <div className="mx-auto mb-4 flex size-14 items-center justify-center rounded-full bg-success/10 text-success">
           <Check className="size-7" />
         </div>
@@ -348,108 +347,109 @@ export function ConversationalRuntime({ form }: { form: PublicForm }) {
     )
   }
 
-  const showComposer = status === "ready" && (expect?.kind === "field" || expect?.kind === "followup")
+  // The composer stays mounted (disabled) while the AI is responding, so the
+  // input never disappears mid-conversation. File-upload questions answer via
+  // the inline control instead.
+  const showComposer =
+    (expect?.kind === "field" && currentField?.type !== "file_upload") ||
+    expect?.kind === "followup"
   const composerDisabled = status !== "ready"
 
   return (
-    <div className="flex h-[82dvh] flex-col overflow-hidden">
-      <header className="shrink-0 pb-4">
-        <FormBranding theme={form.theme} />
-        <h1 className="font-sebenta text-lg font-bold tracking-tight text-foreground">
-          {form.title}
-        </h1>
-      </header>
+    <div className="fixed inset-0 z-10 flex flex-col bg-canvas">
+      <div className="mx-auto flex h-full w-full max-w-2xl flex-col px-4 sm:px-6">
+        <header className="shrink-0 pb-3 pt-6">
+          <FormBranding theme={form.theme} />
+          <h1 className="font-sebenta text-lg font-bold tracking-tight text-foreground">
+            {form.title}
+          </h1>
+        </header>
 
-      <div ref={scrollRef} className="scrollbar-thin flex-1 space-y-4 overflow-y-auto px-0.5 py-2">
-        {resumed ? (
-          <div className="mx-auto w-fit rounded-full border border-border bg-muted/40 px-3 py-1 text-xs text-muted-foreground">
-            Picking up where you left off.
-          </div>
-        ) : null}
-
-        {messages.map((m, i) =>
-          m.role === "user" ? (
-            <div key={i} className="flex justify-end">
-              <div className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-md bg-foreground px-3.5 py-2 text-sm text-background">
-                {m.text}
-              </div>
+        <div ref={scrollRef} className="scrollbar-thin flex-1 space-y-4 overflow-y-auto py-2">
+          {resumed ? (
+            <div className="mx-auto w-fit rounded-md border border-border bg-muted/40 px-3 py-1 text-xs text-muted-foreground">
+              Picking up where you left off.
             </div>
-          ) : (
-            <div key={i} className="flex justify-start">
-              <div className="max-w-[90%] whitespace-pre-wrap rounded-2xl rounded-bl-md bg-muted px-3.5 py-2.5 text-sm text-foreground">
-                {m.text ? m.text : <Dots />}
+          ) : null}
+
+          {messages.map((m, i) =>
+            m.role === "user" ? (
+              <div key={i} className="flex justify-end">
+                <div className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-md bg-foreground px-3.5 py-2 text-sm text-background">
+                  {m.text}
+                </div>
               </div>
-            </div>
-          ),
-        )}
+            ) : (
+              <div key={i} className="flex justify-start">
+                <div className="max-w-[90%] whitespace-pre-wrap rounded-2xl rounded-bl-md bg-muted px-3.5 py-2.5 text-sm text-foreground">
+                  {m.text ? m.text : <Dots />}
+                </div>
+              </div>
+            ),
+          )}
 
-        {/* Inline option pills under the latest assistant message. */}
-        {status === "ready" && currentField ? (
-          <Pills field={currentField} multi={multi} setMulti={setMulti} onSend={send} />
-        ) : null}
+          {/* Suggested answers under the latest question — left-aligned, like the assistant. */}
+          {status === "ready" && currentField ? (
+            <Pills field={currentField} multi={multi} setMulti={setMulti} onSend={send} />
+          ) : null}
 
-        {status === "ready" && currentField?.type === "file_upload" ? (
-          <div className="space-y-2">
-            <Control
-              field={currentField}
-              value={fileDraft}
-              invalid={false}
-              onChange={(v) => setFileDraft(v)}
-            />
-            <button
-              type="button"
-              disabled={fileDraft == null || isEmpty(fileDraft)}
-              onClick={() => send({ pillValue: fileDraft!, display: "📎 File attached" })}
-              className="inline-flex h-9 items-center rounded-md bg-foreground px-4 text-sm font-medium text-background disabled:opacity-50"
-            >
-              Send
-            </button>
-          </div>
-        ) : null}
-
-        {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
-        {status === "submitting" ? (
-          <p className="text-center text-xs text-muted-foreground">Recording your response…</p>
-        ) : null}
-      </div>
-
-      {showComposer && currentField?.type !== "file_upload" ? (
-        <div className="shrink-0 pt-3">
-          <div className="rounded-2xl border border-border bg-background p-2.5 transition-colors focus-within:border-foreground/30">
-            <textarea
-              rows={1}
-              value={input}
-              disabled={composerDisabled}
-              placeholder="Type your answer…"
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault()
-                  sendTyped()
-                }
-              }}
-              className="thin-scroll block max-h-40 w-full resize-none border-0 bg-transparent px-2 pt-1 text-base text-foreground outline-none placeholder:text-muted-foreground"
-            />
-            <div className="flex items-center justify-end pl-1 pr-0.5 pt-1">
+          {status === "ready" && currentField?.type === "file_upload" ? (
+            <div className="space-y-2">
+              <Control
+                field={currentField}
+                value={fileDraft}
+                invalid={false}
+                onChange={(v) => setFileDraft(v)}
+              />
               <button
                 type="button"
-                onClick={sendTyped}
-                disabled={composerDisabled || !input.trim()}
-                aria-label="Send"
-                className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-foreground text-background transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-30"
+                disabled={fileDraft == null || isEmpty(fileDraft)}
+                onClick={() => send({ pillValue: fileDraft!, display: "📎 File attached" })}
+                className="inline-flex h-9 items-center rounded-md bg-foreground px-4 text-sm font-medium text-background disabled:opacity-50"
               >
-                <SVGIcon src="/icons/arrow-up.svg" className="size-5" />
+                Send
               </button>
             </div>
-          </div>
-          <p className="mt-2 text-center text-[11px] text-muted-foreground">
-            Made with{" "}
-            <Link href="/" className="font-medium text-foreground hover:underline">
-              MakingFlow
-            </Link>
-          </p>
+          ) : null}
+
+          {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
+          {status === "submitting" ? (
+            <p className="text-center text-xs text-muted-foreground">Recording your response…</p>
+          ) : null}
         </div>
-      ) : null}
+
+        {showComposer ? (
+          <div className="shrink-0 pb-5 pt-3">
+            <div className="rounded-2xl border border-border bg-background p-2.5 transition-colors focus-within:border-foreground/30">
+              <textarea
+                rows={1}
+                value={input}
+                disabled={composerDisabled}
+                placeholder="Type your answer…"
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault()
+                    sendTyped()
+                  }
+                }}
+                className="thin-scroll block max-h-40 w-full resize-none border-0 bg-transparent px-2 pt-1 text-base text-foreground outline-none placeholder:text-muted-foreground disabled:opacity-60"
+              />
+              <div className="flex items-center justify-end pl-1 pr-0.5 pt-1">
+                <button
+                  type="button"
+                  onClick={sendTyped}
+                  disabled={composerDisabled || !input.trim()}
+                  aria-label="Send"
+                  className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-foreground text-background transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-30"
+                >
+                  <SVGIcon src="/icons/arrow-up.svg" className="size-5" />
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+      </div>
     </div>
   )
 }
@@ -468,11 +468,11 @@ function Pills({
   onSend: (p: { reply?: string; pillValue?: AnswerValue; display: string }) => void
 }) {
   const pill =
-    "rounded-full border border-input px-3.5 py-1.5 text-sm text-foreground transition-colors hover:border-foreground/40 hover:bg-muted"
+    "rounded-md border border-input px-3.5 py-1.5 text-sm text-foreground transition-colors hover:border-foreground/40 hover:bg-muted"
 
   if (field.type === "yes_no") {
     return (
-      <div className="flex flex-wrap justify-end gap-2">
+      <div className="flex flex-wrap justify-start gap-2">
         {["Yes", "No"].map((o) => (
           <button key={o} type="button" className={pill} onClick={() => onSend({ pillValue: o, display: o })}>
             {o}
@@ -486,7 +486,7 @@ function Pills({
     const opts = field.options ?? []
     if (opts.length === 0) return null
     return (
-      <div className="flex flex-wrap justify-end gap-2">
+      <div className="flex flex-wrap justify-start gap-2">
         {opts.map((o) => (
           <button
             key={o.id}
@@ -506,12 +506,12 @@ function Pills({
     const to = field.type === "nps" ? 10 : 5
     const nums = Array.from({ length: to - from + 1 }, (_, i) => from + i)
     return (
-      <div className="flex flex-wrap justify-end gap-1.5">
+      <div className="flex flex-wrap justify-start gap-1.5">
         {nums.map((n) => (
           <button
             key={n}
             type="button"
-            className="inline-flex size-9 items-center justify-center rounded-full border border-input text-sm text-foreground transition-colors hover:border-foreground/40 hover:bg-muted"
+            className="inline-flex size-9 items-center justify-center rounded-md border border-input text-sm text-foreground transition-colors hover:border-foreground/40 hover:bg-muted"
             onClick={() => onSend({ pillValue: n, display: String(n) })}
           >
             {n}
@@ -527,8 +527,8 @@ function Pills({
     const toggle = (label: string) =>
       setMulti(multi.includes(label) ? multi.filter((v) => v !== label) : [...multi, label])
     return (
-      <div className="flex flex-col items-end gap-2">
-        <div className="flex flex-wrap justify-end gap-2">
+      <div className="flex flex-col items-start gap-2">
+        <div className="flex flex-wrap justify-start gap-2">
           {opts.map((o) => {
             const on = multi.includes(o.label)
             return (
@@ -537,7 +537,7 @@ function Pills({
                 type="button"
                 onClick={() => toggle(o.label)}
                 className={cn(
-                  "flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-sm transition-colors",
+                  "flex items-center gap-1.5 rounded-md border px-3.5 py-1.5 text-sm transition-colors",
                   on
                     ? "border-foreground bg-foreground text-background"
                     : "border-input text-foreground hover:border-foreground/40 hover:bg-muted",
