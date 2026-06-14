@@ -18,6 +18,7 @@ import {
 } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
 import type { AiFieldType } from "@/lib/ai/form-schema"
+import type { FieldConfig } from "@/lib/db/schema"
 import {
   type EditorForm,
   type EditorField,
@@ -73,8 +74,8 @@ export function FormEditor({
     fields.splice(i + 1, 0, copy)
     onChange({ ...form, fields })
   }
-  function insertField(type: AiFieldType) {
-    const field = newField(type)
+  function insertField(type: AiFieldType, config?: FieldConfig) {
+    const field = newField(type, config)
     const fields = [...form.fields]
     const i = insertAfter ? fields.findIndex((f) => f.id === insertAfter) : -1
     if (i >= 0) fields.splice(i + 1, 0, field)
@@ -221,6 +222,29 @@ function Block({
                 Required
               </DropdownMenuCheckboxItem>
             ) : null}
+            {field.type === "heading" ? (
+              <>
+                <DropdownMenuCheckboxItem
+                  checked={field.config?.headingLevel === "h1"}
+                  onCheckedChange={() =>
+                    onChange({ config: { ...field.config, headingLevel: "h1" } })
+                  }
+                  onSelect={(e) => e.preventDefault()}
+                >
+                  Large heading
+                </DropdownMenuCheckboxItem>
+                <DropdownMenuCheckboxItem
+                  checked={field.config?.headingLevel !== "h1"}
+                  onCheckedChange={() =>
+                    onChange({ config: { ...field.config, headingLevel: "h2" } })
+                  }
+                  onSelect={(e) => e.preventDefault()}
+                >
+                  Small heading
+                </DropdownMenuCheckboxItem>
+                <DropdownMenuSeparator />
+              </>
+            ) : null}
             <DropdownMenuItem
               onClick={() => {
                 if (!field.logic) onChange({ logic: starterLogic() })
@@ -249,8 +273,11 @@ function Block({
           <AutoText
             value={field.label}
             onChange={(label) => onChange({ label })}
-            placeholder="Heading"
-            className="font-sebenta text-lg font-semibold text-foreground"
+            placeholder={field.config?.headingLevel === "h1" ? "Heading" : "Subheading"}
+            className={cn(
+              "font-sebenta font-semibold text-foreground",
+              field.config?.headingLevel === "h1" ? "text-2xl font-bold tracking-tight" : "text-lg",
+            )}
           />
         ) : field.type === "paragraph" ? (
           <AutoText

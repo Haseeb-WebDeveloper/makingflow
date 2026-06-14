@@ -75,6 +75,7 @@ export async function getFormForEdit(id: string): Promise<EditableForm | null> {
       required: f.required,
       options: f.options ?? undefined,
       logic: f.logic ?? undefined,
+      config: f.config ?? undefined,
     })),
   }
 
@@ -145,6 +146,9 @@ export type FormSettingsData = {
   persona: string
   followUpsEnabled: boolean
   clarifyVagueAnswers: boolean
+  // Branding (logo + banner).
+  logoUrl: string | null
+  coverImageUrl: string | null
 }
 
 /** Current response-collection settings for the Settings tab. Workspace-scoped. */
@@ -162,6 +166,7 @@ export async function getFormSettings(id: string): Promise<FormSettingsData | nu
       renderMode: forms.renderMode,
       aiEnabled: forms.aiEnabled,
       aiConfig: forms.aiConfig,
+      theme: forms.theme,
     })
     .from(forms)
     .where(and(eq(forms.id, id), eq(forms.workspaceId, workspace.id), isNull(forms.deletedAt)))
@@ -181,6 +186,8 @@ export async function getFormSettings(id: string): Promise<FormSettingsData | nu
     persona: row.aiConfig?.persona ?? "",
     followUpsEnabled: row.aiConfig?.followUpsEnabled ?? false,
     clarifyVagueAnswers: row.aiConfig?.clarifyVagueAnswers ?? false,
+    logoUrl: row.theme?.logoUrl ?? null,
+    coverImageUrl: row.theme?.coverImageUrl ?? null,
   }
 }
 

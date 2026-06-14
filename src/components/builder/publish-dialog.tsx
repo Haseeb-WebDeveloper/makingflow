@@ -1,7 +1,7 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import Link from "next/link"
+import { useRef, useState } from "react";
+import Link from "next/link";
 import {
   Dialog,
   DialogContent,
@@ -9,12 +9,29 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog"
-import { Button } from "@/components/ui/button"
-import { Icon, type IconName } from "@/components/ui/icon"
-import { FormSettings } from "@/components/forms/form-settings"
-import { FormDomainPicker, type SetDomainResult } from "@/components/forms/domain-picker"
-import type { FormSettingsData } from "@/lib/data/forms"
+} from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Button } from "@/components/ui/button";
+import { Icon, type IconName } from "@/components/ui/icon";
+import {
+  FormSettings,
+  type FormSettingsHandle,
+} from "@/components/forms/form-settings";
+import {
+  FormDomainPicker,
+  type SetDomainResult,
+} from "@/components/forms/domain-picker";
+import type { FormSettingsData } from "@/lib/data/forms";
+import { SVGIcon } from "../ui/svg-icon";
 
 export function PublishDialog({
   open,
@@ -34,26 +51,34 @@ export function PublishDialog({
   onPublish,
   onUnpublish,
 }: {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  published: boolean
-  publishing: boolean
-  shareUrl: string
-  formId: string | null
-  formTitle?: string
-  domains?: { id: string; domain: string }[]
-  domainId?: string | null
-  slug?: string | null
-  domainHost?: string | null
-  onSetDomain?: (customDomainId: string | null, slug: string | null) => Promise<SetDomainResult>
-  settings?: FormSettingsData | null
-  formStatus?: string
-  onPublish: () => void
-  onUnpublish: () => void
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  published: boolean;
+  publishing: boolean;
+  shareUrl: string;
+  formId: string | null;
+  formTitle?: string;
+  domains?: { id: string; domain: string }[];
+  domainId?: string | null;
+  slug?: string | null;
+  domainHost?: string | null;
+  onSetDomain?: (
+    customDomainId: string | null,
+    slug: string | null
+  ) => Promise<SetDomainResult>;
+  settings?: FormSettingsData | null;
+  formStatus?: string;
+  onPublish: () => void;
+  onUnpublish: () => void;
 }) {
+  const settingsRef = useRef<FormSettingsHandle>(null);
+  const [settingsDirty, setSettingsDirty] = useState(false);
+  const [settingsSaving, setSettingsSaving] = useState(false);
+  const [confirmUnpublish, setConfirmUnpublish] = useState(false);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[85vh] overflow-y-auto w-fit">
+      <DialogContent className="max-h-[95vh] overflow-y-auto w-fit">
         <DialogHeader>
           {published ? (
             <>
@@ -61,34 +86,45 @@ export function PublishDialog({
                 <span className="size-2 rounded-full bg-success" />
                 Your form is live
               </DialogTitle>
-              <DialogDescription>Share this link to start collecting responses.</DialogDescription>
+              <DialogDescription>
+                Share this link to start collecting responses.
+              </DialogDescription>
             </>
           ) : (
             <>
               <DialogTitle>Publish your form</DialogTitle>
               <DialogDescription>
-                Publishing makes your form live at a public link. Anyone with the link can respond —
-                you can unpublish any time.
+                Publishing makes your form live at a public link. Anyone with
+                the link can respond — you can unpublish any time.
               </DialogDescription>
             </>
           )}
         </DialogHeader>
 
         {published ? (
-          <ShareLink shareUrl={shareUrl} formId={formId} onClose={() => onOpenChange(false)} />
+          <ShareLink
+            shareUrl={shareUrl}
+            formId={formId}
+            onClose={() => onOpenChange(false)}
+          />
         ) : (
           <ul className="space-y-2.5 py-1 text-sm text-muted-foreground">
             <InfoRow icon="discovery">Get a shareable public link</InfoRow>
-            <InfoRow icon="folder">Start collecting responses instantly</InfoRow>
+            <InfoRow icon="folder">
+              Start collecting responses instantly
+            </InfoRow>
             <InfoRow icon="edit">Edits you make go live automatically</InfoRow>
           </ul>
         )}
 
         {domains && domains.length > 0 && onSetDomain ? (
           <section className="border-t border-border pt-4">
-            <h3 className="text-sm font-semibold text-foreground">Custom domain</h3>
+            <h3 className="text-sm font-semibold text-foreground">
+              Custom domain
+            </h3>
             <p className="mt-0.5 mb-3 text-sm text-muted-foreground">
-              Serve this form from one of your connected domains — change or remove it anytime.
+              Serve this form from one of your connected domains — change or
+              remove it anytime.
             </p>
             <FormDomainPicker
               domains={domains}
@@ -103,38 +139,91 @@ export function PublishDialog({
 
         {formId && settings ? (
           <section className="border-t border-border pt-4">
-            <h3 className="text-sm font-semibold text-foreground">Form settings</h3>
+            <h3 className="text-sm font-semibold text-foreground">
+              Form settings
+            </h3>
             <FormSettings
               key={formStatus}
+              ref={settingsRef}
               formId={formId}
               initial={{ ...settings, status: formStatus ?? settings.status }}
+              embedded
+              onDirtyChange={setSettingsDirty}
+              onSavingChange={setSettingsSaving}
             />
           </section>
         ) : null}
 
-        <DialogFooter className={published ? "sm:justify-between" : undefined}>
+        <DialogFooter className="sticky bottom-0 z-10 -mx-6 -mb-6 mt-0 items-center gap-2 border-t border-border bg-popover px-6 pt-4 pb-6 sm:justify-between lg:-mx-[1.7vw] lg:-mb-[1.7vw] lg:px-[1.7vw] lg:pt-[1.111vw] lg:pb-[1.7vw]">
           {published ? (
             <>
               <Button
-                variant="ghost"
-                onClick={onUnpublish}
-                className="text-muted-foreground hover:text-foreground"
+                variant="destructive"
+                onClick={() => setConfirmUnpublish(true)}
               >
                 Unpublish
               </Button>
-              <Button variant="outline" onClick={() => onOpenChange(false)}>
-                Done
-              </Button>
+              <div className="flex items-center gap-2">
+                {settingsDirty ? (
+                  <Button
+                    onClick={() => void settingsRef.current?.save()}
+                    disabled={settingsSaving}
+                  >
+                    {settingsSaving ? "Saving…" : "Save changes"}
+                  </Button>
+                ) : null}
+                <Button variant="outline" onClick={() => onOpenChange(false)}>
+                  Done
+                </Button>
+              </div>
             </>
           ) : (
-            <Button onClick={onPublish} disabled={publishing} className="w-full">
-              {publishing ? "Publishing…" : "Publish form"}
-            </Button>
+            <div className="flex w-full items-center gap-2">
+              {settingsDirty ? (
+                <Button
+                  variant="outline"
+                  onClick={() => void settingsRef.current?.save()}
+                  disabled={settingsSaving}
+                  className="shrink-0"
+                >
+                  {settingsSaving ? "Saving…" : "Save changes"}
+                </Button>
+              ) : null}
+              <Button
+                onClick={onPublish}
+                disabled={publishing}
+                className="flex-1"
+              >
+                {publishing ? "Publishing…" : "Publish form"}
+              </Button>
+            </div>
           )}
         </DialogFooter>
       </DialogContent>
+
+      <AlertDialog open={confirmUnpublish} onOpenChange={setConfirmUnpublish}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Unpublish this form?</AlertDialogTitle>
+            <AlertDialogDescription>
+              The public link will stop working immediately and visitors won&apos;t
+              be able to respond. Existing submissions are kept, and you can
+              republish at any time.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={onUnpublish}
+              className="bg-destructive/10 text-destructive hover:bg-destructive/20 focus-visible:ring-destructive/20"
+            >
+              Unpublish
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Dialog>
-  )
+  );
 }
 
 /** The live share link with copy/open + quick links into the manage tabs. */
@@ -143,21 +232,21 @@ function ShareLink({
   formId,
   onClose,
 }: {
-  shareUrl: string
-  formId: string | null
-  onClose: () => void
+  shareUrl: string;
+  formId: string | null;
+  onClose: () => void;
 }) {
-  const [copied, setCopied] = useState(false)
+  const [copied, setCopied] = useState(false);
   const copy = async () => {
-    if (!shareUrl) return
+    if (!shareUrl) return;
     try {
-      await navigator.clipboard.writeText(shareUrl)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1600)
+      await navigator.clipboard.writeText(shareUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1600);
     } catch {
       /* clipboard blocked */
     }
-  }
+  };
 
   return (
     <div className="space-y-1">
@@ -170,7 +259,10 @@ function ShareLink({
           onClick={copy}
           className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md border border-border px-3 text-sm font-medium text-foreground transition-colors hover:bg-muted"
         >
-          <Icon name={copied ? "tick-square" : "paper"} className="size-4" />
+          <SVGIcon
+            src={copied ? "/icons/tick.svg" : "/icons/copy.svg"}
+            className="size-4"
+          />
           {copied ? "Copied" : "Copy"}
         </button>
         <a
@@ -179,19 +271,13 @@ function ShareLink({
           rel="noreferrer"
           className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md bg-foreground px-3 text-sm font-medium text-background transition-colors hover:bg-foreground/90"
         >
-          <Icon name="login" className="size-4" />
+          <SVGIcon src="/icons/open.svg" className="size-4" />
           Open
         </a>
       </div>
 
       {formId ? (
         <div className="space-y-0.5 pt-1">
-          <ManageLink
-            href={`/forms/${formId}/share`}
-            icon="discovery"
-            label="Share & embed options"
-            onNavigate={onClose}
-          />
           <ManageLink
             href={`/forms/${formId}/submissions`}
             icon="folder"
@@ -201,10 +287,16 @@ function ShareLink({
         </div>
       ) : null}
     </div>
-  )
+  );
 }
 
-function InfoRow({ icon, children }: { icon: IconName; children: React.ReactNode }) {
+function InfoRow({
+  icon,
+  children,
+}: {
+  icon: IconName;
+  children: React.ReactNode;
+}) {
   return (
     <li className="flex items-center gap-2.5">
       <span className="grid size-7 shrink-0 place-items-center rounded-md bg-muted text-foreground">
@@ -212,7 +304,7 @@ function InfoRow({ icon, children }: { icon: IconName; children: React.ReactNode
       </span>
       {children}
     </li>
-  )
+  );
 }
 
 function ManageLink({
@@ -221,10 +313,10 @@ function ManageLink({
   label,
   onNavigate,
 }: {
-  href: string
-  icon: IconName
-  label: string
-  onNavigate: () => void
+  href: string;
+  icon: IconName;
+  label: string;
+  onNavigate: () => void;
 }) {
   return (
     <Link
@@ -249,5 +341,5 @@ function ManageLink({
         <path d="M9 18l6-6-6-6" />
       </svg>
     </Link>
-  )
+  );
 }

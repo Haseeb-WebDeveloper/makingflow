@@ -1,17 +1,21 @@
 import { notFound } from "next/navigation"
+import { headers } from "next/headers"
 import Link from "next/link"
-import { getFormShell } from "@/lib/data/forms"
+import { getFormShell, getFormSettings } from "@/lib/data/forms"
+import { getActiveDomains } from "@/lib/data/domains"
 import { FormDetailTabs } from "@/components/forms/form-detail-tabs"
 import { FormAssistant } from "@/components/forms/form-assistant"
+import { FormPublishButton } from "@/components/forms/form-publish-button"
 import { RecordRecentForm } from "@/components/forms/record-recent-form"
 import { Icon } from "@/components/ui/icon"
 
 /**
- * Management chrome for a single form: title + status, an Edit button into the
- * builder, the tab bar (Insights / Submissions / Share / Integrations /
- * Settings), and a floating AI assistant scoped to this form. The builder
- * itself lives at /forms/[id]/edit — OUTSIDE this route group — so it renders
- * full-screen without this chrome.
+ * Management chrome for a single form: title + status, Publish/Share + Edit
+ * buttons, the tab bar (Insights / Submissions / Integrations / Settings), and
+ * a floating AI assistant scoped to this form. Publishing, the live link,
+ * custom domain, and submission settings live in the Publish/Share dialog
+ * (same one the builder uses). The builder itself lives at /forms/[id]/edit —
+ * OUTSIDE this route group — so it renders full-screen without this chrome.
  */
 export default async function FormManageLayout({
   children,
@@ -21,8 +25,17 @@ export default async function FormManageLayout({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
-  const shell = await getFormShell(id)
+  const [shell, domains, settings] = await Promise.all([
+    getFormShell(id),
+    getActiveDomains(),
+    getFormSettings(id),
+  ])
   if (!shell) notFound()
+
+  const h = await headers()
+  const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000"
+  const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https")
+  const origin = `${proto}://${host}`
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -44,11 +57,23 @@ export default async function FormManageLayout({
               <FormAssistant formId={id} formTitle={shell.title || "this form"} />
               <Link
                 href={`/forms/${id}/edit`}
-                className="inline-flex h-9 items-center gap-1.5 rounded-md bg-foreground px-3.5 text-sm font-medium text-background transition-colors hover:bg-foreground/90"
+                className="inline-flex h-9 items-center gap-1.5 rounded-md border border-border bg-background px-3.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
               >
                 <Icon name="edit" className="size-4" />
                 Edit
               </Link>
+              <FormPublishButton
+                formId={shell.id}
+                formTitle={shell.title || "this form"}
+                initialStatus={shell.status}
+                publicId={shell.publicId}
+                origin={origin}
+                domains={domains}
+                initialDomainId={shell.customDomainId}
+                initialSlug={shell.slug}
+                initialDomainHost={shell.domain}
+                settings={settings}
+              />
             </div>
           </div>
           <FormDetailTabs formId={id} />

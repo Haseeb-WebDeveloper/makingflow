@@ -32,6 +32,12 @@ export type PublicAiConfig = {
   persona: string | null
 }
 
+/** Respondent-safe branding (logo + banner) for the public runtime header. */
+export type PublicTheme = {
+  logoUrl?: string
+  coverImageUrl?: string
+}
+
 export type PublicForm = {
   publicId: string
   title: string
@@ -45,6 +51,8 @@ export type PublicForm = {
   baseLanguage: string
   /** Present only when the form has AI enabled; null otherwise. */
   ai: PublicAiConfig | null
+  /** Logo + banner, when the builder set either; null otherwise. */
+  theme: PublicTheme | null
   fields: PublicField[]
 }
 
@@ -98,6 +106,10 @@ async function resolvePublishedForm(row: FormRow): Promise<PublicFormResult> {
             persona: row.aiConfig?.persona ?? null,
           }
         : null,
+      theme:
+        row.theme && (row.theme.logoUrl || row.theme.coverImageUrl)
+          ? { logoUrl: row.theme.logoUrl, coverImageUrl: row.theme.coverImageUrl }
+          : null,
       fields: fields.map((f) => ({
         id: f.id,
         type: f.type,

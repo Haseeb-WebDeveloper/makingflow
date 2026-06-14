@@ -1,5 +1,5 @@
 import type { AiForm, AiField, AiFieldType } from "@/lib/ai/form-schema"
-import type { FieldLogic, FieldCondition, FieldOption } from "@/lib/db/schema"
+import type { FieldLogic, FieldCondition, FieldOption, FieldConfig } from "@/lib/db/schema"
 
 /**
  * The editor's working model. Unlike the AI spec (`AiForm`), every field carries
@@ -16,6 +16,9 @@ export type EditorField = {
   required: boolean
   options?: FieldOption[]
   logic?: FieldLogic
+  // Type-specific knobs (heading level, file limits, …). The AI spec doesn't
+  // carry this, so it's preserved across AI edits by `mergeAiIntoEditor`.
+  config?: FieldConfig
 }
 
 export type EditorForm = {
@@ -48,6 +51,9 @@ export type CatalogItem = {
   label: string
   group: CatalogGroup
   keywords?: string
+  // Seed config for blocks that share a `type` but differ by config (e.g. the
+  // h1/h2 heading blocks both insert a `heading` field).
+  config?: FieldConfig
 }
 
 export const FIELD_CATALOG: CatalogItem[] = [
@@ -67,8 +73,9 @@ export const FIELD_CATALOG: CatalogItem[] = [
   { type: "date", label: "Date", group: "Date", keywords: "calendar day" },
   { type: "time", label: "Time", group: "Date", keywords: "clock hour" },
   { type: "file_upload", label: "File upload", group: "File", keywords: "attachment image document" },
-  { type: "heading", label: "Heading", group: "Layout", keywords: "section title" },
-  { type: "paragraph", label: "Text", group: "Layout", keywords: "description note" },
+  { type: "heading", label: "Heading", group: "Layout", keywords: "section title h1 large", config: { headingLevel: "h1" } },
+  { type: "heading", label: "Subheading", group: "Layout", keywords: "subsection subtitle h2", config: { headingLevel: "h2" } },
+  { type: "paragraph", label: "Text", group: "Layout", keywords: "description note paragraph body" },
   { type: "page_break", label: "Page break", group: "Layout", keywords: "page step multi-page next" },
 ]
 
@@ -86,9 +93,10 @@ export function labelForType(type: AiFieldType): string {
   return FIELD_CATALOG.find((c) => c.type === type)?.label ?? type
 }
 
-/** A fresh field of `type` with sensible defaults. */
-export function newField(type: AiFieldType): EditorField {
+/** A fresh field of `type` with sensible defaults (+ optional seed config). */
+export function newField(type: AiFieldType, config?: FieldConfig): EditorField {
   const base: EditorField = { id: genId(), type, label: "", required: false }
+  if (config) base.config = config
   if (isChoice(type)) {
     base.options = [
       { id: genId(), label: "Option 1" },
@@ -174,6 +182,8 @@ export function mergeAiIntoEditor(ai: AiForm, prev: EditorForm | null): EditorFo
         id: match?.options?.find((o) => o.label === label)?.id ?? genId(),
         label,
       })),
+      // The AI spec carries no config — keep the matched field's (heading level, …).
+      config: match?.config,
     }
     return { field, af, match }
   })

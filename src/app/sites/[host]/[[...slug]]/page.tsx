@@ -30,7 +30,7 @@ export default async function CustomDomainFormPage({ params }: { params: Params 
     <div className="min-h-dvh bg-canvas px-4 py-10 sm:py-16">
       <div
         key={res.state === "ok" ? res.form.publicId : "unavailable"}
-        className="mx-auto w-full max-w-xl"
+        className="mx-auto w-full max-w-2xl"
       >
         {res.state === "ok" ? (
           <FormRenderer form={res.form} />

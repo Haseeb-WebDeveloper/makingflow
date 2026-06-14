@@ -22,7 +22,7 @@ export default async function PublicFormPage({
 
   return (
     <div className="min-h-dvh bg-canvas px-4 py-10 sm:py-16">
-      <div key={publicId} className="mx-auto w-full max-w-xl">
+      <div key={publicId} className="mx-auto w-full max-w-2xl">
         {res.state === "ok" ? (
           <FormRenderer form={res.form} />
         ) : (

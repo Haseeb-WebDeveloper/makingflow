@@ -93,9 +93,9 @@ function CopyField({ label, value }: { label: string; value: string }) {
             }
           }}
         >
-          <Icon
-            name={copied ? "tick-square" : "paper"}
-            className={copied ? "text-success" : ""}
+          <SVGIcon
+            src={copied ? "/icons/tick.svg" : "/icons/copy.svg"}
+            className={copied ? "text-success size-4" : "size-4"}
           />
         </Button>
       </div>
