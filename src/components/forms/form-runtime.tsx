@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import { submitForm } from "@/lib/actions/submissions";
 import type { PublicForm, PublicField } from "@/lib/data/public-form";
 import type { AnswerValue } from "@/lib/db/schema";
@@ -8,7 +9,12 @@ import { isValidPhoneNumber } from "react-phone-number-input";
 import { isFieldVisible, NON_ANSWER_TYPES, isEmpty } from "@/lib/builder/logic";
 import { Field, FormBranding } from "@/components/forms/field-control";
 import { collectClientMeta, track } from "@/lib/forms/client-meta";
-import { Lottie } from "../builder/lottie";
+
+// The Lottie WASM player only appears on the post-submit success screen — code-
+// split it so it never loads while the respondent is filling the form.
+const Lottie = dynamic(() => import("../builder/lottie").then((m) => m.Lottie), {
+  ssr: false,
+});
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const URL_RE = /^https?:\/\/\S+\.\S+/i;

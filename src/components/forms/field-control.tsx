@@ -1,6 +1,7 @@
 "use client"
 
 import { useRef, useState } from "react"
+import dynamic from "next/dynamic"
 import { format, parse } from "date-fns"
 import type { PublicField, PublicTheme } from "@/lib/data/public-form"
 import type { AnswerValue } from "@/lib/db/schema"
@@ -16,10 +17,17 @@ import {
 import { Checkbox } from "@/components/ui/checkbox"
 import { Slider } from "@/components/ui/slider"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { Calendar } from "@/components/ui/calendar"
 import { Rating } from "@/components/reui/rating"
-import { PhoneInput } from "@/components/reui/phone-input"
 import { cn } from "@/lib/utils"
+
+// Code-split the heavy, type-specific controls so a respondent only downloads
+// them when the form actually has that field. `PhoneInput` pulls
+// react-phone-number-input + every country flag (~100KB); `Calendar` pulls
+// react-day-picker. Most forms have neither.
+const PhoneInput = dynamic(() =>
+  import("@/components/reui/phone-input").then((m) => m.PhoneInput),
+)
+const Calendar = dynamic(() => import("@/components/ui/calendar").then((m) => m.Calendar))
 
 export type UploadedFile = {
   storageKey: string
@@ -79,6 +87,18 @@ export function Field({
 }
 
 /** Form-level branding (banner + logo) shown above the title in both runtimes. */
+/**
+ * Inject Cloudinary delivery transforms (auto format/quality + a size cap) into
+ * an upload URL so respondents download a small, modern (WebP/AVIF) image instead
+ * of the full-resolution original. No-ops on non-Cloudinary URLs.
+ */
+function cldDeliver(url: string, transform: string): string {
+  const marker = "/image/upload/"
+  const i = url.indexOf(marker)
+  if (i === -1) return url
+  return `${url.slice(0, i + marker.length)}${transform}/${url.slice(i + marker.length)}`
+}
+
 export function FormBranding({ theme }: { theme?: PublicTheme | null }) {
   if (!theme || (!theme.logoUrl && !theme.coverImageUrl)) return null
   return (
@@ -86,14 +106,21 @@ export function FormBranding({ theme }: { theme?: PublicTheme | null }) {
       {theme.coverImageUrl ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
-          src={theme.coverImageUrl}
+          src={cldDeliver(theme.coverImageUrl, "f_auto,q_auto,w_1400,c_limit")}
           alt=""
+          decoding="async"
           className="mb-4 h-32 w-full rounded-xl object-cover sm:h-44"
         />
       ) : null}
       {theme.logoUrl ? (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={theme.logoUrl} alt="" className="h-12 w-auto object-contain sm:h-14 rounded-md" />
+        <img
+          src={cldDeliver(theme.logoUrl, "f_auto,q_auto,h_160,c_limit")}
+          alt=""
+          decoding="async"
+          loading="lazy"
+          className="h-12 w-auto object-contain sm:h-14 rounded-md"
+        />
       ) : null}
     </div>
   )
@@ -454,7 +481,13 @@ function FileControl({
         >
           {f.mime?.startsWith("image/") && f.url ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={f.url} alt="" className="size-10 shrink-0 rounded-md border border-border object-cover" />
+            <img
+              src={cldDeliver(f.url, "f_auto,q_auto,w_96,h_96,c_fill")}
+              alt=""
+              decoding="async"
+              loading="lazy"
+              className="size-10 shrink-0 rounded-md border border-border object-cover"
+            />
           ) : (
             <span className="grid size-10 shrink-0 place-items-center rounded-md border border-border bg-muted/40">
               <FileIcon />
