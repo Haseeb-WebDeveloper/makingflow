@@ -31,6 +31,7 @@ import {
 } from "@/components/dashboard/command-menu";
 import { UserMenu } from "@/components/dashboard/user-menu";
 import { WorkspaceChip } from "@/components/dashboard/workspace-chip";
+import { FormRowMenu } from "@/components/dashboard/form-row-menu";
 import { SVGIcon } from "../ui/svg-icon";
 
 const FORMS_IN_SIDEBAR = 10;
@@ -72,9 +73,10 @@ export function DashboardShell({
       <SidebarProvider defaultOpen>
         <Sidebar collapsible="icon" variant="sidebar">
           <SidebarHeader className="gap-3 px-3 pb-3 pt-4">
-            {workspace ? (
+            {/* {workspace ? (
               <WorkspaceChip name={workspace.name} plan={workspace.plan} />
-            ) : null}
+            ) : null} */}
+            <SVGIcon src="/logo/logo.svg" className="size-6" />
           </SidebarHeader>
 
           <SidebarContent>
@@ -162,6 +164,12 @@ export function DashboardShell({
                               </span>
                             </Link>
                           </SidebarMenuButton>
+                          <FormRowMenu
+                            formId={f.id}
+                            title={f.title || "Untitled form"}
+                            status={f.status}
+                            publicId={f.publicId}
+                          />
                         </SidebarMenuItem>
                       );
                     })

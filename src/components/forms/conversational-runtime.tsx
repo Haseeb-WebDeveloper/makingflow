@@ -226,6 +226,17 @@ export function ConversationalRuntime({ form }: { form: PublicForm }) {
       }
     }
     if (meta.language) submissionLangRef.current = meta.language
+
+    if (meta.action === "degrade") {
+      // The server couldn't capture a required answer in chat. Persist progress
+      // and hand off to the classic runtime, which resumes the shared draft so
+      // nothing is lost and the respondent can finish the required fields and
+      // submit — a submission is never blocked by the AI layer.
+      savePartialNow()
+      degradeToClassic()
+      return
+    }
+
     clarifyRef.current = meta.action === "clarify" ? clarifyRef.current + 1 : 0
 
     expectRef.current = meta.expect

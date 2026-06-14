@@ -23,6 +23,7 @@ export async function getWorkspaceForms() {
       id: forms.id,
       title: forms.title,
       status: forms.status,
+      publicId: forms.publicId,
       updatedAt: forms.updatedAt,
     })
     .from(forms)

@@ -154,6 +154,21 @@ export async function POST(request: Request) {
           )
         }
 
+        // Required answer still uncaptured after the clarify budget. Never strand
+        // the respondent in chat (guardrail: a submission must never be blocked by
+        // the AI layer) — hand off to the classic runtime, which resumes the
+        // shared draft so they can complete the required fields and submit.
+        if (cannotRecord && (body.clarifyCount ?? 0) >= 2) {
+          await incrementAiCalls(form.workspaceId, calls)
+          return degradeResponse({
+            action: "degrade",
+            expect: { kind: "done" },
+            parsedFieldId: null,
+            parsedValue: null,
+            language,
+          })
+        }
+
         parsedFieldId = field.id
         if (parsedValue != null && !isEmpty(parsedValue)) values[field.id] = parsedValue
         justHandled = field.id
@@ -225,6 +240,20 @@ export async function POST(request: Request) {
     console.error("[forms/turn] failed", err)
     return Response.json({ error: "turn_failed" }, { status: 503 })
   }
+}
+
+/**
+ * Hand-off response telling the client to finish in the classic runtime. No
+ * model call — the short message is barely shown before the classic form swaps
+ * in, so it stays fixed (and cheap) rather than phrased per language.
+ */
+function degradeResponse(meta: TurnMeta) {
+  return new Response("Let's finish the last details as a quick form.", {
+    headers: {
+      "content-type": "text/plain; charset=utf-8",
+      "x-mf-turn": encodeURIComponent(JSON.stringify(meta)),
+    },
+  })
 }
 
 /** Human-readable text of what the respondent just answered (for the ack). */

@@ -3,11 +3,26 @@
 import { and, eq, isNull, notInArray, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { db } from "@/lib/db"
-import { forms, formFields, type FormSettings, type FormAiConfig, type FormTheme } from "@/lib/db/schema"
+import { forms, formFields, type FormSettings, type FormAiConfig, type FormTheme, type FieldLogic } from "@/lib/db/schema"
 import { getRequiredUser, getDefaultWorkspace } from "@/lib/auth/session"
 import type { EditorForm } from "@/lib/builder/form-model"
 
 type SaveResult = { success: true; id: string } | { success: false; error: string }
+
+/** Rewrite a field's logic conditions onto duplicated field ids (old → new). */
+function remapLogic(
+  logic: FieldLogic | null,
+  idMap: Map<string, string>,
+): FieldLogic | null {
+  if (!logic) return logic
+  return {
+    ...logic,
+    conditions: logic.conditions.map((c) => ({
+      ...c,
+      fieldId: idMap.get(c.fieldId) ?? c.fieldId,
+    })),
+  }
+}
 
 /** Short, unguessable id for the public runtime URL (/f/[publicId]). */
 function newPublicId(): string {
@@ -163,6 +178,116 @@ export async function unpublishForm(
 
   if (result.length === 0) return { success: false, error: "Form not found" }
   return { success: true }
+}
+
+/** Rename a form. Workspace-scoped; empty titles fall back to "Untitled form". */
+export async function renameForm(
+  formId: string,
+  title: string,
+): Promise<{ success: boolean; error?: string }> {
+  await getRequiredUser()
+  const workspace = await getDefaultWorkspace()
+  if (!workspace) return { success: false, error: "No workspace" }
+
+  const clean = title.trim().slice(0, 200) || "Untitled form"
+  const result = await db
+    .update(forms)
+    .set({ title: clean })
+    .where(and(eq(forms.id, formId), eq(forms.workspaceId, workspace.id), isNull(forms.deletedAt)))
+    .returning({ id: forms.id })
+
+  if (result.length === 0) return { success: false, error: "Form not found" }
+  revalidatePath("/forms")
+  revalidatePath(`/forms/${formId}`, "layout")
+  return { success: true }
+}
+
+/**
+ * Duplicate a form (definition + fields) as a fresh draft. The copy gets a new
+ * publicId, no custom domain/slug, and draft status — so it never collides with
+ * the original's public link or steals its submissions. Workspace-scoped.
+ */
+export async function duplicateForm(
+  formId: string,
+): Promise<{ success: boolean; id?: string; error?: string }> {
+  const user = await getRequiredUser()
+  const workspace = await getDefaultWorkspace()
+  if (!workspace) return { success: false, error: "No workspace" }
+
+  const [src] = await db
+    .select()
+    .from(forms)
+    .where(and(eq(forms.id, formId), eq(forms.workspaceId, workspace.id), isNull(forms.deletedAt)))
+    .limit(1)
+  if (!src) return { success: false, error: "Form not found" }
+
+  const srcFields = await db
+    .select()
+    .from(formFields)
+    .where(and(eq(formFields.formId, formId), isNull(formFields.deletedAt)))
+    .orderBy(formFields.position)
+
+  try {
+    const newId = await db.transaction(async (tx) => {
+      const [created] = await tx
+        .insert(forms)
+        .values({
+          workspaceId: workspace.id,
+          createdById: user.id,
+          title: `${src.title || "Untitled form"} (copy)`,
+          publicId: newPublicId(),
+          // Fresh draft — never inherit the original's live link or domain.
+          status: "draft",
+          customDomainId: null,
+          slug: null,
+          publishedAt: null,
+          // Carry over the form's design + behavior so the copy is a true clone.
+          renderMode: src.renderMode,
+          baseLanguage: src.baseLanguage,
+          autoTranslate: src.autoTranslate,
+          aiEnabled: src.aiEnabled,
+          aiConfig: src.aiConfig,
+          theme: src.theme,
+          settings: src.settings,
+          opensAt: src.opensAt,
+          closesAt: src.closesAt,
+          submissionLimit: src.submissionLimit,
+          oneResponsePerPerson: src.oneResponsePerPerson,
+          redirectUrl: src.redirectUrl,
+        })
+        .returning({ id: forms.id })
+
+      if (srcFields.length > 0) {
+        // New rows need new ids; remap conditional-logic references so the copy's
+        // logic points at the copy's fields, not the original's.
+        const idMap = new Map<string, string>()
+        for (const f of srcFields) idMap.set(f.id, crypto.randomUUID())
+
+        await tx.insert(formFields).values(
+          srcFields.map((f, i) => ({
+            id: idMap.get(f.id)!,
+            formId: created.id,
+            type: f.type,
+            label: f.label,
+            description: f.description,
+            placeholder: f.placeholder,
+            required: f.required,
+            position: i,
+            key: f.key,
+            options: f.options,
+            config: f.config,
+            logic: remapLogic(f.logic, idMap),
+          })),
+        )
+      }
+      return created.id
+    })
+    revalidatePath("/forms")
+    return { success: true, id: newId }
+  } catch (err) {
+    console.error("[duplicateForm] failed", err)
+    return { success: false, error: "Could not duplicate the form" }
+  }
 }
 
 /** Soft-delete a form (and hide it everywhere). Workspace-scoped. */

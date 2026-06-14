@@ -17,6 +17,7 @@ import {
   type EditorForm,
   editorToAi,
   mergeAiIntoEditor,
+  newField,
 } from "@/lib/builder/form-model";
 import {
   FormPreview,
@@ -413,6 +414,13 @@ export function FormBuilder({
     }
   }
 
+  // Start a blank form by hand — the no-AI path, so a form can always be built
+  // even if Gemini is unavailable (AI is additive, never required for basics).
+  function startBlank() {
+    updateForm({ title: "Untitled form", fields: [newField("short_text")] });
+    setMode("edit");
+  }
+
   // ── Empty state — describe the form ───────────────────────────────
   if (!started) {
     return (
@@ -442,6 +450,19 @@ export function FormBuilder({
             rows={5}
             autoFocus
           />
+
+          <div className="mt-5 flex items-center justify-center gap-3 text-sm text-muted-foreground">
+            <span className="h-px w-8 bg-border" />
+            <span>or</span>
+            <button
+              type="button"
+              onClick={startBlank}
+              className="font-medium text-foreground underline-offset-4 hover:underline"
+            >
+              start from scratch
+            </button>
+            <span className="h-px w-8 bg-border" />
+          </div>
         </div>
       </div>
     );

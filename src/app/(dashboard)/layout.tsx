@@ -22,7 +22,12 @@ export default async function DashboardLayout({
   return (
     <DashboardShell
       navItems={MAKINGFLOW_NAV}
-      forms={forms.map((f) => ({ id: f.id, title: f.title, status: f.status }))}
+      forms={forms.map((f) => ({
+        id: f.id,
+        title: f.title,
+        status: f.status,
+        publicId: f.publicId,
+      }))}
       user={{ email: user.email, name: user.name ?? "", avatarUrl: user.avatarUrl }}
       workspace={workspace ? { name: workspace.name, plan: workspace.plan } : null}
     >

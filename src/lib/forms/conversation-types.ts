@@ -13,7 +13,7 @@ export type Expect =
   | { kind: "followup"; question: string; afterFieldId: string | null }
   | { kind: "done" }
 
-export type TurnAction = "advance" | "clarify" | "followup" | "done"
+export type TurnAction = "advance" | "clarify" | "followup" | "done" | "degrade"
 
 /** Structured part of a turn response — carried in the `x-mf-turn` header
  *  (URI-encoded JSON); the body streams the natural-language message. */

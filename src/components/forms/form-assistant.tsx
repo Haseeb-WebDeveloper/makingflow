@@ -9,11 +9,17 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet"
-import { Icon } from "@/components/ui/icon"
 import { Composer } from "@/components/builder/composer"
 import { MemoizedMarkdown } from "@/components/forms/memoized-markdown"
 
 type Msg = { role: "user" | "assistant"; text: string }
+
+/** The MakingFlow mark — brands the assistant as a first-class AI surface
+ *  (matches the builder's assistant avatar) instead of a stock chat glyph. */
+function AssistantMark({ className }: { className?: string }) {
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img src="/logo/logo.svg" alt="" className={className} />
+}
 
 const SUGGESTIONS = [
   "Summarize the submissions",
@@ -92,7 +98,7 @@ export function FormAssistant({ formId, formTitle }: { formId: string; formTitle
           type="button"
           className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md border border-border px-3 text-sm font-medium text-foreground transition-colors hover:bg-muted"
         >
-          <Icon name="chat" className="size-4 text-primary" />
+          <AssistantMark className="size-4 shrink-0 object-contain" />
           Ask AI
         </button>
       </SheetTrigger>
@@ -103,19 +109,19 @@ export function FormAssistant({ formId, formTitle }: { formId: string; formTitle
       >
         <SheetHeader className="shrink-0 gap-0.5 border-b border-border px-4 py-3 pr-12">
           <SheetTitle className="flex items-center gap-2 text-base">
-            <Icon name="chat" className="size-4 text-primary" />
+            <AssistantMark className="size-6 object-contain rounded" />
             Ask AI
           </SheetTitle>
-          <SheetDescription className="truncate text-xs">
-            Ask anything about {formTitle} — summaries, counts, trends.
+          <SheetDescription className="text-xs">
+            Summaries, counts, and trends across your responses.
           </SheetDescription>
         </SheetHeader>
 
         <div ref={scrollRef} className="scrollbar-thin flex-1 space-y-4 overflow-y-auto px-4 py-4">
           {messages.length === 0 ? (
             <div className="flex h-full flex-col items-center justify-center gap-4 text-center">
-              <span className="grid size-11 place-items-center rounded-xl bg-primary/10 text-primary">
-                <Icon name="chat" className="size-5" />
+              <span className="grid size-11 place-items-center rounded-xl bg-primary/10">
+                <AssistantMark className="size-6 object-contain" />
               </span>
               <p className="max-w-xs text-sm text-muted-foreground">
                 Ask the AI to summarize responses, count answers, or spot trends — instead of
