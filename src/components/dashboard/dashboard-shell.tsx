@@ -72,12 +72,12 @@ export function DashboardShell({
     <TooltipProvider delayDuration={300}>
       <SidebarProvider defaultOpen>
         <Sidebar collapsible="icon" variant="sidebar">
-          <SidebarHeader className="h-14 flex-row items-center gap-2 border-b border-border px-4 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0">
+          <SidebarHeader className="h-14 lg:h-[3.889vw] flex-row items-center gap-2 lg:gap-[0.556vw] border-b border-border px-4 lg:px-[1.111vw] group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0">
             {/* {workspace ? (
               <WorkspaceChip name={workspace.name} plan={workspace.plan} />
             ) : null} */}
-            <SVGIcon src="/logo/logo.svg" preserveColors className="size-6 shrink-0 rounded" />
-            <span className="truncate text-lg font-semibold tracking-tight group-data-[collapsible=icon]:hidden">
+            <SVGIcon src="/logo/logo.svg" preserveColors className="size-6 lg:size-[1.667vw] shrink-0 rounded lg:rounded-[0.324vw]" />
+            <span className="truncate text-lg lg:text-[1.25vw] font-semibold tracking-tight group-data-[collapsible=icon]:hidden">
               MakingFlow
             </span>
           </SidebarHeader>
@@ -95,13 +95,13 @@ export function DashboardShell({
                       <>
                         <Icon
                           name={item.icon}
-                          className="size-5 shrink-0 group-data-[collapsible=icon]:size-4"
+                          className="size-5 lg:size-[1.389vw] shrink-0 group-data-[collapsible=icon]:size-4"
                         />
                         <span className="min-w-0 flex-1 truncate group-data-[collapsible=icon]:hidden">
                           {item.label}
                         </span>
                         {item.comingSoon ? (
-                          <span className="shrink-0 rounded border border-sidebar-border px-1.5 py-px text-[10px] font-medium uppercase tracking-wide text-muted-foreground group-data-[collapsible=icon]:hidden">
+                          <span className="shrink-0 rounded lg:rounded-[0.324vw] border border-sidebar-border px-1.5 lg:px-[0.417vw] py-px text-[10px] lg:text-[0.694vw] font-medium uppercase tracking-wide text-muted-foreground group-data-[collapsible=icon]:hidden">
                             Soon
                           </span>
                         ) : null}
@@ -121,14 +121,14 @@ export function DashboardShell({
                           className="text-sidebar-foreground/70 hover:text-sidebar-foreground data-active:bg-sidebar-accent data-active:font-medium data-active:text-sidebar-foreground"
                         >
                           {item.action ? (
-                            <span className="flex w-full min-w-0 items-center gap-2.5 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-0">
+                            <span className="flex w-full min-w-0 items-center gap-2.5 lg:gap-[0.694vw] group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-0">
                               {inner}
                             </span>
                           ) : (
                             <Link
                               href={item.href!}
                               prefetch
-                              className="flex w-full min-w-0 items-center gap-2.5 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-0"
+                              className="flex w-full min-w-0 items-center gap-2.5 lg:gap-[0.694vw] group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-0"
                             >
                               {inner}
                             </Link>
@@ -146,7 +146,7 @@ export function DashboardShell({
               <SidebarGroupContent>
                 <SidebarMenu>
                   {shownForms.length === 0 ? (
-                    <p className="px-2 py-1.5 text-xs text-muted-foreground">
+                    <p className="px-2 lg:px-[0.556vw] py-1.5 lg:py-[0.417vw] text-xs lg:text-[0.833vw] text-muted-foreground">
                       No forms yet
                     </p>
                   ) : (
@@ -184,9 +184,9 @@ export function DashboardShell({
                 <button
                   type="button"
                   onClick={() => setSearchOpen(true)}
-                  className="mt-1 flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                  className="mt-1 lg:mt-[0.278vw] flex w-full items-center gap-2 lg:gap-[0.556vw] rounded-md lg:rounded-[0.556vw] px-2 lg:px-[0.556vw] py-1.5 lg:py-[0.417vw] text-xs lg:text-[0.833vw] text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
                 >
-                  <Icon name="search" className="size-4 shrink-0" />
+                  <Icon name="search" className="size-4 lg:size-[1.111vw] shrink-0" />
                   <span>Search forms{forms.length > FORMS_IN_SIDEBAR ? ` (${forms.length})` : ""}</span>
                 </button>
               </SidebarGroupContent>
@@ -194,17 +194,17 @@ export function DashboardShell({
           </SidebarContent>
 
           {workspace?.plan === "free" ? (
-            <SidebarFooter className="px-2 pb-3 group-data-[collapsible=icon]:hidden">
-              <div className="rounded-md border border-sidebar-border p-3 bg-background">
-                <p className="text-sm font-medium text-sidebar-foreground">
+            <SidebarFooter className="px-2 lg:px-[0.556vw] pb-3 lg:pb-[0.833vw] group-data-[collapsible=icon]:hidden">
+              <div className="rounded-md lg:rounded-[0.556vw] border border-sidebar-border p-3 lg:p-[0.833vw] bg-background">
+                <p className="text-sm lg:text-[0.972vw] font-medium text-sidebar-foreground">
                   You&apos;re on Free
                 </p>
-                <p className="mt-0.5 text-xs text-muted-foreground">
+                <p className="mt-0.5 lg:mt-[0.139vw] text-xs lg:text-[0.833vw] text-muted-foreground">
                   Unlock more forms, AI, and submissions.
                 </p>
                 <Link
                   href="/settings/billing"
-                  className="mt-2.5 inline-flex h-8 w-full items-center justify-center rounded-md bg-foreground px-3 text-xs font-medium text-background transition-colors hover:bg-foreground/90"
+                  className="mt-2.5 lg:mt-[0.694vw] inline-flex h-8 lg:h-[2.222vw] w-full items-center justify-center rounded-md lg:rounded-[0.556vw] bg-foreground px-3 lg:px-[0.833vw] text-xs lg:text-[0.833vw] font-medium text-background transition-colors hover:bg-foreground/90"
                 >
                   Upgrade
                 </Link>
@@ -216,15 +216,15 @@ export function DashboardShell({
         </Sidebar>
 
         <SidebarInset className="min-h-0 flex-1 overflow-hidden bg-background">
-          <header className="flex h-14 shrink-0 items-center gap-2 border-b border-border bg-background px-4">
+          <header className="flex h-14 lg:h-[3.889vw] shrink-0 items-center gap-2 lg:gap-[0.556vw] border-b border-border bg-background px-4 lg:px-[1.111vw]">
             <SidebarTrigger />
-            <div className="ml-auto flex items-center gap-2">
+            <div className="ml-auto flex items-center gap-2 lg:gap-[0.556vw]">
               <Link
                 href="/forms/new"
                 prefetch
-                className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm font-medium text-foreground transition-colors"
+                className="inline-flex items-center gap-1.5 lg:gap-[0.417vw] rounded-md lg:rounded-[0.556vw] border px-3 lg:px-[0.833vw] py-1.5 lg:py-[0.417vw] text-sm lg:text-[0.972vw] font-medium text-foreground transition-colors"
               >
-                <SVGIcon src="/icons/plus.svg" className="size-4 text-foreground" />
+                <SVGIcon src="/icons/plus.svg" className="size-4 lg:size-[1.111vw] text-foreground" />
                 New form
               </Link>
               <UserMenu user={user} />

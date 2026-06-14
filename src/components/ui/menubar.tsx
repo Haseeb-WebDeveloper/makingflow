@@ -14,7 +14,7 @@ function Menubar({
   return (
     <MenubarPrimitive.Root
       data-slot="menubar"
-      className={cn("flex h-9 lg:h-[36px] items-center rounded-4xl lg:rounded-[23px] border p-1 lg:p-[4px]", className)}
+      className={cn("flex h-9 lg:h-[2.5vw] items-center rounded-4xl lg:rounded-[1.597vw] border p-1 lg:p-[0.278vw]", className)}
       {...props}
     />
   )
@@ -54,7 +54,7 @@ function MenubarTrigger({
     <MenubarPrimitive.Trigger
       data-slot="menubar-trigger"
       className={cn(
-        "flex cursor-pointer items-center rounded lg:rounded-[4px] px-2 lg:px-[8px] py-0.75 lg:py-[3px] text-sm lg:text-[14px] font-medium outline-hidden select-none hover:bg-muted aria-expanded:bg-muted",
+        "flex cursor-pointer items-center rounded lg:rounded-[0.278vw] px-2 lg:px-[0.556vw] py-0.75 lg:py-[0.208vw] text-sm lg:text-[0.972vw] font-medium outline-hidden select-none hover:bg-muted aria-expanded:bg-muted",
         className
       )}
       {...props}
@@ -76,7 +76,7 @@ function MenubarContent({
         align={align}
         alignOffset={alignOffset}
         sideOffset={sideOffset}
-        className={cn("z-50 min-w-48 lg:min-w-[192px] origin-(--radix-menubar-content-transform-origin) overflow-hidden rounded-md lg:rounded-[8px] bg-popover p-1 lg:p-[4px] text-popover-foreground shadow-2xl ring-1 ring-foreground/5 duration-100 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95", className )}
+        className={cn("z-50 min-w-48 lg:min-w-[13.333vw] origin-(--radix-menubar-content-transform-origin) overflow-hidden rounded-md lg:rounded-[0.556vw] bg-popover p-1 lg:p-[0.278vw] text-popover-foreground shadow-2xl ring-1 ring-foreground/5 duration-100 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95", className )}
         {...props}
       />
     </MenubarPortal>
@@ -98,7 +98,7 @@ function MenubarItem({
       data-inset={inset}
       data-variant={variant}
       className={cn(
-        "group/menubar-item relative flex cursor-pointer items-center gap-2.5 lg:gap-[10px] rounded lg:rounded-[3px] px-3 lg:px-[12px] py-2 lg:py-[8px] text-sm lg:text-[14px] outline-hidden select-none focus:bg-accent focus:text-accent-foreground not-data-[variant=destructive]:focus:**:text-accent-foreground data-inset:pl-9.5 data-[variant=destructive]:text-destructive data-[variant=destructive]:focus:bg-destructive/10 data-[variant=destructive]:focus:text-destructive dark:data-[variant=destructive]:focus:bg-destructive/20 data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 data-[variant=destructive]:*:[svg]:text-destructive!",
+        "group/menubar-item relative flex cursor-pointer items-center gap-2.5 lg:gap-[0.694vw] rounded lg:rounded-[0.208vw] px-3 lg:px-[0.833vw] py-2 lg:py-[0.556vw] text-sm lg:text-[0.972vw] outline-hidden select-none focus:bg-accent focus:text-accent-foreground not-data-[variant=destructive]:focus:**:text-accent-foreground data-inset:pl-9.5 data-[variant=destructive]:text-destructive data-[variant=destructive]:focus:bg-destructive/10 data-[variant=destructive]:focus:text-destructive dark:data-[variant=destructive]:focus:bg-destructive/20 data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 data-[variant=destructive]:*:[svg]:text-destructive!",
         className
       )}
       {...props}
@@ -120,13 +120,13 @@ function MenubarCheckboxItem({
       data-slot="menubar-checkbox-item"
       data-inset={inset}
       className={cn(
-        "relative flex cursor-pointer items-center gap-2.5 lg:gap-[10px] rounded lg:rounded-[4px] py-2 lg:py-[8px] pr-3 lg:pr-[12px] pl-9.5 lg:pl-[38px] text-sm lg:text-[14px] outline-hidden select-none focus:bg-accent focus:text-accent-foreground focus:**:text-accent-foreground data-inset:pl-9.5 data-disabled:pointer-events-none [&_svg]:pointer-events-none [&_svg]:shrink-0",
+        "relative flex cursor-pointer items-center gap-2.5 lg:gap-[0.694vw] rounded lg:rounded-[0.278vw] py-2 lg:py-[0.556vw] pr-3 lg:pr-[0.833vw] pl-9.5 lg:pl-[2.639vw] text-sm lg:text-[0.972vw] outline-hidden select-none focus:bg-accent focus:text-accent-foreground focus:**:text-accent-foreground data-inset:pl-9.5 data-disabled:pointer-events-none [&_svg]:pointer-events-none [&_svg]:shrink-0",
         className
       )}
       checked={checked}
       {...props}
     >
-      <span className="pointer-events-none absolute left-3 lg:left-[12px] flex size-4 lg:size-[16px] items-center justify-center [&_svg:not([class*='size-'])]:size-4">
+      <span className="pointer-events-none absolute left-3 lg:left-[0.833vw] flex size-4 lg:size-[1.111vw] items-center justify-center [&_svg:not([class*='size-'])]:size-4">
         <MenubarPrimitive.ItemIndicator>
           <HugeiconsIcon icon={Tick02Icon} strokeWidth={2} />
         </MenubarPrimitive.ItemIndicator>
@@ -149,12 +149,12 @@ function MenubarRadioItem({
       data-slot="menubar-radio-item"
       data-inset={inset}
       className={cn(
-        "relative flex cursor-pointer items-center gap-2.5 lg:gap-[10px] rounded lg:rounded-[4px] py-2 lg:py-[8px] pr-3 lg:pr-[12px] pl-9.5 lg:pl-[38px] text-sm lg:text-[14px] outline-hidden select-none focus:bg-accent focus:text-accent-foreground focus:**:text-accent-foreground data-inset:pl-9.5 data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        "relative flex cursor-pointer items-center gap-2.5 lg:gap-[0.694vw] rounded lg:rounded-[0.278vw] py-2 lg:py-[0.556vw] pr-3 lg:pr-[0.833vw] pl-9.5 lg:pl-[2.639vw] text-sm lg:text-[0.972vw] outline-hidden select-none focus:bg-accent focus:text-accent-foreground focus:**:text-accent-foreground data-inset:pl-9.5 data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         className
       )}
       {...props}
     >
-      <span className="pointer-events-none absolute left-3 lg:left-[12px] flex size-4 lg:size-[16px] items-center justify-center [&_svg:not([class*='size-'])]:size-4">
+      <span className="pointer-events-none absolute left-3 lg:left-[0.833vw] flex size-4 lg:size-[1.111vw] items-center justify-center [&_svg:not([class*='size-'])]:size-4">
         <MenubarPrimitive.ItemIndicator>
           <HugeiconsIcon icon={Tick02Icon} strokeWidth={2} />
         </MenubarPrimitive.ItemIndicator>
@@ -176,7 +176,7 @@ function MenubarLabel({
       data-slot="menubar-label"
       data-inset={inset}
       className={cn(
-        "px-3.5 lg:px-[14px] py-2.5 lg:py-[10px] text-xs lg:text-[12px] text-muted-foreground data-inset:pl-9.5",
+        "px-3.5 lg:px-[0.972vw] py-2.5 lg:py-[0.694vw] text-xs lg:text-[0.833vw] text-muted-foreground data-inset:pl-9.5",
         className
       )}
       {...props}
@@ -191,7 +191,7 @@ function MenubarSeparator({
   return (
     <MenubarPrimitive.Separator
       data-slot="menubar-separator"
-      className={cn("-mx-1 lg:-mx-[4px] my-1 lg:my-[4px] h-px lg:h-[1px] bg-border/50", className)}
+      className={cn("-mx-1 lg:-mx-[0.278vw] my-1 lg:my-[0.278vw] h-px lg:h-[0.069vw] bg-border/50", className)}
       {...props}
     />
   )
@@ -205,7 +205,7 @@ function MenubarShortcut({
     <span
       data-slot="menubar-shortcut"
       className={cn(
-        "ml-auto text-xs lg:text-[12px] tracking-widest text-muted-foreground group-focus/menubar-item:text-accent-foreground",
+        "ml-auto text-xs lg:text-[0.833vw] tracking-widest text-muted-foreground group-focus/menubar-item:text-accent-foreground",
         className
       )}
       {...props}
@@ -232,13 +232,13 @@ function MenubarSubTrigger({
       data-slot="menubar-sub-trigger"
       data-inset={inset}
       className={cn(
-        "flex cursor-pointer items-center gap-2 lg:gap-[8px] rounded lg:rounded-[4px] px-3 lg:px-[12px] py-2 lg:py-[8px] text-sm lg:text-[14px] outline-none select-none focus:bg-accent focus:text-accent-foreground data-inset:pl-9.5 data-open:bg-accent data-open:text-accent-foreground [&_svg:not([class*='size-'])]:size-4",
+        "flex cursor-pointer items-center gap-2 lg:gap-[0.556vw] rounded lg:rounded-[0.278vw] px-3 lg:px-[0.833vw] py-2 lg:py-[0.556vw] text-sm lg:text-[0.972vw] outline-none select-none focus:bg-accent focus:text-accent-foreground data-inset:pl-9.5 data-open:bg-accent data-open:text-accent-foreground [&_svg:not([class*='size-'])]:size-4",
         className
       )}
       {...props}
     >
       {children}
-      <HugeiconsIcon icon={ArrowRight01Icon} strokeWidth={2} className="ml-auto size-4 lg:size-[16px]" />
+      <HugeiconsIcon icon={ArrowRight01Icon} strokeWidth={2} className="ml-auto size-4 lg:size-[1.111vw]" />
     </MenubarPrimitive.SubTrigger>
   )
 }
@@ -250,7 +250,7 @@ function MenubarSubContent({
   return (
     <MenubarPrimitive.SubContent
       data-slot="menubar-sub-content"
-      className={cn("z-50 min-w-32 lg:min-w-[128px] origin-(--radix-menubar-content-transform-origin) overflow-hidden rounded-md lg:rounded-[8px] bg-popover p-1 lg:p-[4px] text-popover-foreground shadow-2xl ring-1 ring-foreground/5 duration-100 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95", className )}
+      className={cn("z-50 min-w-32 lg:min-w-[8.889vw] origin-(--radix-menubar-content-transform-origin) overflow-hidden rounded-md lg:rounded-[0.556vw] bg-popover p-1 lg:p-[0.278vw] text-popover-foreground shadow-2xl ring-1 ring-foreground/5 duration-100 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95", className )}
       {...props}
     />
   )

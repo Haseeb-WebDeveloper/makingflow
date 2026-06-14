@@ -10,7 +10,7 @@ export function CheckboxGroup({
 }: CheckboxGroupPrimitive.Props): React.ReactElement {
   return (
     <CheckboxGroupPrimitive
-      className={cn("flex flex-col items-start gap-3", className)}
+      className={cn("flex flex-col items-start gap-3 lg:gap-[0.833vw]", className)}
       {...props}
     />
   );

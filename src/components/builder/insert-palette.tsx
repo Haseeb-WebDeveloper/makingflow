@@ -60,10 +60,10 @@ export function InsertPalette({
                     onPick(item.type, item.config)
                     onOpenChange(false)
                   }}
-                  className="gap-2.5"
+                  className="gap-2.5 lg:gap-[0.694vw]"
                 >
-                  <FieldGlyph type={item.type} className="size-4 shrink-0 text-muted-foreground" />
-                  <span className="text-sm">{item.label}</span>
+                  <FieldGlyph type={item.type} className="size-4 lg:size-[1.111vw] shrink-0 text-muted-foreground" />
+                  <span className="text-sm lg:text-[0.972vw]">{item.label}</span>
                 </CommandItem>
               ))}
             </CommandGroup>

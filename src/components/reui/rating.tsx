@@ -9,9 +9,9 @@ import { StarIcon } from "lucide-react"
 const ratingVariants = cva("flex items-center", {
   variants: {
     size: {
-      sm: "gap-2",
-      default: "gap-2.5",
-      lg: "gap-3",
+      sm: "gap-2 lg:gap-[0.556vw]",
+      default: "gap-2.5 lg:gap-[0.694vw]",
+      lg: "gap-3 lg:gap-[0.833vw]",
     },
   },
   defaultVariants: {
@@ -22,9 +22,9 @@ const ratingVariants = cva("flex items-center", {
 const starVariants = cva("", {
   variants: {
     size: {
-      sm: "w-4 h-4",
-      default: "w-5 h-5",
-      lg: "w-6 h-6",
+      sm: "w-4 lg:w-[1.111vw] h-4 lg:h-[1.111vw]",
+      default: "w-5 lg:w-[1.389vw] h-5 lg:h-[1.389vw]",
+      lg: "w-6 lg:w-[1.667vw] h-6 lg:h-[1.667vw]",
     },
   },
   defaultVariants: {
@@ -32,12 +32,12 @@ const starVariants = cva("", {
   },
 })
 
-const valueVariants = cva("text-muted-foreground w-5", {
+const valueVariants = cva("text-muted-foreground w-5 lg:w-[1.389vw]", {
   variants: {
     size: {
-      sm: "text-xs",
-      default: "text-sm",
-      lg: "text-base",
+      sm: "text-xs lg:text-[0.833vw]",
+      default: "text-sm lg:text-[0.972vw]",
+      lg: "text-base lg:text-[1.111vw]",
     },
   },
   defaultVariants: {

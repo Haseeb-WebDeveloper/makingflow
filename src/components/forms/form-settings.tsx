@@ -30,17 +30,17 @@ function SettingRow({
   children?: React.ReactNode
 }) {
   return (
-    <div className="border-b border-border py-4 last:border-0">
-      <div className="flex items-start justify-between gap-4">
+    <div className="border-b border-border py-4 lg:py-[1.111vw] last:border-0">
+      <div className="flex items-start justify-between gap-4 lg:gap-[1.111vw]">
         <div className="min-w-0">
-          <p className="text-sm font-medium text-foreground">{title}</p>
+          <p className="text-sm lg:text-[0.972vw] font-medium text-foreground">{title}</p>
           {description ? (
-            <p className="mt-0.5 text-sm text-muted-foreground">{description}</p>
+            <p className="mt-0.5 lg:mt-[0.139vw] text-sm lg:text-[0.972vw] text-muted-foreground">{description}</p>
           ) : null}
         </div>
-        <div className="shrink-0 pt-0.5">{control}</div>
+        <div className="shrink-0 pt-0.5 lg:pt-[0.139vw]">{control}</div>
       </div>
-      {children ? <div className="mt-3">{children}</div> : null}
+      {children ? <div className="mt-3 lg:mt-[0.833vw]">{children}</div> : null}
     </div>
   )
 }
@@ -93,28 +93,28 @@ function ImageUpload({
           <button
             type="button"
             onClick={() => onChange(null)}
-            className="text-sm font-medium text-destructive hover:underline"
+            className="text-sm lg:text-[0.972vw] font-medium text-destructive hover:underline"
           >
             Remove
           </button>
         ) : null
       }
     >
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 lg:gap-[0.833vw]">
         {value ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={value}
             alt=""
             className={cn(
-              "rounded-md border border-border bg-background",
-              variant === "banner" ? "h-16 w-32 object-cover" : "size-12 object-contain p-1",
+              "rounded-md lg:rounded-[0.556vw] border border-border bg-background",
+              variant === "banner" ? "h-16 lg:h-[4.444vw] w-32 lg:w-[8.889vw] object-cover" : "size-12 lg:size-[3.333vw] object-contain p-1 lg:p-[0.278vw]",
             )}
           />
         ) : null}
         <label
           className={cn(
-            "inline-flex h-9 cursor-pointer items-center rounded-md border border-border px-3 text-sm font-medium text-foreground transition-colors hover:bg-muted",
+            "inline-flex h-9 lg:h-[2.5vw] cursor-pointer items-center rounded-md lg:rounded-[0.556vw] border border-border px-3 lg:px-[0.833vw] text-sm lg:text-[0.972vw] font-medium text-foreground transition-colors hover:bg-muted",
             uploading && "pointer-events-none opacity-70",
           )}
         >
@@ -229,15 +229,15 @@ export const FormSettings = forwardRef<
   const isDraft = state.status === "draft"
 
   return (
-    <div className="max-w-2xl">
-      <h2 className="mb-1 text-sm font-semibold text-foreground">Response experience</h2>
-      <div className="rounded-lg border border-border px-4">
+    <div className="max-w-2xl lg:max-w-[46.667vw]">
+      <h2 className="mb-1 lg:mb-[0.278vw] text-sm lg:text-[0.972vw] font-semibold text-foreground">Response experience</h2>
+      <div className="rounded-lg lg:rounded-[0.694vw] border border-border px-4 lg:px-[1.111vw]">
         <SettingRow
           title="How respondents fill the form"
           description="Classic shows every question on the page. Conversational asks one question at a time in an AI chat that understands natural-language replies."
           control={null}
         >
-          <div className="inline-flex rounded-md border border-border p-0.5">
+          <div className="inline-flex rounded-md lg:rounded-[0.556vw] border border-border p-0.5 lg:p-[0.139vw]">
             {(["classic", "conversational"] as const).map((mode) => (
               <button
                 key={mode}
@@ -250,7 +250,7 @@ export const FormSettings = forwardRef<
                   }))
                 }
                 className={
-                  "h-8 rounded px-3 text-sm font-medium transition-colors " +
+                  "h-8 lg:h-[2.222vw] rounded lg:rounded-[0.324vw] px-3 lg:px-[0.833vw] text-sm lg:text-[0.972vw] font-medium transition-colors " +
                   (state.renderMode === mode
                     ? "bg-foreground text-background"
                     : "text-muted-foreground hover:text-foreground")
@@ -274,7 +274,7 @@ export const FormSettings = forwardRef<
                 placeholder="Warm, concise, and professional."
                 value={state.persona}
                 onChange={(e) => setState((s) => ({ ...s, persona: e.target.value }))}
-                className="scrollbar-thin w-full resize-none rounded-md border border-input bg-input/30 px-3 py-2 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:border-foreground/40"
+                className="scrollbar-thin w-full resize-none rounded-md lg:rounded-[0.556vw] border border-input bg-input/30 px-3 lg:px-[0.833vw] py-2 lg:py-[0.556vw] text-sm lg:text-[0.972vw] text-foreground outline-none placeholder:text-muted-foreground focus-visible:border-foreground/40"
               />
             </SettingRow>
 
@@ -303,8 +303,8 @@ export const FormSettings = forwardRef<
         ) : null}
       </div>
 
-      <h2 className="mb-1 mt-8 text-sm font-semibold text-foreground">Branding</h2>
-      <div className="rounded-lg border border-border px-4">
+      <h2 className="mb-1 lg:mb-[0.278vw] mt-8 lg:mt-[2.222vw] text-sm lg:text-[0.972vw] font-semibold text-foreground">Branding</h2>
+      <div className="rounded-lg lg:rounded-[0.694vw] border border-border px-4 lg:px-[1.111vw]">
         <ImageUpload
           label="Logo"
           description="A small logo shown above the form title."
@@ -321,8 +321,8 @@ export const FormSettings = forwardRef<
         />
       </div>
 
-      <h2 className="mb-1 mt-8 text-sm font-semibold text-foreground">Access</h2>
-      <div className="rounded-lg border border-border px-4">
+      <h2 className="mb-1 lg:mb-[0.278vw] mt-8 lg:mt-[2.222vw] text-sm lg:text-[0.972vw] font-semibold text-foreground">Access</h2>
+      <div className="rounded-lg lg:rounded-[0.694vw] border border-border px-4 lg:px-[1.111vw]">
         <SettingRow
           title="Close form"
           description={
@@ -368,7 +368,7 @@ export const FormSettings = forwardRef<
                 const n = Math.max(1, Number(e.target.value) || 1)
                 setState((s) => ({ ...s, submissionLimit: n }))
               }}
-              className="h-9 w-40"
+              className="h-9 lg:h-[2.5vw] w-40 lg:w-[11.111vw]"
             />
           ) : null}
         </SettingRow>
@@ -394,7 +394,7 @@ export const FormSettings = forwardRef<
                 const iso = e.target.value ? new Date(e.target.value).toISOString() : null
                 setState((s) => ({ ...s, closesAt: iso }))
               }}
-              className="h-9 w-60"
+              className="h-9 lg:h-[2.5vw] w-60 lg:w-[16.667vw]"
             />
           ) : null}
         </SettingRow>
@@ -411,8 +411,8 @@ export const FormSettings = forwardRef<
         />
       </div>
 
-      <h2 className="mb-1 mt-8 text-sm font-semibold text-foreground">Behavior</h2>
-      <div className="rounded-lg border border-border px-4">
+      <h2 className="mb-1 lg:mb-[0.278vw] mt-8 lg:mt-[2.222vw] text-sm lg:text-[0.972vw] font-semibold text-foreground">Behavior</h2>
+      <div className="rounded-lg lg:rounded-[0.694vw] border border-border px-4 lg:px-[1.111vw]">
         <SettingRow
           title="Redirect on completion"
           description="Send respondents to a URL after they submit."
@@ -431,7 +431,7 @@ export const FormSettings = forwardRef<
               placeholder="https://example.com/thank-you"
               value={state.redirectUrl ?? ""}
               onChange={(e) => setState((s) => ({ ...s, redirectUrl: e.target.value }))}
-              className="h-9 w-full"
+              className="h-9 lg:h-[2.5vw] w-full"
             />
           ) : null}
         </SettingRow>
@@ -456,7 +456,7 @@ export const FormSettings = forwardRef<
             placeholder="Submit"
             value={state.submitButtonLabel}
             onChange={(e) => setState((s) => ({ ...s, submitButtonLabel: e.target.value }))}
-            className="h-9 w-60"
+            className="h-9 lg:h-[2.5vw] w-60 lg:w-[16.667vw]"
           />
         </SettingRow>
 
@@ -474,24 +474,24 @@ export const FormSettings = forwardRef<
             placeholder="Thanks! Your response has been recorded."
             value={state.thankYouMessage}
             onChange={(e) => setState((s) => ({ ...s, thankYouMessage: e.target.value }))}
-            className="scrollbar-thin w-full resize-none rounded-md border border-input bg-input/30 px-3 py-2 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:border-foreground/40"
+            className="scrollbar-thin w-full resize-none rounded-md lg:rounded-[0.556vw] border border-input bg-input/30 px-3 lg:px-[0.833vw] py-2 lg:py-[0.556vw] text-sm lg:text-[0.972vw] text-foreground outline-none placeholder:text-muted-foreground focus-visible:border-foreground/40"
           />
         </SettingRow>
       </div>
 
       {/* Standalone save bar — the embedded (dialog) variant lets the footer drive saving. */}
       {!embedded && dirty ? (
-        <div className="sticky bottom-4 z-10 mt-6 flex items-center gap-3 rounded-lg border border-border bg-background/95 px-4 py-3 shadow-lg backdrop-blur supports-backdrop-filter:bg-background/80">
-          <span className="mr-auto text-sm text-muted-foreground">You have unsaved changes</span>
+        <div className="sticky bottom-4 lg:bottom-[1.111vw] z-10 mt-6 lg:mt-[1.667vw] flex items-center gap-3 lg:gap-[0.833vw] rounded-lg lg:rounded-[0.694vw] border border-border bg-background/95 px-4 lg:px-[1.111vw] py-3 lg:py-[0.833vw] shadow-lg backdrop-blur supports-backdrop-filter:bg-background/80">
+          <span className="mr-auto text-sm lg:text-[0.972vw] text-muted-foreground">You have unsaved changes</span>
           <Button
             variant="outline"
             onClick={() => setState(baseline)}
             disabled={saving}
-            className="h-9 px-3"
+            className="h-9 lg:h-[2.5vw] px-3 lg:px-[0.833vw]"
           >
             Discard
           </Button>
-          <Button onClick={() => void save()} disabled={saving} className="h-9 px-3.5">
+          <Button onClick={() => void save()} disabled={saving} className="h-9 lg:h-[2.5vw] px-3.5 lg:px-[0.972vw]">
             {saving ? "Saving…" : "Save changes"}
           </Button>
         </div>

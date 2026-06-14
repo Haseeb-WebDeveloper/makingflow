@@ -22,7 +22,7 @@ export const metadata: Metadata = { title: "Home · MakingFlow" }
 const NewFormButton = () => (
   <Link
     href="/forms/new"
-    className="inline-flex h-10 items-center rounded-md bg-foreground px-4 text-sm font-medium text-background transition-colors hover:bg-foreground/90"
+    className="inline-flex h-10 lg:h-[2.778vw] items-center rounded-md lg:rounded-[0.556vw] bg-foreground px-4 lg:px-[1.111vw] text-sm lg:text-[0.972vw] font-medium text-background transition-colors hover:bg-foreground/90"
   >
     New form
   </Link>
@@ -49,15 +49,15 @@ export default async function FormsPage() {
           action={
             <Link
               href="/forms/new"
-              className="inline-flex h-10 items-center rounded-md bg-foreground px-4 text-sm font-medium text-background transition-colors hover:bg-foreground/90"
+              className="inline-flex h-10 lg:h-[2.778vw] items-center rounded-md lg:rounded-[0.556vw] bg-foreground px-4 lg:px-[1.111vw] text-sm lg:text-[0.972vw] font-medium text-background transition-colors hover:bg-foreground/90"
             >
               New form
             </Link>
           }
         />
       ) : (
-        <div className="mt-8 space-y-3">
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <div className="mt-8 lg:mt-[2.222vw] space-y-3 lg:space-y-[0.833vw]">
+          <div className="grid grid-cols-2 gap-3 lg:gap-[0.833vw] lg:grid-cols-4">
             <StatCard
               label="Total submissions"
               icon="folder"
@@ -94,7 +94,7 @@ export default async function FormsPage() {
 
           <SubmissionsAreaChart data={data!.series} />
 
-          <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
+          <div className="grid grid-cols-1 gap-3 lg:gap-[0.833vw] lg:grid-cols-3">
             <BreakdownPanel
               title="Sources"
               items={data!.breakdowns.sources.map((s) => ({ label: s.key, count: s.count }))}
@@ -105,8 +105,8 @@ export default async function FormsPage() {
             <CountryLeaderboard items={data!.breakdowns.countries} />
           </div>
 
-          <div className="pt-2">
-            <h2 className="mb-3 text-sm font-semibold text-foreground">Your forms</h2>
+          <div className="pt-2 lg:pt-[0.556vw]">
+            <h2 className="mb-3 lg:mb-[0.833vw] text-sm lg:text-[0.972vw] font-semibold text-foreground">Your forms</h2>
             <FormsOverviewTable forms={forms} />
           </div>
         </div>

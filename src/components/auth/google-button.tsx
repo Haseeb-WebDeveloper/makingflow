@@ -30,9 +30,9 @@ export function GoogleButton({
       type="button"
       onClick={onClick}
       disabled={loading}
-      className="inline-flex h-11 w-full items-center justify-center gap-2.5 rounded-md border border-border bg-background px-4 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+      className="inline-flex h-11 lg:h-[3.056vw] w-full items-center justify-center gap-2.5 lg:gap-[0.694vw] rounded-md lg:rounded-[0.556vw] border border-border bg-background px-4 lg:px-[1.111vw] text-sm lg:text-[0.972vw] font-medium text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
     >
-      <GoogleGlyph className="size-4" />
+      <GoogleGlyph className="size-4 lg:size-[1.111vw]" />
       {loading ? "Redirecting…" : label}
     </button>
   )

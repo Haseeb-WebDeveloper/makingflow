@@ -27,7 +27,7 @@ function DonutTip({
   const value = payload[0].value
   const share = total && total > 0 ? Math.round((value / total) * 100) : 0
   return (
-    <div className="rounded-md bg-foreground px-2.5 py-1.5 text-xs text-background shadow-sm">
+    <div className="rounded-md lg:rounded-[0.556vw] bg-foreground px-2.5 lg:px-[0.694vw] py-1.5 lg:py-[0.417vw] text-xs lg:text-[0.833vw] text-background shadow-sm">
       <p className="font-semibold">{share}%</p>
       <p className="opacity-80">
         {value} {value === 1 ? "response" : "responses"}
@@ -48,16 +48,16 @@ export function DevicesDonut({ items }: { items: Bucket[] }) {
   }))
 
   return (
-    <div className="rounded-lg border border-border p-4 sm:p-5">
-      <p className="text-xs font-medium text-muted-foreground">Devices</p>
+    <div className="rounded-lg lg:rounded-[0.694vw] border border-border p-4 lg:p-[1.111vw] sm:p-5">
+      <p className="text-xs lg:text-[0.833vw] font-medium text-muted-foreground">Devices</p>
 
       {total === 0 ? (
-        <div className="flex h-52 items-center justify-center text-sm text-muted-foreground">
+        <div className="flex h-52 lg:h-[14.444vw] items-center justify-center text-sm lg:text-[0.972vw] text-muted-foreground">
           No device data yet
         </div>
       ) : (
-        <div className="mt-1 flex flex-col items-center">
-          <div className="relative h-40 w-40">
+        <div className="mt-1 lg:mt-[0.278vw] flex flex-col items-center">
+          <div className="relative h-40 lg:h-[11.111vw] w-40 lg:w-[11.111vw]">
             <ResponsiveContainer width="100%" height="100%" minHeight={160} minWidth={160}>
               <PieChart>
                 <Pie
@@ -79,20 +79,20 @@ export function DevicesDonut({ items }: { items: Bucket[] }) {
               </PieChart>
             </ResponsiveContainer>
             <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-              <span className="font-sebenta text-2xl font-bold tracking-tight text-foreground">
+              <span className="font-sebenta text-2xl lg:text-[1.667vw] font-bold tracking-tight text-foreground">
                 {total.toLocaleString()}
               </span>
-              <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
+              <span className="text-[10px] lg:text-[0.694vw] uppercase tracking-wide text-muted-foreground">
                 responses
               </span>
             </div>
           </div>
 
-          <ul className="mt-5 grid w-full grid-cols-2 gap-x-4 gap-y-2">
+          <ul className="mt-5 lg:mt-[1.389vw] grid w-full grid-cols-2 gap-x-4 lg:gap-x-[1.111vw] gap-y-2 lg:gap-y-[0.556vw]">
             {data.map((d) => (
-              <li key={d.name} className="flex items-center justify-between gap-2 text-sm">
-                <span className="flex min-w-0 items-center gap-2">
-                  <span className="size-2.5 shrink-0 rounded-full" style={{ background: d.color }} />
+              <li key={d.name} className="flex items-center justify-between gap-2 lg:gap-[0.556vw] text-sm lg:text-[0.972vw]">
+                <span className="flex min-w-0 items-center gap-2 lg:gap-[0.556vw]">
+                  <span className="size-2.5 lg:size-[0.694vw] shrink-0 rounded-full" style={{ background: d.color }} />
                   <span className="truncate text-foreground">{d.name}</span>
                 </span>
                 <span className="shrink-0 tabular-nums text-muted-foreground">

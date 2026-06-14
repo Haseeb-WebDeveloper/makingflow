@@ -5,7 +5,7 @@ export function PageLoader() {
     <div className="flex min-h-svh items-center justify-center">
       <span
         aria-hidden="true"
-        className="size-6 lg:size-[24px] animate-spin rounded-full border-2 border-foreground/20 border-t-foreground/70"
+        className="size-6 lg:size-[1.667vw] animate-spin rounded-full border-2 border-foreground/20 border-t-foreground/70"
       />
       <span className="sr-only">Loading…</span>
     </div>

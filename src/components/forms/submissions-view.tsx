@@ -122,28 +122,28 @@ export function SubmissionsView({
 
   return (
     <div>
-      <div className="mb-3 flex flex-wrap items-center gap-2">
-        <div className="relative min-w-[200px] flex-1">
+      <div className="mb-3 lg:mb-[0.833vw] flex flex-wrap items-center gap-2 lg:gap-[0.556vw]">
+        <div className="relative min-w-[200px] lg:min-w-[13.889vw] flex-1">
           <Icon
             name="search"
-            className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+            className="pointer-events-none absolute left-3 lg:left-[0.833vw] top-1/2 size-4 lg:size-[1.111vw] -translate-y-1/2 text-muted-foreground"
           />
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search responses…"
-            className="h-9 w-full rounded-md border border-border bg-background pl-9 pr-3 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:border-foreground/40"
+            className="h-9 lg:h-[2.5vw] w-full rounded-md lg:rounded-[0.556vw] border border-border bg-background pl-9 lg:pl-[2.5vw] pr-3 lg:pr-[0.833vw] text-sm lg:text-[0.972vw] text-foreground outline-none placeholder:text-muted-foreground focus-visible:border-foreground/40"
           />
         </div>
         <button
           type="button"
           onClick={() => setDialogOpen(true)}
-          className="inline-flex h-9 items-center gap-1.5 rounded-md border border-border px-3 text-sm font-medium text-foreground transition-colors hover:bg-muted"
+          className="inline-flex h-9 lg:h-[2.5vw] items-center gap-1.5 lg:gap-[0.417vw] rounded-md lg:rounded-[0.556vw] border border-border px-3 lg:px-[0.833vw] text-sm lg:text-[0.972vw] font-medium text-foreground transition-colors hover:bg-muted"
         >
           <FilterIcon />
           Filters
           {activeCount > 0 ? (
-            <span className="ml-0.5 inline-flex min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-xs font-medium text-primary-foreground">
+            <span className="ml-0.5 lg:ml-[0.139vw] inline-flex min-w-5 lg:min-w-[1.389vw] items-center justify-center rounded-full bg-primary px-1.5 lg:px-[0.417vw] text-xs lg:text-[0.833vw] font-medium text-primary-foreground">
               {activeCount}
             </span>
           ) : null}
@@ -151,14 +151,14 @@ export function SubmissionsView({
         <button
           type="button"
           onClick={() => exportCsv(formTitle, columnLabels, displayRows)}
-          className="inline-flex h-9 items-center gap-1.5 rounded-md border border-border px-3 text-sm font-medium text-foreground transition-colors hover:bg-muted"
+          className="inline-flex h-9 lg:h-[2.5vw] items-center gap-1.5 lg:gap-[0.417vw] rounded-md lg:rounded-[0.556vw] border border-border px-3 lg:px-[0.833vw] text-sm lg:text-[0.972vw] font-medium text-foreground transition-colors hover:bg-muted"
         >
-          <Icon name="download" className="size-4" />
+          <Icon name="download" className="size-4 lg:size-[1.111vw]" />
           Export
         </button>
       </div>
 
-      <p className="mb-3 text-sm text-muted-foreground">
+      <p className="mb-3 lg:mb-[0.833vw] text-sm lg:text-[0.972vw] text-muted-foreground">
         {displayRows.length} of {liveRows.length} {liveRows.length === 1 ? "response" : "responses"}
         {activeCount > 0 || search.trim() ? " (filtered)" : ""}
       </p>
@@ -223,19 +223,19 @@ export function SubmissionsView({
 
 function EmptyState({ title, subtitle }: { title: string; subtitle: string }) {
   return (
-    <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border px-6 py-20 text-center">
-      <span className="mb-3 flex size-10 items-center justify-center rounded-md bg-muted text-muted-foreground">
-        <Icon name="folder" className="size-5" />
+    <div className="flex flex-col items-center justify-center rounded-lg lg:rounded-[0.694vw] border border-dashed border-border px-6 lg:px-[1.667vw] py-20 lg:py-[5.556vw] text-center">
+      <span className="mb-3 lg:mb-[0.833vw] flex size-10 lg:size-[2.778vw] items-center justify-center rounded-md lg:rounded-[0.556vw] bg-muted text-muted-foreground">
+        <Icon name="folder" className="size-5 lg:size-[1.389vw]" />
       </span>
-      <p className="text-sm font-medium text-foreground">{title}</p>
-      <p className="mt-1 max-w-sm text-sm text-muted-foreground">{subtitle}</p>
+      <p className="text-sm lg:text-[0.972vw] font-medium text-foreground">{title}</p>
+      <p className="mt-1 lg:mt-[0.278vw] max-w-sm lg:max-w-[26.667vw] text-sm lg:text-[0.972vw] text-muted-foreground">{subtitle}</p>
     </div>
   )
 }
 
 function FilterIcon() {
   return (
-    <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <svg viewBox="0 0 24 24" className="size-4 lg:size-[1.111vw]" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
       <path d="M3 5h18M6 12h12M10 19h4" />
     </svg>
   )

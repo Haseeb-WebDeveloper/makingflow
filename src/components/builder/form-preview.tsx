@@ -25,17 +25,17 @@ export function FormPreview({
   const hasContent = Boolean(form?.title) || fields.length > 0
 
   return (
-    <div className="mx-auto w-full max-w-2xl">
-      <header className="mb-8">
-        <h1 className="font-sebenta text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
+    <div className="mx-auto w-full max-w-2xl lg:max-w-[46.667vw]">
+      <header className="mb-8 lg:mb-[2.222vw]">
+        <h1 className="font-sebenta text-2xl lg:text-[1.667vw] font-bold tracking-tight text-foreground sm:text-3xl">
           {form?.title || (building ? "Building…" : "Your form")}
         </h1>
         {form?.description ? (
-          <p className="mt-2 text-sm text-muted-foreground">{form.description}</p>
+          <p className="mt-2 lg:mt-[0.556vw] text-sm lg:text-[0.972vw] text-muted-foreground">{form.description}</p>
         ) : null}
       </header>
 
-      <div className="space-y-6">
+      <div className="space-y-6 lg:space-y-[1.667vw]">
         {fields.map((field, i) => (
           <FieldBlock key={i} field={field} />
         ))}
@@ -45,7 +45,7 @@ export function FormPreview({
       {hasContent && !building ? (
         <button
           type="button"
-          className="mt-9 inline-flex h-11 items-center justify-center rounded-md bg-foreground px-6 text-sm font-medium text-background"
+          className="mt-9 lg:mt-[2.5vw] inline-flex h-11 lg:h-[3.056vw] items-center justify-center rounded-md lg:rounded-[0.556vw] bg-foreground px-6 lg:px-[1.667vw] text-sm lg:text-[0.972vw] font-medium text-background"
           tabIndex={-1}
         >
           Submit
@@ -61,23 +61,23 @@ function FieldBlock({ field }: { field: PartialField }) {
 
   if (type === "heading") {
     return (
-      <h2 className="pt-2 font-sebenta text-lg font-semibold text-foreground">
+      <h2 className="pt-2 lg:pt-[0.556vw] font-sebenta text-lg lg:text-[1.25vw] font-semibold text-foreground">
         {label || "Section"}
       </h2>
     )
   }
   if (type === "paragraph") {
-    return <p className="text-sm leading-relaxed text-muted-foreground">{label}</p>
+    return <p className="text-sm lg:text-[0.972vw] leading-relaxed text-muted-foreground">{label}</p>
   }
 
   return (
-    <div className="space-y-2">
-      <Label className="text-sm font-medium text-foreground">
+    <div className="space-y-2 lg:space-y-[0.556vw]">
+      <Label className="text-sm lg:text-[0.972vw] font-medium text-foreground">
         {label || "Question"}
-        {required ? <span className="ml-0.5 text-destructive">*</span> : null}
+        {required ? <span className="ml-0.5 lg:ml-[0.139vw] text-destructive">*</span> : null}
       </Label>
       {description ? (
-        <p className="-mt-1 text-xs text-muted-foreground">{description}</p>
+        <p className="-mt-1 lg:-mt-[0.278vw] text-xs lg:text-[0.833vw] text-muted-foreground">{description}</p>
       ) : null}
       <Control field={field} />
     </div>
@@ -101,29 +101,29 @@ function Control({ field }: { field: PartialField }) {
           type={type === "email" ? "email" : type === "url" ? "url" : type === "phone" ? "tel" : "text"}
           placeholder={placeholder ?? placeholderFor(type)}
           disabled
-          className="h-11 bg-background"
+          className="h-11 lg:h-[3.056vw] bg-background"
         />
       )
 
     case "date":
-      return <Input type="date" disabled className="h-11 bg-background" />
+      return <Input type="date" disabled className="h-11 lg:h-[3.056vw] bg-background" />
     case "time":
-      return <Input type="time" disabled className="h-11 bg-background" />
+      return <Input type="time" disabled className="h-11 lg:h-[3.056vw] bg-background" />
 
     case "file_upload":
       return (
-        <div className="flex h-24 items-center justify-center rounded-md border border-dashed border-border text-sm text-muted-foreground">
+        <div className="flex h-24 lg:h-[6.667vw] items-center justify-center rounded-md lg:rounded-[0.556vw] border border-dashed border-border text-sm lg:text-[0.972vw] text-muted-foreground">
           Drop a file or click to upload
         </div>
       )
 
     case "yes_no":
       return (
-        <div className="flex gap-2">
+        <div className="flex gap-2 lg:gap-[0.556vw]">
           {["Yes", "No"].map((o) => (
             <span
               key={o}
-              className="inline-flex h-10 items-center rounded-md border border-border px-5 text-sm text-foreground"
+              className="inline-flex h-10 lg:h-[2.778vw] items-center rounded-md lg:rounded-[0.556vw] border border-border px-5 lg:px-[1.389vw] text-sm lg:text-[0.972vw] text-foreground"
             >
               {o}
             </span>
@@ -133,7 +133,7 @@ function Control({ field }: { field: PartialField }) {
 
     case "dropdown":
       return (
-        <div className="flex h-11 items-center justify-between rounded-md border border-input bg-background px-3 text-sm text-muted-foreground">
+        <div className="flex h-11 lg:h-[3.056vw] items-center justify-between rounded-md lg:rounded-[0.556vw] border border-input bg-background px-3 lg:px-[0.833vw] text-sm lg:text-[0.972vw] text-muted-foreground">
           {opts[0] ?? "Select an option"}
           <span aria-hidden>▾</span>
         </div>
@@ -153,23 +153,23 @@ function Control({ field }: { field: PartialField }) {
       return <ScaleRow from={0} to={10} />
 
     default:
-      return <Input disabled className="h-11 bg-background" />
+      return <Input disabled className="h-11 lg:h-[3.056vw] bg-background" />
   }
 }
 
 function ChoiceList({ options, shape }: { options: string[]; shape: "circle" | "square" }) {
   const items = options.length ? options : ["Option one", "Option two"]
   return (
-    <div className="space-y-2">
+    <div className="space-y-2 lg:space-y-[0.556vw]">
       {items.map((o, i) => (
         <div
           key={i}
-          className="flex items-center gap-3 rounded-md border border-border px-3 py-2.5 text-sm text-foreground"
+          className="flex items-center gap-3 lg:gap-[0.833vw] rounded-md lg:rounded-[0.556vw] border border-border px-3 lg:px-[0.833vw] py-2.5 lg:py-[0.694vw] text-sm lg:text-[0.972vw] text-foreground"
         >
           <span
             className={cn(
-              "size-4 shrink-0 border border-muted-foreground/50",
-              shape === "circle" ? "rounded-full" : "rounded-[4px]",
+              "size-4 lg:size-[1.111vw] shrink-0 border border-muted-foreground/50",
+              shape === "circle" ? "rounded-full" : "rounded-[4px] lg:rounded-[0.278vw]",
             )}
           />
           {o}
@@ -182,11 +182,11 @@ function ChoiceList({ options, shape }: { options: string[]; shape: "circle" | "
 function ScaleRow({ from, to }: { from: number; to: number }) {
   const nums = Array.from({ length: to - from + 1 }, (_, i) => from + i)
   return (
-    <div className="flex flex-wrap gap-1.5">
+    <div className="flex flex-wrap gap-1.5 lg:gap-[0.417vw]">
       {nums.map((n) => (
         <span
           key={n}
-          className="inline-flex size-9 items-center justify-center rounded-md border border-border text-sm text-foreground"
+          className="inline-flex size-9 lg:size-[2.5vw] items-center justify-center rounded-md lg:rounded-[0.556vw] border border-border text-sm lg:text-[0.972vw] text-foreground"
         >
           {n}
         </span>
@@ -197,9 +197,9 @@ function ScaleRow({ from, to }: { from: number; to: number }) {
 
 function IconRow({ count, kind }: { count: number; kind: "star" }) {
   return (
-    <div className="flex gap-1.5 text-muted-foreground/50">
+    <div className="flex gap-1.5 lg:gap-[0.417vw] text-muted-foreground/50">
       {Array.from({ length: count }, (_, i) => (
-        <Star key={i} className="size-7" />
+        <Star key={i} className="size-7 lg:size-[1.944vw]" />
       ))}
     </div>
   )
@@ -216,9 +216,9 @@ function Star({ className }: { className?: string }) {
 /** Streaming placeholder row shown while the next field is still arriving. */
 function BuildingRow() {
   return (
-    <div className="space-y-2">
-      <div className="h-4 w-32 animate-pulse rounded bg-muted" />
-      <div className="h-11 w-full animate-pulse rounded-md bg-muted" />
+    <div className="space-y-2 lg:space-y-[0.556vw]">
+      <div className="h-4 lg:h-[1.111vw] w-32 lg:w-[8.889vw] animate-pulse rounded lg:rounded-[0.324vw] bg-muted" />
+      <div className="h-11 lg:h-[3.056vw] w-full animate-pulse rounded-md lg:rounded-[0.556vw] bg-muted" />
     </div>
   )
 }

@@ -145,7 +145,7 @@ function CarouselContent({ className, ...props }: React.ComponentProps<"div">) {
       <div
         className={cn(
           "flex",
-          orientation === "horizontal" ? "-ml-4 lg:-ml-[16px]" : "-mt-4 lg:-mt-[16px] flex-col",
+          orientation === "horizontal" ? "-ml-4 lg:-ml-[1.111vw]" : "-mt-4 lg:-mt-[1.111vw] flex-col",
           className
         )}
         {...props}
@@ -164,7 +164,7 @@ function CarouselItem({ className, ...props }: React.ComponentProps<"div">) {
       data-slot="carousel-item"
       className={cn(
         "min-w-0 shrink-0 grow-0 basis-full",
-        orientation === "horizontal" ? "pl-4 lg:pl-[16px]" : "pt-4 lg:pt-[16px]",
+        orientation === "horizontal" ? "pl-4 lg:pl-[1.111vw]" : "pt-4 lg:pt-[1.111vw]",
         className
       )}
       {...props}
@@ -188,8 +188,8 @@ function CarouselPrevious({
       className={cn(
         "absolute touch-manipulation rounded-full",
         orientation === "horizontal"
-          ? "top-1/2 -left-12 lg:-left-[48px] -translate-y-1/2"
-          : "-top-12 lg:-top-[48px] left-1/2 -translate-x-1/2 rotate-90",
+          ? "top-1/2 -left-12 lg:-left-[3.333vw] -translate-y-1/2"
+          : "-top-12 lg:-top-[3.333vw] left-1/2 -translate-x-1/2 rotate-90",
         className
       )}
       disabled={!canScrollPrev}
@@ -218,8 +218,8 @@ function CarouselNext({
       className={cn(
         "absolute touch-manipulation rounded-full",
         orientation === "horizontal"
-          ? "top-1/2 -right-12 lg:-right-[48px] -translate-y-1/2"
-          : "-bottom-12 lg:-bottom-[48px] left-1/2 -translate-x-1/2 rotate-90",
+          ? "top-1/2 -right-12 lg:-right-[3.333vw] -translate-y-1/2"
+          : "-bottom-12 lg:-bottom-[3.333vw] left-1/2 -translate-x-1/2 rotate-90",
         className
       )}
       disabled={!canScrollNext}

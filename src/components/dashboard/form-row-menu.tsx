@@ -130,16 +130,16 @@ export function FormRowMenu({
             <Icon name="more-circle" />
           </SidebarMenuAction>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-44">
+        <DropdownMenuContent align="end" className="w-44 lg:w-[12.222vw]">
           <DropdownMenuItem asChild>
             <Link href={`/forms/${formId}/edit`}>
-              <Icon name="edit" className="size-4 text-muted-foreground" />
+              <Icon name="edit" className="size-4 lg:size-[1.111vw] text-muted-foreground" />
               Edit
             </Link>
           </DropdownMenuItem>
           {published && publicId ? (
             <DropdownMenuItem onSelect={() => void copyLink()}>
-              <Icon name="paper" className="size-4 text-muted-foreground" />
+              <Icon name="paper" className="size-4 lg:size-[1.111vw] text-muted-foreground" />
               Copy link
             </DropdownMenuItem>
           ) : null}
@@ -149,11 +149,11 @@ export function FormRowMenu({
               setRenameOpen(true)
             }}
           >
-            <Icon name="edit-square" className="size-4 text-muted-foreground" />
+            <Icon name="edit-square" className="size-4 lg:size-[1.111vw] text-muted-foreground" />
             Rename
           </DropdownMenuItem>
           <DropdownMenuItem onSelect={onDuplicate} disabled={pending}>
-            <Icon name="document" className="size-4 text-muted-foreground" />
+            <Icon name="document" className="size-4 lg:size-[1.111vw] text-muted-foreground" />
             Duplicate
           </DropdownMenuItem>
           {published ? (
@@ -161,7 +161,7 @@ export function FormRowMenu({
               onSelect={() => run(() => unpublishForm(formId), "Form unpublished")}
               disabled={pending}
             >
-              <Icon name="hide" className="size-4 text-muted-foreground" />
+              <Icon name="hide" className="size-4 lg:size-[1.111vw] text-muted-foreground" />
               Unpublish
             </DropdownMenuItem>
           ) : (
@@ -169,7 +169,7 @@ export function FormRowMenu({
               onSelect={() => run(() => publishForm(formId), "Your form is live 🎉")}
               disabled={pending}
             >
-              <Icon name="show" className="size-4 text-muted-foreground" />
+              <Icon name="show" className="size-4 lg:size-[1.111vw] text-muted-foreground" />
               Publish
             </DropdownMenuItem>
           )}
@@ -178,7 +178,7 @@ export function FormRowMenu({
             onSelect={() => setDeleteOpen(true)}
             className="text-destructive focus:text-destructive"
           >
-            <Icon name="delete" className="size-4 text-destructive" />
+            <Icon name="delete" className="size-4 lg:size-[1.111vw] text-destructive" />
             Delete
           </DropdownMenuItem>
         </DropdownMenuContent>

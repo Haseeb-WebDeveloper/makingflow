@@ -58,27 +58,27 @@ export function Field({
 }) {
   if (field.type === "heading") {
     return field.config?.headingLevel === "h1" ? (
-      <h2 className="pt-2 font-sebenta text-2xl font-bold tracking-tight text-foreground">{field.label}</h2>
+      <h2 className="pt-2 lg:pt-[0.556vw] font-sebenta text-2xl lg:text-[1.667vw] font-bold tracking-tight text-foreground">{field.label}</h2>
     ) : (
-      <h3 className="pt-2 font-sebenta text-lg font-semibold text-foreground">{field.label}</h3>
+      <h3 className="pt-2 lg:pt-[0.556vw] font-sebenta text-lg lg:text-[1.25vw] font-semibold text-foreground">{field.label}</h3>
     )
   }
   if (field.type === "paragraph") {
-    return <p className="text-sm leading-relaxed text-muted-foreground">{field.label}</p>
+    return <p className="text-sm lg:text-[0.972vw] leading-relaxed text-muted-foreground">{field.label}</p>
   }
 
   return (
-    <div id={`field-${field.id}`} className="space-y-2">
-      <label className="block text-sm font-medium text-foreground">
+    <div id={`field-${field.id}`} className="space-y-2 lg:space-y-[0.556vw]">
+      <label className="block text-sm lg:text-[0.972vw] font-medium text-foreground">
         {field.label}
-        {field.required ? <span className="ml-0.5 text-destructive">*</span> : null}
+        {field.required ? <span className="ml-0.5 lg:ml-[0.139vw] text-destructive">*</span> : null}
       </label>
       {field.description ? (
-        <p className="-mt-1 text-xs text-muted-foreground">{field.description}</p>
+        <p className="-mt-1 lg:-mt-[0.278vw] text-xs lg:text-[0.833vw] text-muted-foreground">{field.description}</p>
       ) : null}
       <Control field={field} value={value} invalid={!!error} onChange={onChange} testMode={testMode} />
       {error ? (
-        <p role="alert" className="text-xs font-medium text-destructive">
+        <p role="alert" className="text-xs lg:text-[0.833vw] font-medium text-destructive">
           {error}
         </p>
       ) : null}
@@ -102,14 +102,14 @@ function cldDeliver(url: string, transform: string): string {
 export function FormBranding({ theme }: { theme?: PublicTheme | null }) {
   if (!theme || (!theme.logoUrl && !theme.coverImageUrl)) return null
   return (
-    <div className="mb-6">
+    <div className="mb-6 lg:mb-[1.667vw]">
       {theme.coverImageUrl ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
           src={cldDeliver(theme.coverImageUrl, "f_auto,q_auto,w_1400,c_limit")}
           alt=""
           decoding="async"
-          className="mb-4 h-32 w-full rounded-xl object-cover sm:h-44"
+          className="mb-4 lg:mb-[1.111vw] h-32 lg:h-[8.889vw] w-full rounded-xl lg:rounded-[0.926vw] object-cover sm:h-44"
         />
       ) : null}
       {theme.logoUrl ? (
@@ -119,7 +119,7 @@ export function FormBranding({ theme }: { theme?: PublicTheme | null }) {
           alt=""
           decoding="async"
           loading="lazy"
-          className="h-12 w-auto object-contain sm:h-14 rounded-md"
+          className="h-12 lg:h-[3.333vw] w-auto object-contain sm:h-14 rounded-md lg:rounded-[0.556vw]"
         />
       ) : null}
     </div>
@@ -127,7 +127,7 @@ export function FormBranding({ theme }: { theme?: PublicTheme | null }) {
 }
 
 export const inputBase =
-  "h-11 w-full rounded-md border bg-background px-3 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-foreground/40"
+  "h-11 lg:h-[3.056vw] w-full rounded-md lg:rounded-[0.556vw] border bg-background px-3 lg:px-[0.833vw] text-sm lg:text-[0.972vw] text-foreground outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-foreground/40"
 
 export function Control({
   field,
@@ -155,7 +155,7 @@ export function Control({
           value={str}
           placeholder={field.placeholder}
           onChange={(e) => onChange(e.target.value)}
-          className={cn("thin-scroll w-full resize-none rounded-md border bg-background px-3 py-2.5 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:border-foreground/40", border)}
+          className={cn("thin-scroll w-full resize-none rounded-md lg:rounded-[0.556vw] border bg-background px-3 lg:px-[0.833vw] py-2.5 lg:py-[0.694vw] text-sm lg:text-[0.972vw] text-foreground outline-none placeholder:text-muted-foreground focus-visible:border-foreground/40", border)}
         />
       )
 
@@ -191,7 +191,7 @@ export function Control({
     case "dropdown":
       return (
         <Select value={str || undefined} onValueChange={(v) => onChange(v)}>
-          <SelectTrigger aria-invalid={invalid || undefined} className="h-11 w-full bg-background">
+          <SelectTrigger aria-invalid={invalid || undefined} className="h-11 lg:h-[3.056vw] w-full bg-background">
             <SelectValue placeholder="Select an option" />
           </SelectTrigger>
           <SelectContent>
@@ -206,14 +206,14 @@ export function Control({
 
     case "yes_no":
       return (
-        <div className="flex gap-2">
+        <div className="flex gap-2 lg:gap-[0.556vw]">
           {["Yes", "No"].map((o) => (
             <button
               key={o}
               type="button"
               onClick={() => onChange(o)}
               className={cn(
-                "h-10 rounded-md border px-6 text-sm transition-colors",
+                "h-10 lg:h-[2.778vw] rounded-md lg:rounded-[0.556vw] border px-6 lg:px-[1.667vw] text-sm lg:text-[0.972vw] transition-colors",
                 str === o ? "border-foreground bg-foreground text-background" : cn(border, "text-foreground hover:bg-muted"),
               )}
             >
@@ -225,7 +225,7 @@ export function Control({
 
     case "multiple_choice":
       return (
-        <div className="space-y-2">
+        <div className="space-y-2 lg:space-y-[0.556vw]">
           {opts.map((o) => {
             const selected = str === o.label
             return (
@@ -234,11 +234,11 @@ export function Control({
                 type="button"
                 onClick={() => onChange(o.label)}
                 className={cn(
-                  "flex w-full items-center gap-3 rounded-md border px-3 py-2.5 text-left text-sm transition-colors",
+                  "flex w-full items-center gap-3 lg:gap-[0.833vw] rounded-md lg:rounded-[0.556vw] border px-3 lg:px-[0.833vw] py-2.5 lg:py-[0.694vw] text-left text-sm lg:text-[0.972vw] transition-colors",
                   selected ? "border-foreground bg-muted" : cn(border, "hover:bg-muted"),
                 )}
               >
-                <span className={cn("size-4 shrink-0 rounded-full border", selected ? "border-[5px] border-foreground" : "border-muted-foreground/50")} />
+                <span className={cn("size-4 lg:size-[1.111vw] shrink-0 rounded-full border", selected ? "border-[5px] border-foreground" : "border-muted-foreground/50")} />
                 {o.label}
               </button>
             )
@@ -249,14 +249,14 @@ export function Control({
     case "checkboxes":
     case "multi_select":
       return (
-        <div className="space-y-2">
+        <div className="space-y-2 lg:space-y-[0.556vw]">
           {opts.map((o) => {
             const checked = arr.includes(o.label)
             return (
               <label
                 key={o.id}
                 className={cn(
-                  "flex w-full cursor-pointer items-center gap-3 rounded-md border px-3 py-2.5 text-left text-sm transition-colors",
+                  "flex w-full cursor-pointer items-center gap-3 lg:gap-[0.833vw] rounded-md lg:rounded-[0.556vw] border px-3 lg:px-[0.833vw] py-2.5 lg:py-[0.694vw] text-left text-sm lg:text-[0.972vw] transition-colors",
                   checked ? "border-foreground bg-muted" : cn(border, "hover:bg-muted"),
                 )}
               >
@@ -294,8 +294,8 @@ export function Control({
       const step = field.config?.step ?? 1
       const current = typeof value === "number" ? value : null
       return (
-        <div className="space-y-3 pt-1">
-          <div className="flex items-center gap-4">
+        <div className="space-y-3 lg:space-y-[0.833vw] pt-1 lg:pt-[0.278vw]">
+          <div className="flex items-center gap-4 lg:gap-[1.111vw]">
             <Slider
               value={[current ?? min]}
               min={min}
@@ -304,11 +304,11 @@ export function Control({
               onValueChange={([v]) => onChange(v)}
               className="flex-1"
             />
-            <span className="w-8 shrink-0 text-right text-sm font-medium text-foreground">
+            <span className="w-8 lg:w-[2.222vw] shrink-0 text-right text-sm lg:text-[0.972vw] font-medium text-foreground">
               {current ?? "—"}
             </span>
           </div>
-          <div className="flex justify-between text-xs text-muted-foreground">
+          <div className="flex justify-between text-xs lg:text-[0.833vw] text-muted-foreground">
             <span>{field.config?.minLabel || min}</span>
             <span>{field.config?.maxLabel || max}</span>
           </div>
@@ -320,14 +320,14 @@ export function Control({
       const current = typeof value === "number" ? value : null
       const nums = Array.from({ length: 11 }, (_, i) => i)
       return (
-        <div className="flex flex-wrap gap-1.5">
+        <div className="flex flex-wrap gap-1.5 lg:gap-[0.417vw]">
           {nums.map((n) => (
             <button
               key={n}
               type="button"
               onClick={() => onChange(n)}
               className={cn(
-                "inline-flex size-9 items-center justify-center rounded-md border text-sm transition-colors",
+                "inline-flex size-9 lg:size-[2.5vw] items-center justify-center rounded-md lg:rounded-[0.556vw] border text-sm lg:text-[0.972vw] transition-colors",
                 current === n ? "border-foreground bg-foreground text-background" : cn(border, "text-foreground hover:bg-muted"),
               )}
             >
@@ -371,12 +371,12 @@ function DateControl({
         className={cn(
           inputBase,
           invalid ? "border-destructive" : "border-input",
-          "flex items-center justify-between gap-2 text-left",
+          "flex items-center justify-between gap-2 lg:gap-[0.556vw] text-left",
           !valid && "text-muted-foreground",
         )}
       >
         <span>{valid ? format(parsed as Date, "PPP") : "Select a date"}</span>
-        <CalendarGlyph className="size-4 shrink-0 text-muted-foreground" />
+        <CalendarGlyph className="size-4 lg:size-[1.111vw] shrink-0 text-muted-foreground" />
       </PopoverTrigger>
       <PopoverContent align="start" className="w-auto" initialFocus={false}>
         <Calendar
@@ -473,11 +473,11 @@ function FileControl({
   }
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-2 lg:space-y-[0.556vw]">
       {files.map((f, i) => (
         <div
           key={i}
-          className="flex items-center gap-2.5 rounded-md border border-border bg-background p-2 pr-3 text-sm"
+          className="flex items-center gap-2.5 lg:gap-[0.694vw] rounded-md lg:rounded-[0.556vw] border border-border bg-background p-2 lg:p-[0.556vw] pr-3 lg:pr-[0.833vw] text-sm lg:text-[0.972vw]"
         >
           {f.mime?.startsWith("image/") && f.url ? (
             // eslint-disable-next-line @next/next/no-img-element
@@ -486,22 +486,22 @@ function FileControl({
               alt=""
               decoding="async"
               loading="lazy"
-              className="size-10 shrink-0 rounded-md border border-border object-cover"
+              className="size-10 lg:size-[2.778vw] shrink-0 rounded-md lg:rounded-[0.556vw] border border-border object-cover"
             />
           ) : (
-            <span className="grid size-10 shrink-0 place-items-center rounded-md border border-border bg-muted/40">
+            <span className="grid size-10 lg:size-[2.778vw] shrink-0 place-items-center rounded-md lg:rounded-[0.556vw] border border-border bg-muted/40">
               <FileIcon />
             </span>
           )}
           <span className="min-w-0 flex-1 truncate text-foreground">{f.name}</span>
-          <span className="shrink-0 text-xs text-muted-foreground">{prettyBytes(f.bytes)}</span>
+          <span className="shrink-0 text-xs lg:text-[0.833vw] text-muted-foreground">{prettyBytes(f.bytes)}</span>
           <button
             type="button"
             onClick={() => commit(files.filter((_, j) => j !== i))}
             aria-label={`Remove ${f.name}`}
-            className="grid size-6 shrink-0 place-items-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+            className="grid size-6 lg:size-[1.667vw] shrink-0 place-items-center rounded lg:rounded-[0.324vw] text-muted-foreground hover:bg-muted hover:text-foreground"
           >
-            <svg viewBox="0 0 24 24" className="size-3.5" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" aria-hidden>
+            <svg viewBox="0 0 24 24" className="size-3.5 lg:size-[0.972vw]" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" aria-hidden>
               <path d="M6 6l12 12M18 6L6 18" />
             </svg>
           </button>
@@ -510,7 +510,7 @@ function FileControl({
       {files.length < maxFiles ? (
         <label
           className={cn(
-            "flex h-24 cursor-pointer flex-col items-center justify-center gap-1 rounded-md border border-dashed text-sm text-muted-foreground transition-colors hover:bg-muted",
+            "flex h-24 lg:h-[6.667vw] cursor-pointer flex-col items-center justify-center gap-1 lg:gap-[0.278vw] rounded-md lg:rounded-[0.556vw] border border-dashed text-sm lg:text-[0.972vw] text-muted-foreground transition-colors hover:bg-muted",
             invalid ? "border-destructive" : "border-border",
             uploading && "pointer-events-none opacity-70",
           )}
@@ -533,7 +533,7 @@ function FileControl({
 
 function FileIcon() {
   return (
-    <svg viewBox="0 0 24 24" className="size-4 shrink-0 text-muted-foreground" fill="none" stroke="currentColor" strokeWidth={1.8} aria-hidden>
+    <svg viewBox="0 0 24 24" className="size-4 lg:size-[1.111vw] shrink-0 text-muted-foreground" fill="none" stroke="currentColor" strokeWidth={1.8} aria-hidden>
       <path d="M14 3v5h5M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-5z" strokeLinejoin="round" />
     </svg>
   )

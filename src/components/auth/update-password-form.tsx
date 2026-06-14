@@ -47,9 +47,9 @@ export function UpdatePasswordForm() {
   return (
     <div>
       <AuthError message={formError} />
-      <form onSubmit={onSubmit} className="space-y-4" noValidate>
-        <div className="space-y-1.5">
-          <Label htmlFor="new-password" className="text-sm font-medium text-foreground">
+      <form onSubmit={onSubmit} className="space-y-4 lg:space-y-[1.111vw]" noValidate>
+        <div className="space-y-1.5 lg:space-y-[0.417vw]">
+          <Label htmlFor="new-password" className="text-sm lg:text-[0.972vw] font-medium text-foreground">
             New password
           </Label>
           <Input
@@ -61,19 +61,19 @@ export function UpdatePasswordForm() {
             required
             minLength={8}
             disabled={pending}
-            className="h-11"
+            className="h-11 lg:h-[3.056vw]"
             aria-invalid={!!fieldErrors.password}
             aria-describedby={fieldErrors.password ? "new-password-error" : undefined}
           />
           {fieldErrors.password && (
-            <p id="new-password-error" className="text-xs text-destructive">
+            <p id="new-password-error" className="text-xs lg:text-[0.833vw] text-destructive">
               {fieldErrors.password}
             </p>
           )}
         </div>
 
-        <div className="space-y-1.5">
-          <Label htmlFor="confirm-password" className="text-sm font-medium text-foreground">
+        <div className="space-y-1.5 lg:space-y-[0.417vw]">
+          <Label htmlFor="confirm-password" className="text-sm lg:text-[0.972vw] font-medium text-foreground">
             Confirm password
           </Label>
           <Input
@@ -84,18 +84,18 @@ export function UpdatePasswordForm() {
             placeholder="••••••••"
             required
             disabled={pending}
-            className="h-11"
+            className="h-11 lg:h-[3.056vw]"
             aria-invalid={!!fieldErrors.confirm}
             aria-describedby={fieldErrors.confirm ? "confirm-password-error" : undefined}
           />
           {fieldErrors.confirm && (
-            <p id="confirm-password-error" className="text-xs text-destructive">
+            <p id="confirm-password-error" className="text-xs lg:text-[0.833vw] text-destructive">
               {fieldErrors.confirm}
             </p>
           )}
         </div>
 
-        <Button type="submit" disabled={pending} className="h-11 w-full text-sm font-medium">
+        <Button type="submit" disabled={pending} className="h-11 lg:h-[3.056vw] w-full text-sm lg:text-[0.972vw] font-medium">
           {pending ? "Saving…" : "Update password"}
         </Button>
       </form>

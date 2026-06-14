@@ -18,7 +18,7 @@ export function FormDetailTabs({ formId }: { formId: string }) {
   const base = `/forms/${formId}`
 
   return (
-    <nav className="-mb-px mt-4 flex items-center gap-1 overflow-x-auto">
+    <nav className="-mb-px mt-4 lg:mt-[1.111vw] flex items-center gap-1 lg:gap-[0.278vw] overflow-x-auto">
       {TABS.map((t) => {
         const href = t.seg ? `${base}/${t.seg}` : base
         const active = t.seg
@@ -30,7 +30,7 @@ export function FormDetailTabs({ formId }: { formId: string }) {
             href={href}
             prefetch
             className={cn(
-              "relative whitespace-nowrap border-b-2 px-3 py-2.5 text-sm font-medium transition-colors",
+              "relative whitespace-nowrap border-b-2 px-3 lg:px-[0.833vw] py-2.5 lg:py-[0.694vw] text-sm lg:text-[0.972vw] font-medium transition-colors",
               active
                 ? "border-foreground text-foreground"
                 : "border-transparent text-muted-foreground hover:text-foreground",

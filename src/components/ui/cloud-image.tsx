@@ -13,7 +13,7 @@ type CloudImageProps = Omit<CldImageProps, 'config'> & {
  * - Keeps import paths consistent across the codebase
  */
 export function CloudImage({
-  sizes = '(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw',
+  sizes = '(max-width: 768px) 100vw, (max-width: 1200px) 46.296vw, 30.556vw',
   className,
   ...props
 }: CloudImageProps) {

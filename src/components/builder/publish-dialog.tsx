@@ -82,8 +82,8 @@ export function PublishDialog({
         <DialogHeader>
           {published ? (
             <>
-              <DialogTitle className="flex items-center gap-2">
-                <span className="size-2 rounded-full bg-success" />
+              <DialogTitle className="flex items-center gap-2 lg:gap-[0.556vw]">
+                <span className="size-2 lg:size-[0.556vw] rounded-full bg-success" />
                 Your form is live
               </DialogTitle>
               <DialogDescription>
@@ -108,7 +108,7 @@ export function PublishDialog({
             onClose={() => onOpenChange(false)}
           />
         ) : (
-          <ul className="space-y-2.5 py-1 text-sm text-muted-foreground">
+          <ul className="space-y-2.5 lg:space-y-[0.694vw] py-1 lg:py-[0.278vw] text-sm lg:text-[0.972vw] text-muted-foreground">
             <InfoRow icon="discovery">Get a shareable public link</InfoRow>
             <InfoRow icon="folder">
               Start collecting responses instantly
@@ -118,11 +118,11 @@ export function PublishDialog({
         )}
 
         {domains && domains.length > 0 && onSetDomain ? (
-          <section className="border-t border-border pt-4">
-            <h3 className="text-sm font-semibold text-foreground">
+          <section className="border-t border-border pt-4 lg:pt-[1.111vw]">
+            <h3 className="text-sm lg:text-[0.972vw] font-semibold text-foreground">
               Custom domain
             </h3>
-            <p className="mt-0.5 mb-3 text-sm text-muted-foreground">
+            <p className="mt-0.5 lg:mt-[0.139vw] mb-3 lg:mb-[0.833vw] text-sm lg:text-[0.972vw] text-muted-foreground">
               Serve this form from one of your connected domains — change or
               remove it anytime.
             </p>
@@ -138,8 +138,8 @@ export function PublishDialog({
         ) : null}
 
         {formId && settings ? (
-          <section className="border-t border-border pt-4">
-            <h3 className="text-sm font-semibold text-foreground">
+          <section className="border-t border-border pt-4 lg:pt-[1.111vw]">
+            <h3 className="text-sm lg:text-[0.972vw] font-semibold text-foreground">
               Form settings
             </h3>
             <FormSettings
@@ -154,7 +154,7 @@ export function PublishDialog({
           </section>
         ) : null}
 
-        <DialogFooter className="sticky -bottom-6 z-10 -mx-6 -mb-6 mt-0 items-center gap-2 border-t border-border bg-popover px-6 pt-4 pb-6 sm:justify-between lg:-bottom-[24px] lg:-mx-[24px] lg:-mb-[24px] lg:px-[24px] lg:pt-[16px] lg:pb-[24px]">
+        <DialogFooter className="sticky -bottom-6 z-10 -mx-6 -mb-6 mt-0 items-center gap-2 lg:gap-[0.556vw] border-t border-border bg-popover px-6 pt-4 pb-6 sm:justify-between lg:-bottom-[1.667vw] lg:-mx-[1.667vw] lg:-mb-[1.667vw] lg:px-[1.667vw] lg:pt-[1.111vw] lg:pb-[1.667vw]">
           {published ? (
             <>
               <Button
@@ -163,7 +163,7 @@ export function PublishDialog({
               >
                 Unpublish
               </Button>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 lg:gap-[0.556vw]">
                 {settingsDirty ? (
                   <Button
                     onClick={() => void settingsRef.current?.save()}
@@ -178,7 +178,7 @@ export function PublishDialog({
               </div>
             </>
           ) : (
-            <div className="flex w-full items-center gap-2">
+            <div className="flex w-full items-center gap-2 lg:gap-[0.556vw]">
               {settingsDirty ? (
                 <Button
                   variant="outline"
@@ -249,19 +249,19 @@ function ShareLink({
   };
 
   return (
-    <div className="space-y-1">
-      <div className="flex items-center gap-2">
-        <div className="min-w-0 flex-1 truncate rounded-md border border-border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+    <div className="space-y-1 lg:space-y-[0.278vw]">
+      <div className="flex items-center gap-2 lg:gap-[0.556vw]">
+        <div className="min-w-0 flex-1 truncate rounded-md lg:rounded-[0.556vw] border border-border bg-muted/40 px-3 lg:px-[0.833vw] py-2 lg:py-[0.556vw] text-sm lg:text-[0.972vw] text-muted-foreground">
           {shareUrl || "—"}
         </div>
         <button
           type="button"
           onClick={copy}
-          className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md border border-border px-3 text-sm font-medium text-foreground transition-colors hover:bg-muted"
+          className="inline-flex h-9 lg:h-[2.5vw] shrink-0 items-center gap-1.5 lg:gap-[0.417vw] rounded-md lg:rounded-[0.556vw] border border-border px-3 lg:px-[0.833vw] text-sm lg:text-[0.972vw] font-medium text-foreground transition-colors hover:bg-muted"
         >
           <SVGIcon
             src={copied ? "/icons/tick.svg" : "/icons/copy.svg"}
-            className="size-4"
+            className="size-4 lg:size-[1.111vw]"
           />
           {copied ? "Copied" : "Copy"}
         </button>
@@ -269,15 +269,15 @@ function ShareLink({
           href={shareUrl || "#"}
           target="_blank"
           rel="noreferrer"
-          className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md bg-foreground px-3 text-sm font-medium text-background transition-colors hover:bg-foreground/90"
+          className="inline-flex h-9 lg:h-[2.5vw] shrink-0 items-center gap-1.5 lg:gap-[0.417vw] rounded-md lg:rounded-[0.556vw] bg-foreground px-3 lg:px-[0.833vw] text-sm lg:text-[0.972vw] font-medium text-background transition-colors hover:bg-foreground/90"
         >
-          <SVGIcon src="/icons/open.svg" className="size-4" />
+          <SVGIcon src="/icons/open.svg" className="size-4 lg:size-[1.111vw]" />
           Open
         </a>
       </div>
 
       {formId ? (
-        <div className="space-y-0.5 pt-1">
+        <div className="space-y-0.5 lg:space-y-[0.139vw] pt-1 lg:pt-[0.278vw]">
           <ManageLink
             href={`/forms/${formId}/submissions`}
             icon="folder"
@@ -298,9 +298,9 @@ function InfoRow({
   children: React.ReactNode;
 }) {
   return (
-    <li className="flex items-center gap-2.5">
-      <span className="grid size-7 shrink-0 place-items-center rounded-md bg-muted text-foreground">
-        <Icon name={icon} className="size-4" />
+    <li className="flex items-center gap-2.5 lg:gap-[0.694vw]">
+      <span className="grid size-7 lg:size-[1.944vw] shrink-0 place-items-center rounded-md lg:rounded-[0.556vw] bg-muted text-foreground">
+        <Icon name={icon} className="size-4 lg:size-[1.111vw]" />
       </span>
       {children}
     </li>
@@ -322,15 +322,15 @@ function ManageLink({
     <Link
       href={href}
       onClick={onNavigate}
-      className="flex items-center justify-between gap-2 rounded-md px-2 py-2 text-sm text-foreground transition-colors hover:bg-muted"
+      className="flex items-center justify-between gap-2 lg:gap-[0.556vw] rounded-md lg:rounded-[0.556vw] px-2 lg:px-[0.556vw] py-2 lg:py-[0.556vw] text-sm lg:text-[0.972vw] text-foreground transition-colors hover:bg-muted"
     >
-      <span className="flex items-center gap-2.5">
-        <Icon name={icon} className="size-4 text-muted-foreground" />
+      <span className="flex items-center gap-2.5 lg:gap-[0.694vw]">
+        <Icon name={icon} className="size-4 lg:size-[1.111vw] text-muted-foreground" />
         {label}
       </span>
       <svg
         viewBox="0 0 24 24"
-        className="size-4 text-muted-foreground"
+        className="size-4 lg:size-[1.111vw] text-muted-foreground"
         fill="none"
         stroke="currentColor"
         strokeWidth={2}

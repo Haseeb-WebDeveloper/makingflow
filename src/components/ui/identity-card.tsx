@@ -25,7 +25,7 @@ export function IdentityCard({
   return (
     <div
       className={cn(
-        "flex w-fit max-w-full items-center gap-3 lg:gap-[12px] rounded-md lg:rounded-[8px] border border-border bg-card px-4 lg:px-[16px] py-2.5 lg:py-[10px] text-left",
+        "flex w-fit max-w-full items-center gap-3 lg:gap-[0.833vw] rounded-md lg:rounded-[0.556vw] border border-border bg-card px-4 lg:px-[1.111vw] py-2.5 lg:py-[0.694vw] text-left",
         className
       )}
     >
@@ -44,15 +44,15 @@ export function IdentityCard({
 
       <div className="w-full min-w-0">
         {eyebrow && (
-          <p className="text-[10px] lg:text-[10px] font-semibold uppercase tracking-wider text-foreground/45">
+          <p className="text-[10px] lg:text-[0.694vw] font-semibold uppercase tracking-wider text-foreground/45">
             {eyebrow}
           </p>
         )}
-        <p className="truncate text-sm lg:text-[14px] font-semibold text-foreground">
+        <p className="truncate text-sm lg:text-[0.972vw] font-semibold text-foreground">
           {name}
         </p>
         {secondary && (
-          <p className="truncate text-[13px] lg:text-[13px] text-foreground/55">
+          <p className="truncate text-[13px] lg:text-[0.903vw] text-foreground/55">
             {secondary}
           </p>
         )}
@@ -61,13 +61,13 @@ export function IdentityCard({
       {verified && (
         <span
           className={cn(
-            "ml-1 lg:ml-[4px] flex size-5 lg:size-[20px] shrink-0 items-center justify-center rounded-full",
+            "ml-1 lg:ml-[0.278vw] flex size-5 lg:size-[1.389vw] shrink-0 items-center justify-center rounded-full",
             brand
               ? "bg-secondary text-secondary-foreground"
               : "border border-border text-foreground/60"
           )}
         >
-          <SVGIcon src="/icons/tick.svg" className="size-3 lg:size-[11px]" />
+          <SVGIcon src="/icons/tick.svg" className="size-3 lg:size-[0.764vw]" />
         </span>
       )}
     </div>

@@ -35,15 +35,15 @@ export function ForgotPasswordForm() {
 
   if (sentTo) {
     return (
-      <div className="space-y-5 text-center">
-        <p className="text-sm text-muted-foreground">
+      <div className="space-y-5 lg:space-y-[1.389vw] text-center">
+        <p className="text-sm lg:text-[0.972vw] text-muted-foreground">
           If an account exists for{" "}
           <span className="font-medium text-foreground">{sentTo}</span>, we&apos;ve
           sent a link to reset your password. Check your inbox.
         </p>
         <Link
           href="/auth/login"
-          className="inline-flex h-11 w-full items-center justify-center rounded-md border border-border px-4 text-sm font-medium text-foreground transition-colors hover:bg-muted"
+          className="inline-flex h-11 lg:h-[3.056vw] w-full items-center justify-center rounded-md lg:rounded-[0.556vw] border border-border px-4 lg:px-[1.111vw] text-sm lg:text-[0.972vw] font-medium text-foreground transition-colors hover:bg-muted"
         >
           Back to sign in
         </Link>
@@ -54,9 +54,9 @@ export function ForgotPasswordForm() {
   return (
     <div>
       <AuthError message={formError} />
-      <form onSubmit={onSubmit} className="space-y-4" noValidate>
-        <div className="space-y-1.5">
-          <Label htmlFor="reset-email" className="text-sm font-medium text-foreground">
+      <form onSubmit={onSubmit} className="space-y-4 lg:space-y-[1.111vw]" noValidate>
+        <div className="space-y-1.5 lg:space-y-[0.417vw]">
+          <Label htmlFor="reset-email" className="text-sm lg:text-[0.972vw] font-medium text-foreground">
             Email
           </Label>
           <Input
@@ -67,17 +67,17 @@ export function ForgotPasswordForm() {
             placeholder="you@company.com"
             required
             disabled={pending}
-            className="h-11"
+            className="h-11 lg:h-[3.056vw]"
             aria-invalid={!!fieldErrors.email}
             aria-describedby={fieldErrors.email ? "reset-email-error" : undefined}
           />
           {fieldErrors.email && (
-            <p id="reset-email-error" className="text-xs text-destructive">
+            <p id="reset-email-error" className="text-xs lg:text-[0.833vw] text-destructive">
               {fieldErrors.email}
             </p>
           )}
         </div>
-        <Button type="submit" disabled={pending} className="h-11 w-full text-sm font-medium">
+        <Button type="submit" disabled={pending} className="h-11 lg:h-[3.056vw] w-full text-sm lg:text-[0.972vw] font-medium">
           {pending ? "Sending…" : "Send reset link"}
         </Button>
       </form>

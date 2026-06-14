@@ -33,7 +33,7 @@ export function SubmissionsTable({
   const [expanded, setExpanded] = useState<string | null>(null)
 
   return (
-    <div className="overflow-x-auto rounded-lg border border-border">
+    <div className="overflow-x-auto rounded-lg lg:rounded-[0.694vw] border border-border">
       <Table>
         <TableHeader>
           <TableRow>
@@ -44,7 +44,7 @@ export function SubmissionsTable({
               </TableHead>
             ))}
             {onDelete ? (
-              <TableHead className="w-10">
+              <TableHead className="w-10 lg:w-[2.778vw]">
                 <span className="sr-only">Actions</span>
               </TableHead>
             ) : null}
@@ -73,13 +73,13 @@ export function SubmissionsTable({
               {r.cells.map((cell, i) => (
                 <TableCell
                   key={i}
-                  className={expanded === r.id ? "whitespace-pre-wrap" : "max-w-xs truncate"}
+                  className={expanded === r.id ? "whitespace-pre-wrap" : "max-w-xs lg:max-w-[22.222vw] truncate"}
                 >
                   {renderCell(cell)}
                 </TableCell>
               ))}
               {onDelete ? (
-                <TableCell className="w-10 text-right">
+                <TableCell className="w-10 lg:w-[2.778vw] text-right">
                   <button
                     type="button"
                     aria-label="Delete response"
@@ -87,9 +87,9 @@ export function SubmissionsTable({
                       e.stopPropagation()
                       onDelete(r.id)
                     }}
-                    className="grid size-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+                    className="grid size-7 lg:size-[1.944vw] place-items-center rounded-md lg:rounded-[0.556vw] text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
                   >
-                    <Icon name="delete" className="size-4" />
+                    <Icon name="delete" className="size-4 lg:size-[1.111vw]" />
                   </button>
                 </TableCell>
               ) : null}
@@ -108,7 +108,7 @@ function renderCell(cell: Cell) {
   if (typeof cell === "string") return cell || EMPTY
   if (cell.files.length === 0) return EMPTY
   return (
-    <span className="flex flex-wrap gap-x-3 gap-y-0.5">
+    <span className="flex flex-wrap gap-x-3 lg:gap-x-[0.833vw] gap-y-0.5 lg:gap-y-[0.139vw]">
       {cell.files.map((f, i) => (
         <a
           key={i}

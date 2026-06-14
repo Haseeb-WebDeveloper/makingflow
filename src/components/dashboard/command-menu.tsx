@@ -89,14 +89,14 @@ export function CommandMenu({
               >
                 <Icon
                   name="document"
-                  className="size-4 text-muted-foreground"
+                  className="size-4 lg:size-[1.111vw] text-muted-foreground"
                 />
                 <span className="min-w-0 flex-1 truncate">
                   {r.title || "Untitled form"}
                 </span>
                 <Icon
                   name="time-circle"
-                  className="size-3.5 text-muted-foreground/60"
+                  className="size-3.5 lg:size-[0.972vw] text-muted-foreground/60"
                 />
               </CommandItem>
             ))}
@@ -108,8 +108,8 @@ export function CommandMenu({
             value="New form create build"
             onSelect={() => go("/forms/new")}
           >
-            <span className="grid size-5 shrink-0 place-items-center rounded bg-primary/10 text-primary">
-              <SVGIcon src="/icons/plus.svg" className="size-3.5" />
+            <span className="grid size-5 lg:size-[1.389vw] shrink-0 place-items-center rounded lg:rounded-[0.324vw] bg-primary/10 text-primary">
+              <SVGIcon src="/icons/plus.svg" className="size-3.5 lg:size-[0.972vw]" />
             </span>
             <span className="min-w-0 flex-1 truncate">New form</span>
           </CommandItem>
@@ -125,13 +125,13 @@ export function CommandMenu({
               >
                 <Icon
                   name="document"
-                  className="size-4 text-muted-foreground"
+                  className="size-4 lg:size-[1.111vw] text-muted-foreground"
                 />
                 <span className="min-w-0 flex-1 truncate">
                   {f.title || "Untitled form"}
                 </span>
                 <span
-                  className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium capitalize ${
+                  className={`shrink-0 rounded-full px-2 lg:px-[0.556vw] py-0.5 lg:py-[0.139vw] text-[11px] lg:text-[0.764vw] font-medium capitalize ${
                     STATUS_STYLES[f.status] ?? STATUS_STYLES.draft
                   }`}
                 >
@@ -149,10 +149,10 @@ export function CommandMenu({
               value={p.label}
               onSelect={() => go(p.href!)}
             >
-              <Icon name={p.icon} className="size-4 text-muted-foreground" />
+              <Icon name={p.icon} className="size-4 lg:size-[1.111vw] text-muted-foreground" />
               <span className="min-w-0 flex-1 truncate">{p.label}</span>
               {p.comingSoon ? (
-                <span className="shrink-0 rounded border border-border px-1.5 py-px text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                <span className="shrink-0 rounded lg:rounded-[0.324vw] border border-border px-1.5 lg:px-[0.417vw] py-px text-[10px] lg:text-[0.694vw] font-medium uppercase tracking-wide text-muted-foreground">
                   Soon
                 </span>
               ) : null}
@@ -161,17 +161,17 @@ export function CommandMenu({
         </CommandGroup>
       </CommandList>
 
-      <div className="flex items-center gap-3 border-t border-border px-3 py-2 text-[11px] text-muted-foreground">
-        <span className="flex items-center gap-1">
+      <div className="flex items-center gap-3 lg:gap-[0.833vw] border-t border-border px-3 lg:px-[0.833vw] py-2 lg:py-[0.556vw] text-[11px] lg:text-[0.764vw] text-muted-foreground">
+        <span className="flex items-center gap-1 lg:gap-[0.278vw]">
           <Kbd>↑</Kbd>
           <Kbd>↓</Kbd>
           Navigate
         </span>
-        <span className="flex items-center gap-1">
+        <span className="flex items-center gap-1 lg:gap-[0.278vw]">
           <Kbd>↵</Kbd>
           Open
         </span>
-        <span className="flex items-center gap-1">
+        <span className="flex items-center gap-1 lg:gap-[0.278vw]">
           <Kbd>esc</Kbd>
           Close
         </span>

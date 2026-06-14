@@ -25,7 +25,7 @@ export default async function LoginPage() {
       }
     >
       {/* LoginForm reads searchParams → needs a Suspense boundary in Next 16 */}
-      <Suspense fallback={<div className="h-72" aria-hidden />}>
+      <Suspense fallback={<div className="h-72 lg:h-[20vw]" aria-hidden />}>
         <LoginForm />
       </Suspense>
     </AuthShell>

@@ -79,7 +79,7 @@ export function FormDomainPicker({
   }
 
   return (
-    <div className="space-y-2.5">
+    <div className="space-y-2.5 lg:space-y-[0.694vw]">
       <Select value={selId || DEFAULT} onValueChange={onSelect}>
         <SelectTrigger className="w-full">
           <SelectValue placeholder="Default link" />
@@ -96,8 +96,8 @@ export function FormDomainPicker({
 
       {selectedDomain ? (
         <>
-          <div className="flex items-center gap-0 rounded-md border border-border bg-background focus-within:border-ring">
-            <span className="shrink-0 truncate border-r border-border px-2.5 py-2 font-mono text-xs text-muted-foreground">
+          <div className="flex items-center gap-0 rounded-md lg:rounded-[0.556vw] border border-border bg-background focus-within:border-ring">
+            <span className="shrink-0 truncate border-r border-border px-2.5 lg:px-[0.694vw] py-2 lg:py-[0.556vw] font-mono text-xs lg:text-[0.833vw] text-muted-foreground">
               {selectedDomain.domain}/
             </span>
             <input
@@ -106,18 +106,18 @@ export function FormDomainPicker({
               placeholder="feedback"
               spellCheck={false}
               autoCapitalize="off"
-              className="min-w-0 flex-1 bg-transparent px-2.5 py-2 font-mono text-xs text-foreground outline-none placeholder:text-muted-foreground"
+              className="min-w-0 flex-1 bg-transparent px-2.5 lg:px-[0.694vw] py-2 lg:py-[0.556vw] font-mono text-xs lg:text-[0.833vw] text-foreground outline-none placeholder:text-muted-foreground"
             />
             <Button
               size="sm"
               disabled={applying || !slugify(slugDraft) || !dirty}
               onClick={() => apply(selId, slugDraft)}
-              className="m-1 shrink-0"
+              className="m-1 lg:m-[0.278vw] shrink-0"
             >
               {applying ? "Saving…" : "Apply"}
             </Button>
           </div>
-          <p className="text-xs text-muted-foreground">
+          <p className="text-xs lg:text-[0.833vw] text-muted-foreground">
             Live at{" "}
             <span className="font-mono text-foreground">
               {selectedDomain.domain}/{slugify(slugDraft) || "…"}
@@ -125,7 +125,7 @@ export function FormDomainPicker({
           </p>
         </>
       ) : attached ? (
-        <p className="text-xs text-muted-foreground">
+        <p className="text-xs lg:text-[0.833vw] text-muted-foreground">
           Currently{" "}
           <span className="font-mono text-foreground">
             {domainHost}/{slug}

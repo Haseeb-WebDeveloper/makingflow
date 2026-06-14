@@ -79,25 +79,25 @@ export function EmailCard({
   return (
     <>
       <CardShell>
-        <div className="flex items-start justify-between gap-3">
-          <SVGIcon src="/logo/email.svg" preserveColors className="size-9" />
+        <div className="flex items-start justify-between gap-3 lg:gap-[0.833vw]">
+          <SVGIcon src="/logo/email.svg" preserveColors className="size-9 lg:size-[2.5vw]" />
           {active ? (
-            <span className="inline-flex items-center gap-1 rounded-full bg-success-bg px-2 py-0.5 text-[11px] font-medium text-success-foreground">
-              <span className="size-1.5 rounded-full bg-success" />
+            <span className="inline-flex items-center gap-1 lg:gap-[0.278vw] rounded-full bg-success-bg px-2 lg:px-[0.556vw] py-0.5 lg:py-[0.139vw] text-[11px] lg:text-[0.764vw] font-medium text-success-foreground">
+              <span className="size-1.5 lg:size-[0.417vw] rounded-full bg-success" />
               On
             </span>
           ) : null}
         </div>
 
-        <h3 className="mt-3 text-sm font-semibold text-foreground">
+        <h3 className="mt-3 lg:mt-[0.833vw] text-sm lg:text-[0.972vw] font-semibold text-foreground">
           Email notifications
         </h3>
-        <p className="mt-1 flex-1 text-sm text-muted-foreground">
+        <p className="mt-1 lg:mt-[0.278vw] flex-1 text-sm lg:text-[0.972vw] text-muted-foreground">
           Get an email the moment someone responds, with the answers included.
         </p>
 
-        <div className="mt-4 flex items-center justify-between gap-3 border-t border-border pt-3">
-          <span className="text-xs text-muted-foreground">
+        <div className="mt-4 lg:mt-[1.111vw] flex items-center justify-between gap-3 lg:gap-[0.833vw] border-t border-border pt-3 lg:pt-[0.833vw]">
+          <span className="text-xs lg:text-[0.833vw] text-muted-foreground">
             {!configured
               ? "Not available"
               : notification
@@ -128,15 +128,15 @@ export function EmailCard({
             </SheetDescription>
           </SheetHeader>
 
-          <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4">
+          <div className="flex min-h-0 flex-1 flex-col gap-4 lg:gap-[1.111vw] overflow-y-auto px-4 lg:px-[1.111vw]">
             <div>
               <label
                 htmlFor="email-recipients"
-                className="text-sm font-medium text-foreground"
+                className="text-sm lg:text-[0.972vw] font-medium text-foreground"
               >
                 Recipients
               </label>
-              <p className="mb-1.5 text-xs text-muted-foreground">
+              <p className="mb-1.5 lg:mb-[0.417vw] text-xs lg:text-[0.833vw] text-muted-foreground">
                 One email per line.
               </p>
               <textarea
@@ -146,17 +146,17 @@ export function EmailCard({
                 rows={4}
                 spellCheck={false}
                 disabled={pending}
-                className="w-full rounded-md border border-input bg-input/30 px-3 py-2 text-sm outline-none focus-visible:border-ring disabled:opacity-50"
+                className="w-full rounded-md lg:rounded-[0.556vw] border border-input bg-input/30 px-3 lg:px-[0.833vw] py-2 lg:py-[0.556vw] text-sm lg:text-[0.972vw] outline-none focus-visible:border-ring disabled:opacity-50"
                 placeholder="you@company.com"
               />
             </div>
 
-            <label className="flex items-center justify-between gap-4">
+            <label className="flex items-center justify-between gap-4 lg:gap-[1.111vw]">
               <span>
-                <span className="block text-sm font-medium text-foreground">
+                <span className="block text-sm lg:text-[0.972vw] font-medium text-foreground">
                   Include answers
                 </span>
-                <span className="block text-xs text-muted-foreground">
+                <span className="block text-xs lg:text-[0.833vw] text-muted-foreground">
                   Put the submitted answers in the email body.
                 </span>
               </span>
@@ -167,12 +167,12 @@ export function EmailCard({
               />
             </label>
 
-            <label className="flex items-center justify-between gap-4 border-t border-border pt-4">
+            <label className="flex items-center justify-between gap-4 lg:gap-[1.111vw] border-t border-border pt-4 lg:pt-[1.111vw]">
               <span>
-                <span className="block text-sm font-medium text-foreground">
+                <span className="block text-sm lg:text-[0.972vw] font-medium text-foreground">
                   Send notifications
                 </span>
-                <span className="block text-xs text-muted-foreground">
+                <span className="block text-xs lg:text-[0.833vw] text-muted-foreground">
                   Pause without deleting the recipients.
                 </span>
               </span>
@@ -184,7 +184,7 @@ export function EmailCard({
             </label>
           </div>
 
-          <div className="flex items-center justify-between gap-2 border-t border-border p-4">
+          <div className="flex items-center justify-between gap-2 lg:gap-[0.556vw] border-t border-border p-4 lg:p-[1.111vw]">
             {notification ? (
               <Button
                 variant="ghost"

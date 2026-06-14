@@ -18,18 +18,18 @@ export function SubmissionsAreaChart({ data }: { data: Point[] }) {
   const total = data.reduce((s, d) => s + d.count, 0)
 
   return (
-    <div className="rounded-lg border border-border p-4 sm:p-5">
+    <div className="rounded-lg lg:rounded-[0.694vw] border border-border p-4 lg:p-[1.111vw] sm:p-5">
       <div className="flex items-baseline justify-between">
         <div>
-          <p className="text-xs font-medium text-muted-foreground">Submissions</p>
-          <p className="mt-1 font-sebenta text-2xl font-bold tracking-tight text-foreground">
+          <p className="text-xs lg:text-[0.833vw] font-medium text-muted-foreground">Submissions</p>
+          <p className="mt-1 lg:mt-[0.278vw] font-sebenta text-2xl lg:text-[1.667vw] font-bold tracking-tight text-foreground">
             {total.toLocaleString()}
           </p>
         </div>
-        <span className="text-xs text-muted-foreground">Last 14 days</span>
+        <span className="text-xs lg:text-[0.833vw] text-muted-foreground">Last 14 days</span>
       </div>
 
-      <div className="mt-4 h-44 w-full">
+      <div className="mt-4 lg:mt-[1.111vw] h-44 lg:h-[12.222vw] w-full">
         <ResponsiveContainer width="100%" height="100%" minHeight={176}>
           <AreaChart data={rows} margin={{ top: 8, right: 8, bottom: 0, left: -18 }}>
             <defs>
@@ -81,7 +81,7 @@ function ChartTip({
   if (!active || !payload?.length) return null
   const p = payload[0].payload
   return (
-    <div className="rounded-md border border-border bg-background px-2.5 py-1.5 text-xs shadow-sm">
+    <div className="rounded-md lg:rounded-[0.556vw] border border-border bg-background px-2.5 lg:px-[0.694vw] py-1.5 lg:py-[0.417vw] text-xs lg:text-[0.833vw] shadow-sm">
       <p className="font-medium text-foreground">{p.label}</p>
       <p className="text-muted-foreground">
         {p.count} {p.count === 1 ? "submission" : "submissions"}

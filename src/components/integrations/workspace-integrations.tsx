@@ -79,27 +79,27 @@ export function WorkspaceIntegrationsPanel({
 
   return (
     <>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 lg:gap-[0.833vw] sm:grid-cols-2 lg:grid-cols-3">
         {/* ── Google Sheets ── */}
         <CardShell>
-          <div className="flex items-start justify-between gap-3">
+          <div className="flex items-start justify-between gap-3 lg:gap-[0.833vw]">
             <SVGIcon
               src="/logo/google-sheet.svg"
               preserveColors
-              className="size-9"
+              className="size-9 lg:size-[2.5vw]"
             />
             {connected ? (
-              <span className="inline-flex items-center gap-1 rounded-full bg-success-bg px-2 py-0.5 text-[11px] font-medium text-success-foreground">
-                <span className="size-1.5 rounded-full bg-success" />
+              <span className="inline-flex items-center gap-1 lg:gap-[0.278vw] rounded-full bg-success-bg px-2 lg:px-[0.556vw] py-0.5 lg:py-[0.139vw] text-[11px] lg:text-[0.764vw] font-medium text-success-foreground">
+                <span className="size-1.5 lg:size-[0.417vw] rounded-full bg-success" />
                 Connected
               </span>
             ) : null}
           </div>
 
-          <h3 className="mt-3 text-sm font-semibold text-foreground">
+          <h3 className="mt-3 lg:mt-[0.833vw] text-sm lg:text-[0.972vw] font-semibold text-foreground">
             Google Sheets
           </h3>
-          <p className="mt-1 flex-1 text-sm text-muted-foreground">
+          <p className="mt-1 lg:mt-[0.278vw] flex-1 text-sm lg:text-[0.972vw] text-muted-foreground">
             {connected
               ? `Every form syncs new submissions to its own spreadsheet automatically.${
                   syncingCount > 0 ? ` ${syncingCount} active.` : ""
@@ -107,9 +107,9 @@ export function WorkspaceIntegrationsPanel({
               : "Connect once for the whole workspace — every form, current and future, syncs to Sheets automatically."}
           </p>
 
-          <div className="mt-4 flex items-center justify-between gap-3 border-t border-border pt-3">
+          <div className="mt-4 lg:mt-[1.111vw] flex items-center justify-between gap-3 lg:gap-[0.833vw] border-t border-border pt-3 lg:pt-[0.833vw]">
             {!configured ? (
-              <span className="text-xs text-muted-foreground">
+              <span className="text-xs lg:text-[0.833vw] text-muted-foreground">
                 Not available
               </span>
             ) : connected ? (
@@ -151,11 +151,11 @@ export function WorkspaceIntegrationsPanel({
       <Sheet open={detailsOpen} onOpenChange={setDetailsOpen}>
         <SheetContent side="right" className="w-full sm:max-w-md">
           <SheetHeader>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 lg:gap-[0.833vw]">
               <SVGIcon
                 src="/logo/google-sheet.svg"
                 preserveColors
-                className="size-9"
+                className="size-9 lg:size-[2.5vw]"
               />
               <div>
                 <SheetTitle>Google Sheets</SheetTitle>
@@ -168,48 +168,48 @@ export function WorkspaceIntegrationsPanel({
             </div>
           </SheetHeader>
 
-          <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4">
-            <p className="text-sm text-muted-foreground">
+          <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 lg:px-[1.111vw]">
+            <p className="text-sm lg:text-[0.972vw] text-muted-foreground">
               Every form sends new submissions to its own spreadsheet. A
               form&apos;s sheet is created on its first response — new forms are
               added automatically.
             </p>
 
-            <div className="mt-4 flex items-center justify-between">
-              <h4 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            <div className="mt-4 lg:mt-[1.111vw] flex items-center justify-between">
+              <h4 className="text-xs lg:text-[0.833vw] font-medium uppercase tracking-wide text-muted-foreground">
                 Forms
               </h4>
-              <span className="text-xs text-muted-foreground">
+              <span className="text-xs lg:text-[0.833vw] text-muted-foreground">
                 {forms.length} total
               </span>
             </div>
 
             {forms.length === 0 ? (
-              <p className="mt-3 text-sm text-muted-foreground">
+              <p className="mt-3 lg:mt-[0.833vw] text-sm lg:text-[0.972vw] text-muted-foreground">
                 No forms yet. New forms sync automatically once they receive a
                 response.
               </p>
             ) : (
-              <ul className="mt-2 divide-y divide-border">
+              <ul className="mt-2 lg:mt-[0.556vw] divide-y divide-border">
                 {forms.map((f) => {
                   const on = f.status === "syncing" || f.status === "pending";
                   return (
-                    <li key={f.id} className="flex items-center gap-3 py-3">
+                    <li key={f.id} className="flex items-center gap-3 lg:gap-[0.833vw] py-3 lg:py-[0.833vw]">
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium text-foreground">
+                        <p className="truncate text-sm lg:text-[0.972vw] font-medium text-foreground">
                           {f.title}
                         </p>
-                        <div className="mt-1 flex items-center gap-2">
+                        <div className="mt-1 lg:mt-[0.278vw] flex items-center gap-2 lg:gap-[0.556vw]">
                           <StatusBadge status={f.status} />
                           {f.spreadsheetUrl ? (
                             <a
                               href={f.spreadsheetUrl}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground hover:underline"
+                              className="inline-flex items-center gap-1 lg:gap-[0.278vw] text-xs lg:text-[0.833vw] text-muted-foreground hover:text-foreground hover:underline"
                             >
                               Open sheet
-                              <Icon name="discovery" className="size-3" />
+                              <Icon name="discovery" className="size-3 lg:size-[0.833vw]" />
                             </a>
                           ) : null}
                         </div>
@@ -236,7 +236,7 @@ export function WorkspaceIntegrationsPanel({
             )}
           </div>
 
-          <div className="border-t border-border p-4">
+          <div className="border-t border-border p-4 lg:p-[1.111vw]">
             <Button
               variant="outline"
               size="sm"

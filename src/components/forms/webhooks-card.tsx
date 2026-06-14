@@ -96,24 +96,24 @@ export function WebhooksCard({
   return (
     <>
       <CardShell>
-        <div className="flex items-start justify-between gap-3">
-          <SVGIcon src="/logo/webhook.svg" preserveColors className="size-9" />
+        <div className="flex items-start justify-between gap-3 lg:gap-[0.833vw]">
+          <SVGIcon src="/logo/webhook.svg" preserveColors className="size-9 lg:size-[2.5vw]" />
           {activeCount > 0 ? (
-            <span className="inline-flex items-center gap-1 rounded-full bg-success-bg px-2 py-0.5 text-[11px] font-medium text-success-foreground">
-              <span className="size-1.5 rounded-full bg-success" />
+            <span className="inline-flex items-center gap-1 lg:gap-[0.278vw] rounded-full bg-success-bg px-2 lg:px-[0.556vw] py-0.5 lg:py-[0.139vw] text-[11px] lg:text-[0.764vw] font-medium text-success-foreground">
+              <span className="size-1.5 lg:size-[0.417vw] rounded-full bg-success" />
               {activeCount} active
             </span>
           ) : null}
         </div>
 
-        <h3 className="mt-3 text-sm font-semibold text-foreground">Webhooks</h3>
-        <p className="mt-1 flex-1 text-sm text-muted-foreground">
+        <h3 className="mt-3 lg:mt-[0.833vw] text-sm lg:text-[0.972vw] font-semibold text-foreground">Webhooks</h3>
+        <p className="mt-1 lg:mt-[0.278vw] flex-1 text-sm lg:text-[0.972vw] text-muted-foreground">
           POST each new submission to your own endpoint, optionally signed for
           verification.
         </p>
 
-        <div className="mt-4 flex items-center justify-between gap-3 border-t border-border pt-3">
-          <span className="text-xs text-muted-foreground">
+        <div className="mt-4 lg:mt-[1.111vw] flex items-center justify-between gap-3 lg:gap-[0.833vw] border-t border-border pt-3 lg:pt-[0.833vw]">
+          <span className="text-xs lg:text-[0.833vw] text-muted-foreground">
             {webhooks.length === 0
               ? "No endpoints yet"
               : `${webhooks.length} endpoint${
@@ -137,27 +137,27 @@ export function WebhooksCard({
             </SheetDescription>
           </SheetHeader>
 
-          <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4">
+          <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 lg:px-[1.111vw]">
             {webhooks.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
+              <p className="text-sm lg:text-[0.972vw] text-muted-foreground">
                 No endpoints yet. Add one below.
               </p>
             ) : (
               <ul className="divide-y divide-border">
                 {webhooks.map((w) => (
-                  <li key={w.id} className="flex items-center gap-3 py-3">
+                  <li key={w.id} className="flex items-center gap-3 lg:gap-[0.833vw] py-3 lg:py-[0.833vw]">
                     <div className="min-w-0 flex-1">
-                      <p className="truncate font-mono text-xs text-foreground">
+                      <p className="truncate font-mono text-xs lg:text-[0.833vw] text-foreground">
                         {w.url}
                       </p>
-                      <div className="mt-1 flex items-center gap-2">
+                      <div className="mt-1 lg:mt-[0.278vw] flex items-center gap-2 lg:gap-[0.556vw]">
                         {w.hasSecret ? (
-                          <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
-                            <Icon name="lock" className="size-3" />
+                          <span className="inline-flex items-center gap-1 lg:gap-[0.278vw] text-[11px] lg:text-[0.764vw] text-muted-foreground">
+                            <Icon name="lock" className="size-3 lg:size-[0.833vw]" />
                             Signed
                           </span>
                         ) : (
-                          <span className="text-[11px] text-muted-foreground">
+                          <span className="text-[11px] lg:text-[0.764vw] text-muted-foreground">
                             Unsigned
                           </span>
                         )}
@@ -165,7 +165,7 @@ export function WebhooksCard({
                           type="button"
                           onClick={() => onTest(w.id)}
                           disabled={pending}
-                          className="text-[11px] font-medium text-muted-foreground underline-offset-2 hover:text-foreground hover:underline disabled:opacity-50"
+                          className="text-[11px] lg:text-[0.764vw] font-medium text-muted-foreground underline-offset-2 hover:text-foreground hover:underline disabled:opacity-50"
                         >
                           {testingId === w.id ? "Testing…" : "Send test"}
                         </button>
@@ -198,8 +198,8 @@ export function WebhooksCard({
               </ul>
             )}
 
-            <div className="mt-4 space-y-2 border-t border-border pt-4">
-              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            <div className="mt-4 lg:mt-[1.111vw] space-y-2 lg:space-y-[0.556vw] border-t border-border pt-4 lg:pt-[1.111vw]">
+              <p className="text-xs lg:text-[0.833vw] font-medium uppercase tracking-wide text-muted-foreground">
                 Add endpoint
               </p>
               <Input

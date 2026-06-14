@@ -356,11 +356,11 @@ export function ConversationalRuntime({ form }: { form: PublicForm }) {
 
   if (status === "done") {
     return (
-      <div className="mx-auto flex min-h-[70dvh] w-full max-w-2xl flex-col items-center justify-center text-center">
-        <div className="mx-auto mb-4 flex size-14 items-center justify-center rounded-full bg-success/10 text-success">
-          <Check className="size-7" />
+      <div className="mx-auto flex min-h-[70dvh] w-full max-w-2xl lg:max-w-[46.667vw] flex-col items-center justify-center text-center">
+        <div className="mx-auto mb-4 lg:mb-[1.111vw] flex size-14 lg:size-[3.889vw] items-center justify-center rounded-full bg-success/10 text-success">
+          <Check className="size-7 lg:size-[1.944vw]" />
         </div>
-        <h2 className="font-sebenta text-2xl font-bold tracking-tight text-foreground">
+        <h2 className="font-sebenta text-2xl lg:text-[1.667vw] font-bold tracking-tight text-foreground">
           {form.thankYou}
         </h2>
       </div>
@@ -378,17 +378,17 @@ export function ConversationalRuntime({ form }: { form: PublicForm }) {
   return (
     // The page itself scrolls (no inner scroll container). Bottom padding clears
     // the viewport-fixed composer so the last message is never hidden behind it.
-    <div className={cn(showComposer ? "pb-40" : "pb-10")}>
-      <header className="pb-3">
+    <div className={cn(showComposer ? "pb-40 lg:pb-[11.111vw]" : "pb-10")}>
+      <header className="pb-3 lg:pb-[0.833vw]">
         <FormBranding theme={form.theme} />
-        <h1 className="font-sebenta text-lg font-bold tracking-tight text-foreground">
+        <h1 className="font-sebenta text-lg lg:text-[1.25vw] font-bold tracking-tight text-foreground">
           {form.title}
         </h1>
       </header>
 
-      <div className="space-y-4">
+      <div className="space-y-4 lg:space-y-[1.111vw]">
         {resumed ? (
-          <div className="mx-auto w-fit rounded-md border border-border bg-muted/40 px-3 py-1 text-xs text-muted-foreground">
+          <div className="mx-auto w-fit rounded-md lg:rounded-[0.556vw] border border-border bg-muted/40 px-3 lg:px-[0.833vw] py-1 lg:py-[0.278vw] text-xs lg:text-[0.833vw] text-muted-foreground">
             Picking up where you left off.
           </div>
         ) : null}
@@ -396,13 +396,13 @@ export function ConversationalRuntime({ form }: { form: PublicForm }) {
         {messages.map((m, i) =>
           m.role === "user" ? (
             <div key={i} className="flex justify-end">
-              <div className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-md bg-foreground px-3.5 py-2 text-sm text-background">
+              <div className="max-w-[85%] whitespace-pre-wrap rounded-2xl lg:rounded-[1.111vw] rounded-br-md lg:rounded-br-[0.556vw] bg-foreground px-3.5 lg:px-[0.972vw] py-2 lg:py-[0.556vw] text-sm lg:text-[0.972vw] text-background">
                 {m.text}
               </div>
             </div>
           ) : (
             <div key={i} className="flex justify-start">
-              <div className="max-w-[90%] whitespace-pre-wrap rounded-2xl rounded-bl-md bg-muted px-3.5 py-2.5 text-sm text-foreground">
+              <div className="max-w-[90%] whitespace-pre-wrap rounded-2xl lg:rounded-[1.111vw] rounded-bl-md lg:rounded-bl-[0.556vw] bg-muted px-3.5 lg:px-[0.972vw] py-2.5 lg:py-[0.694vw] text-sm lg:text-[0.972vw] text-foreground">
                 {m.text ? m.text : <Dots />}
               </div>
             </div>
@@ -415,7 +415,7 @@ export function ConversationalRuntime({ form }: { form: PublicForm }) {
         ) : null}
 
         {status === "ready" && currentField?.type === "file_upload" ? (
-          <div className="space-y-2">
+          <div className="space-y-2 lg:space-y-[0.556vw]">
             <Control
               field={currentField}
               value={fileDraft}
@@ -426,23 +426,23 @@ export function ConversationalRuntime({ form }: { form: PublicForm }) {
               type="button"
               disabled={fileDraft == null || isEmpty(fileDraft)}
               onClick={() => send({ pillValue: fileDraft!, display: "📎 File attached" })}
-              className="inline-flex h-9 items-center rounded-md bg-foreground px-4 text-sm font-medium text-background disabled:opacity-50"
+              className="inline-flex h-9 lg:h-[2.5vw] items-center rounded-md lg:rounded-[0.556vw] bg-foreground px-4 lg:px-[1.111vw] text-sm lg:text-[0.972vw] font-medium text-background disabled:opacity-50"
             >
               Send
             </button>
           </div>
         ) : null}
 
-        {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
+        {error ? <p role="alert" className="text-sm lg:text-[0.972vw] text-destructive">{error}</p> : null}
         {status === "submitting" ? (
-          <p className="text-center text-xs text-muted-foreground">Recording your response…</p>
+          <p className="text-center text-xs lg:text-[0.833vw] text-muted-foreground">Recording your response…</p>
         ) : null}
       </div>
 
       {showComposer ? (
-        <div className="fixed inset-x-0 bottom-0 z-10 bg-gradient-to-t from-canvas via-canvas to-transparent pt-8">
-          <div className="mx-auto w-full max-w-2xl px-4 pb-5 sm:px-6">
-            <div className="rounded-2xl border border-border bg-background p-2.5 shadow-sm transition-colors focus-within:border-foreground/30">
+        <div className="fixed inset-x-0 bottom-0 z-10 bg-gradient-to-t from-canvas via-canvas to-transparent pt-8 lg:pt-[2.222vw]">
+          <div className="mx-auto w-full max-w-2xl lg:max-w-[46.667vw] px-4 lg:px-[1.111vw] pb-5 lg:pb-[1.389vw] sm:px-6">
+            <div className="rounded-2xl lg:rounded-[1.111vw] border border-border bg-background p-2.5 lg:p-[0.694vw] shadow-sm transition-colors focus-within:border-foreground/30">
               <textarea
                 ref={inputRef}
                 rows={1}
@@ -457,17 +457,17 @@ export function ConversationalRuntime({ form }: { form: PublicForm }) {
                   }
                 }}
                 style={{ maxHeight: "7.5rem" }}
-                className="thin-scroll block w-full resize-none border-0 bg-transparent px-2 pt-1 text-base text-foreground outline-none placeholder:text-muted-foreground disabled:opacity-60"
+                className="thin-scroll block w-full resize-none border-0 bg-transparent px-2 lg:px-[0.556vw] pt-1 lg:pt-[0.278vw] text-base lg:text-[1.111vw] text-foreground outline-none placeholder:text-muted-foreground disabled:opacity-60"
               />
-              <div className="flex items-center justify-end pl-1 pr-0.5 pt-1">
+              <div className="flex items-center justify-end pl-1 lg:pl-[0.278vw] pr-0.5 lg:pr-[0.139vw] pt-1 lg:pt-[0.278vw]">
                 <button
                   type="button"
                   onClick={sendTyped}
                   disabled={composerDisabled || !input.trim()}
                   aria-label="Send"
-                  className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-foreground text-background transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-30"
+                  className="flex size-9 lg:size-[2.5vw] shrink-0 items-center justify-center rounded-lg lg:rounded-[0.694vw] bg-foreground text-background transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-30"
                 >
-                  <SVGIcon src="/icons/arrow-up.svg" className="size-5" />
+                  <SVGIcon src="/icons/arrow-up.svg" className="size-5 lg:size-[1.389vw]" />
                 </button>
               </div>
             </div>
@@ -492,11 +492,11 @@ function Pills({
   onSend: (p: { reply?: string; pillValue?: AnswerValue; display: string }) => void
 }) {
   const pill =
-    "rounded-md border border-input px-3.5 py-1.5 text-sm text-foreground transition-colors hover:border-foreground/40 hover:bg-muted"
+    "rounded-md lg:rounded-[0.556vw] border border-input px-3.5 lg:px-[0.972vw] py-1.5 lg:py-[0.417vw] text-sm lg:text-[0.972vw] text-foreground transition-colors hover:border-foreground/40 hover:bg-muted"
 
   if (field.type === "yes_no") {
     return (
-      <div className="flex flex-wrap justify-start gap-2">
+      <div className="flex flex-wrap justify-start gap-2 lg:gap-[0.556vw]">
         {["Yes", "No"].map((o) => (
           <button key={o} type="button" className={pill} onClick={() => onSend({ pillValue: o, display: o })}>
             {o}
@@ -510,7 +510,7 @@ function Pills({
     const opts = field.options ?? []
     if (opts.length === 0) return null
     return (
-      <div className="flex flex-wrap justify-start gap-2">
+      <div className="flex flex-wrap justify-start gap-2 lg:gap-[0.556vw]">
         {opts.map((o) => (
           <button
             key={o.id}
@@ -530,12 +530,12 @@ function Pills({
     const to = field.type === "nps" ? 10 : 5
     const nums = Array.from({ length: to - from + 1 }, (_, i) => from + i)
     return (
-      <div className="flex flex-wrap justify-start gap-1.5">
+      <div className="flex flex-wrap justify-start gap-1.5 lg:gap-[0.417vw]">
         {nums.map((n) => (
           <button
             key={n}
             type="button"
-            className="inline-flex size-9 items-center justify-center rounded-md border border-input text-sm text-foreground transition-colors hover:border-foreground/40 hover:bg-muted"
+            className="inline-flex size-9 lg:size-[2.5vw] items-center justify-center rounded-md lg:rounded-[0.556vw] border border-input text-sm lg:text-[0.972vw] text-foreground transition-colors hover:border-foreground/40 hover:bg-muted"
             onClick={() => onSend({ pillValue: n, display: String(n) })}
           >
             {n}
@@ -551,8 +551,8 @@ function Pills({
     const toggle = (label: string) =>
       setMulti(multi.includes(label) ? multi.filter((v) => v !== label) : [...multi, label])
     return (
-      <div className="flex flex-col items-start gap-2">
-        <div className="flex flex-wrap justify-start gap-2">
+      <div className="flex flex-col items-start gap-2 lg:gap-[0.556vw]">
+        <div className="flex flex-wrap justify-start gap-2 lg:gap-[0.556vw]">
           {opts.map((o) => {
             const on = multi.includes(o.label)
             return (
@@ -561,13 +561,13 @@ function Pills({
                 type="button"
                 onClick={() => toggle(o.label)}
                 className={cn(
-                  "flex items-center gap-1.5 rounded-md border px-3.5 py-1.5 text-sm transition-colors",
+                  "flex items-center gap-1.5 lg:gap-[0.417vw] rounded-md lg:rounded-[0.556vw] border px-3.5 lg:px-[0.972vw] py-1.5 lg:py-[0.417vw] text-sm lg:text-[0.972vw] transition-colors",
                   on
                     ? "border-foreground bg-foreground text-background"
                     : "border-input text-foreground hover:border-foreground/40 hover:bg-muted",
                 )}
               >
-                {on ? <Check className="size-3" /> : null}
+                {on ? <Check className="size-3 lg:size-[0.833vw]" /> : null}
                 {o.label}
               </button>
             )
@@ -577,7 +577,7 @@ function Pills({
           <button
             type="button"
             onClick={() => onSend({ pillValue: multi, display: multi.join(", ") })}
-            className="inline-flex h-9 items-center rounded-md bg-foreground px-4 text-sm font-medium text-background"
+            className="inline-flex h-9 lg:h-[2.5vw] items-center rounded-md lg:rounded-[0.556vw] bg-foreground px-4 lg:px-[1.111vw] text-sm lg:text-[0.972vw] font-medium text-background"
           >
             Done
           </button>
@@ -591,10 +591,10 @@ function Pills({
 
 function Dots() {
   return (
-    <span className="inline-flex gap-1 py-1">
-      <span className="size-1.5 animate-bounce rounded-full bg-muted-foreground [animation-delay:-0.2s]" />
-      <span className="size-1.5 animate-bounce rounded-full bg-muted-foreground [animation-delay:-0.1s]" />
-      <span className="size-1.5 animate-bounce rounded-full bg-muted-foreground" />
+    <span className="inline-flex gap-1 lg:gap-[0.278vw] py-1 lg:py-[0.278vw]">
+      <span className="size-1.5 lg:size-[0.417vw] animate-bounce rounded-full bg-muted-foreground [animation-delay:-0.2s]" />
+      <span className="size-1.5 lg:size-[0.417vw] animate-bounce rounded-full bg-muted-foreground [animation-delay:-0.1s]" />
+      <span className="size-1.5 lg:size-[0.417vw] animate-bounce rounded-full bg-muted-foreground" />
     </span>
   )
 }

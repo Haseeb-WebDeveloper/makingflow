@@ -48,10 +48,10 @@ export default async function CustomDomainFormPage({ params }: { params: Params 
     : ({ state: "missing" } as const)
 
   return (
-    <div className="min-h-dvh bg-canvas px-4 py-10 sm:py-16">
+    <div className="min-h-dvh bg-canvas px-4 lg:px-[1.111vw] py-10 lg:py-[2.778vw] sm:py-16">
       <div
         key={res.state === "ok" ? res.form.publicId : "unavailable"}
-        className="mx-auto w-full max-w-2xl"
+        className="mx-auto w-full max-w-2xl lg:max-w-[46.667vw]"
       >
         {res.state === "ok" ? (
           <FormRenderer form={res.form} />
@@ -65,11 +65,11 @@ export default async function CustomDomainFormPage({ params }: { params: Params 
 
 function NotAvailable({ missing }: { missing: boolean }) {
   return (
-    <div className="rounded-xl border border-border bg-background p-10 text-center">
-      <h1 className="font-sebenta text-xl font-bold tracking-tight text-foreground">
+    <div className="rounded-xl lg:rounded-[0.926vw] border border-border bg-background p-10 lg:p-[2.778vw] text-center">
+      <h1 className="font-sebenta text-xl lg:text-[1.389vw] font-bold tracking-tight text-foreground">
         {missing ? "Form not found" : "This form isn't available"}
       </h1>
-      <p className="mt-2 text-sm text-muted-foreground">
+      <p className="mt-2 lg:mt-[0.556vw] text-sm lg:text-[0.972vw] text-muted-foreground">
         {missing
           ? "Double-check the link with whoever shared it."
           : "It may be unpublished or closed."}

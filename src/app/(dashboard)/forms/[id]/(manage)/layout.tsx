@@ -44,25 +44,25 @@ export default async function FormManageLayout({
     <div className="flex min-h-0 flex-1 flex-col">
       <RecordRecentForm id={id} title={shell.title || "Untitled form"} />
       <div className="border-b border-border bg-background">
-        <div className="mx-auto w-full max-w-6xl px-6 pt-6 sm:px-8">
-          <div className="flex items-start justify-between gap-4">
+        <div className="mx-auto w-full max-w-6xl lg:max-w-[80vw] px-6 lg:px-[1.667vw] pt-6 lg:pt-[1.667vw] sm:px-8">
+          <div className="flex items-start justify-between gap-4 lg:gap-[1.111vw]">
             <div className="min-w-0">
-              <div className="flex items-center gap-2.5">
-                <h1 className="truncate font-sebenta text-xl font-bold tracking-tight text-foreground">
+              <div className="flex items-center gap-2.5 lg:gap-[0.694vw]">
+                <h1 className="truncate font-sebenta text-xl lg:text-[1.389vw] font-bold tracking-tight text-foreground">
                   {shell.title || "Untitled form"}
                 </h1>
-                <span className="shrink-0 rounded-full border border-border px-2 py-0.5 text-xs capitalize text-muted-foreground">
+                <span className="shrink-0 rounded-full border border-border px-2 lg:px-[0.556vw] py-0.5 lg:py-[0.139vw] text-xs lg:text-[0.833vw] capitalize text-muted-foreground">
                   {shell.status}
                 </span>
               </div>
             </div>
-            <div className="flex shrink-0 items-center gap-2">
+            <div className="flex shrink-0 items-center gap-2 lg:gap-[0.556vw]">
               <FormAssistant formId={id} formTitle={shell.title || "this form"} />
               <Link
                 href={`/forms/${id}/edit`}
-                className="inline-flex h-9 items-center gap-1.5 rounded-md border border-border bg-background px-3.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
+                className="inline-flex h-9 lg:h-[2.5vw] items-center gap-1.5 lg:gap-[0.417vw] rounded-md lg:rounded-[0.556vw] border border-border bg-background px-3.5 lg:px-[0.972vw] text-sm lg:text-[0.972vw] font-medium text-foreground transition-colors hover:bg-muted"
               >
-                <Icon name="edit" className="size-4" />
+                <Icon name="edit" className="size-4 lg:size-[1.111vw]" />
                 Edit
               </Link>
               <FormPublishButton
@@ -84,7 +84,7 @@ export default async function FormManageLayout({
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col">
-        <div className="mx-auto w-full max-w-6xl flex-1 px-6 py-8 sm:px-8">{children}</div>
+        <div className="mx-auto w-full max-w-6xl lg:max-w-[80vw] flex-1 px-6 lg:px-[1.667vw] py-8 lg:py-[2.222vw] sm:px-8">{children}</div>
       </div>
     </div>
   )

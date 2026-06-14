@@ -60,22 +60,22 @@ export function StatusBanner({
     <div
       role="status"
       className={cn(
-        'flex items-start gap-3 lg:gap-[12px] rounded-lg lg:rounded-[10px] border px-4 lg:px-[16px] py-3 lg:py-[12px]',
+        'flex items-start gap-3 lg:gap-[0.833vw] rounded-lg lg:rounded-[0.694vw] border px-4 lg:px-[1.111vw] py-3 lg:py-[0.833vw]',
         styles.container,
         className
       )}
     >
-      <Icon className={cn('mt-0.5 lg:mt-[2px] size-5 lg:size-[20px] shrink-0', styles.icon)} />
+      <Icon className={cn('mt-0.5 lg:mt-[0.139vw] size-5 lg:size-[1.389vw] shrink-0', styles.icon)} />
       <div className="flex-1 min-w-0">
-        <p className="text-sm lg:text-[14px] font-medium">{title}</p>
+        <p className="text-sm lg:text-[0.972vw] font-medium">{title}</p>
         {description && (
-          <p className="mt-0.5 lg:mt-[2px] text-sm lg:text-[14px] text-muted-foreground">{description}</p>
+          <p className="mt-0.5 lg:mt-[0.139vw] text-sm lg:text-[0.972vw] text-muted-foreground">{description}</p>
         )}
         {action && (
           <Button
             variant="outline"
             size="sm"
-            className="mt-2 lg:mt-[8px]"
+            className="mt-2 lg:mt-[0.556vw]"
             onClick={action.onClick}
           >
             {action.label}
@@ -86,10 +86,10 @@ export function StatusBanner({
         <button
           type="button"
           onClick={onDismiss}
-          className="shrink-0 rounded-md lg:rounded-[8px] p-0.5 lg:p-[2px] text-muted-foreground hover:text-foreground transition-colors"
+          className="shrink-0 rounded-md lg:rounded-[0.556vw] p-0.5 lg:p-[0.139vw] text-muted-foreground hover:text-foreground transition-colors"
           aria-label="Dismiss"
         >
-          <X className="size-4 lg:size-[16px]" />
+          <X className="size-4 lg:size-[1.111vw]" />
         </button>
       )}
     </div>

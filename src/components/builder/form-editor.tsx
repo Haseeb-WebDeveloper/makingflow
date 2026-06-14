@@ -98,18 +98,18 @@ export function FormEditor({
   }
 
   return (
-    <div className="mx-auto w-full max-w-2xl">
+    <div className="mx-auto w-full max-w-2xl lg:max-w-[46.667vw]">
       <textarea
         rows={1}
         value={form.title}
         onChange={(e) => setTitle(e.target.value)}
         placeholder="Form title"
-        className="field-sizing-content mb-8 w-full resize-none border-0 bg-transparent py-0 pl-9 pr-0 font-sebenta text-3xl font-bold tracking-tight text-foreground outline-none placeholder:text-muted-foreground/40"
+        className="field-sizing-content mb-8 lg:mb-[2.222vw] w-full resize-none border-0 bg-transparent py-0 pl-9 lg:pl-[2.5vw] pr-0 font-sebenta text-3xl lg:text-[2.083vw] font-bold tracking-tight text-foreground outline-none placeholder:text-muted-foreground/40"
       />
 
       <DndContext id="form-editor-dnd" sensors={sensors} collisionDetection={closestCenter} modifiers={[restrictToVerticalAxis]} onDragEnd={onDragEnd}>
         <SortableContext items={form.fields.map((f) => f.id)} strategy={verticalListSortingStrategy}>
-          <div className="space-y-1">
+          <div className="space-y-1 lg:space-y-[0.278vw]">
             {form.fields.map((field) => (
               <Block
                 key={field.id}
@@ -131,14 +131,14 @@ export function FormEditor({
       <button
         type="button"
         onClick={() => openPalette(null)}
-        className="mt-2 flex w-full items-center gap-2 rounded-lg py-3 pl-9 pr-2 text-sm text-muted-foreground transition-colors hover:bg-muted/60"
+        className="mt-2 lg:mt-[0.556vw] flex w-full items-center gap-2 lg:gap-[0.556vw] rounded-lg lg:rounded-[0.694vw] py-3 lg:py-[0.833vw] pl-9 lg:pl-[2.5vw] pr-2 lg:pr-[0.556vw] text-sm lg:text-[0.972vw] text-muted-foreground transition-colors hover:bg-muted/60"
       >
-        <Plus className="size-4" />
+        <Plus className="size-4 lg:size-[1.111vw]" />
         Add a block
       </button>
 
-      <div className="mt-8 pl-9">
-        <span className="inline-flex h-11 items-center rounded-md bg-foreground px-6 text-sm font-medium text-background">
+      <div className="mt-8 lg:mt-[2.222vw] pl-9 lg:pl-[2.5vw]">
+        <span className="inline-flex h-11 lg:h-[3.056vw] items-center rounded-md lg:rounded-[0.556vw] bg-foreground px-6 lg:px-[1.667vw] text-sm lg:text-[0.972vw] font-medium text-background">
           Submit
         </span>
       </div>
@@ -180,15 +180,15 @@ function Block({
       onClick={onActivate}
     >
       {/* Gutter (inside the block, so it never overflows a narrow panel) */}
-      <div className="absolute left-0 top-2 z-10 flex flex-col items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+      <div className="absolute left-0 top-2 lg:top-[0.556vw] z-10 flex flex-col items-center gap-0.5 lg:gap-[0.139vw] opacity-0 transition-opacity group-hover:opacity-100">
         <button
           type="button"
           {...attributes}
           {...listeners}
           aria-label="Drag to reorder"
-          className="grid size-6 cursor-grab place-items-center rounded text-muted-foreground hover:bg-muted active:cursor-grabbing"
+          className="grid size-6 lg:size-[1.667vw] cursor-grab place-items-center rounded lg:rounded-[0.324vw] text-muted-foreground hover:bg-muted active:cursor-grabbing"
         >
-          <Grip className="size-4" />
+          <Grip className="size-4 lg:size-[1.111vw]" />
         </button>
         <button
           type="button"
@@ -197,9 +197,9 @@ function Block({
             onInsertAfter()
           }}
           aria-label="Insert block below"
-          className="grid size-6 place-items-center rounded text-muted-foreground hover:bg-muted"
+          className="grid size-6 lg:size-[1.667vw] place-items-center rounded lg:rounded-[0.324vw] text-muted-foreground hover:bg-muted"
         >
-          <Plus className="size-4" />
+          <Plus className="size-4 lg:size-[1.111vw]" />
         </button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -207,12 +207,12 @@ function Block({
               type="button"
               onClick={(e) => e.stopPropagation()}
               aria-label="Block options"
-              className="grid size-6 place-items-center rounded text-muted-foreground hover:bg-muted"
+              className="grid size-6 lg:size-[1.667vw] place-items-center rounded lg:rounded-[0.324vw] text-muted-foreground hover:bg-muted"
             >
-              <More className="size-4" />
+              <More className="size-4 lg:size-[1.111vw]" />
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" side="right" className="w-52">
+          <DropdownMenuContent align="start" side="right" className="w-52 lg:w-[14.444vw]">
             {!isContentBlock ? (
               <DropdownMenuCheckboxItem
                 checked={field.required}
@@ -250,25 +250,25 @@ function Block({
                 if (!field.logic) onChange({ logic: starterLogic() })
               }}
             >
-              <Flow className="size-4" />
+              <Flow className="size-4 lg:size-[1.111vw]" />
               Conditional logic
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={onDuplicate}>
-              <Copy className="size-4" />
+              <Copy className="size-4 lg:size-[1.111vw]" />
               Duplicate
             </DropdownMenuItem>
             <DropdownMenuItem onClick={onRemove} className="text-destructive focus:text-destructive">
-              <Trash className="size-4" />
+              <Trash className="size-4 lg:size-[1.111vw]" />
               Delete
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
 
-      <div className={cn("rounded-lg py-2.5 pl-9 pr-2 transition-colors", active ? "bg-muted/50" : "hover:bg-muted/30")}>
+      <div className={cn("rounded-lg lg:rounded-[0.694vw] py-2.5 lg:py-[0.694vw] pl-9 lg:pl-[2.5vw] pr-2 lg:pr-[0.556vw] transition-colors", active ? "bg-muted/50" : "hover:bg-muted/30")}>
         {field.type === "page_break" ? (
-          <div className="flex items-center gap-3 py-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          <div className="flex items-center gap-3 lg:gap-[0.833vw] py-1 lg:py-[0.278vw] text-xs lg:text-[0.833vw] font-medium uppercase tracking-wide text-muted-foreground">
             <span className="h-px flex-1 border-t border-dashed border-border" />
             Page break
             <span className="h-px flex-1 border-t border-dashed border-border" />
@@ -280,7 +280,7 @@ function Block({
             placeholder={field.config?.headingLevel === "h1" ? "Heading" : "Subheading"}
             className={cn(
               "font-sebenta font-semibold text-foreground",
-              field.config?.headingLevel === "h1" ? "text-2xl font-bold tracking-tight" : "text-lg",
+              field.config?.headingLevel === "h1" ? "text-2xl lg:text-[1.667vw] font-bold tracking-tight" : "text-lg",
             )}
           />
         ) : field.type === "paragraph" ? (
@@ -288,7 +288,7 @@ function Block({
             value={field.label}
             onChange={(label) => onChange({ label })}
             placeholder="Add a line of text…"
-            className="text-sm leading-relaxed text-muted-foreground"
+            className="text-sm lg:text-[0.972vw] leading-relaxed text-muted-foreground"
           />
         ) : (
           <>
@@ -296,18 +296,18 @@ function Block({
               value={field.label}
               onChange={(label) => onChange({ label })}
               placeholder="Question"
-              className="text-sm font-medium text-foreground"
+              className="text-sm lg:text-[0.972vw] font-medium text-foreground"
             />
             {active || field.description ? (
               <AutoText
                 value={field.description ?? ""}
                 onChange={(description) => onChange({ description: description || undefined })}
                 placeholder="Add a description (optional)"
-                className="mt-1 text-xs text-muted-foreground"
+                className="mt-1 lg:mt-[0.278vw] text-xs lg:text-[0.833vw] text-muted-foreground"
               />
             ) : null}
 
-            <div className="mt-2.5">
+            <div className="mt-2.5 lg:mt-[0.694vw]">
               {isChoice(field.type) ? (
                 <OptionEditor field={field} onChange={onChange} />
               ) : (
@@ -337,7 +337,7 @@ function OptionEditor({
     field.type === "multiple_choice"
       ? "rounded-full"
       : field.type === "checkboxes" || field.type === "multi_select"
-        ? "rounded-[4px]"
+        ? "rounded-[4px] lg:rounded-[0.278vw]"
         : "rounded-full"
 
   function setOpt(id: string, label: string) {
@@ -351,24 +351,24 @@ function OptionEditor({
   }
 
   return (
-    <div className="space-y-1.5">
+    <div className="space-y-1.5 lg:space-y-[0.417vw]">
       {options.map((o, i) => (
-        <div key={o.id} className="group/opt flex items-center gap-2.5">
-          <span className={cn("size-4 shrink-0 border border-muted-foreground/40", marker)} />
+        <div key={o.id} className="group/opt flex items-center gap-2.5 lg:gap-[0.694vw]">
+          <span className={cn("size-4 lg:size-[1.111vw] shrink-0 border border-muted-foreground/40", marker)} />
           <input
             value={o.label}
             onChange={(e) => setOpt(o.id, e.target.value)}
             placeholder={`Option ${i + 1}`}
-            className="flex-1 border-0 bg-transparent py-1 text-sm text-foreground outline-none placeholder:text-muted-foreground/60"
+            className="flex-1 border-0 bg-transparent py-1 lg:py-[0.278vw] text-sm lg:text-[0.972vw] text-foreground outline-none placeholder:text-muted-foreground/60"
           />
           {options.length > 1 ? (
             <button
               type="button"
               onClick={() => removeOpt(o.id)}
               aria-label="Remove option"
-              className="grid size-5 place-items-center rounded text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground group-hover/opt:opacity-100"
+              className="grid size-5 lg:size-[1.389vw] place-items-center rounded lg:rounded-[0.324vw] text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground group-hover/opt:opacity-100"
             >
-              <X className="size-3.5" />
+              <X className="size-3.5 lg:size-[0.972vw]" />
             </button>
           ) : null}
         </div>
@@ -376,9 +376,9 @@ function OptionEditor({
       <button
         type="button"
         onClick={addOpt}
-        className="flex items-center gap-1.5 py-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
+        className="flex items-center gap-1.5 lg:gap-[0.417vw] py-1 lg:py-[0.278vw] text-xs lg:text-[0.833vw] text-muted-foreground transition-colors hover:text-foreground"
       >
-        <Plus className="size-3.5" />
+        <Plus className="size-3.5 lg:size-[0.972vw]" />
         Add option
       </button>
     </div>
@@ -387,27 +387,27 @@ function OptionEditor({
 
 /** Non-interactive representation of an input field on the editor canvas. */
 function ControlPreview({ field }: { field: EditorField }) {
-  const base = "pointer-events-none flex items-center rounded-md border border-input bg-background px-3 text-sm text-muted-foreground"
+  const base = "pointer-events-none flex items-center rounded-md lg:rounded-[0.556vw] border border-input bg-background px-3 lg:px-[0.833vw] text-sm lg:text-[0.972vw] text-muted-foreground"
   switch (field.type) {
     case "long_text":
-      return <div className={cn(base, "h-16 items-start py-2")}>{field.placeholder || "Long answer"}</div>
+      return <div className={cn(base, "h-16 lg:h-[4.444vw] items-start py-2 lg:py-[0.556vw]")}>{field.placeholder || "Long answer"}</div>
     case "date":
       return (
-        <div className={cn(base, "h-10 justify-between")}>
-          Pick a date <FieldGlyph type="date" className="size-4" />
+        <div className={cn(base, "h-10 lg:h-[2.778vw] justify-between")}>
+          Pick a date <FieldGlyph type="date" className="size-4 lg:size-[1.111vw]" />
         </div>
       )
     case "time":
       return (
-        <div className={cn(base, "h-10 justify-between")}>
-          Pick a time <FieldGlyph type="time" className="size-4" />
+        <div className={cn(base, "h-10 lg:h-[2.778vw] justify-between")}>
+          Pick a time <FieldGlyph type="time" className="size-4 lg:size-[1.111vw]" />
         </div>
       )
     case "yes_no":
       return (
-        <div className="flex gap-2">
+        <div className="flex gap-2 lg:gap-[0.556vw]">
           {["Yes", "No"].map((o) => (
-            <span key={o} className="inline-flex h-9 items-center rounded-md border border-border px-5 text-sm text-foreground">
+            <span key={o} className="inline-flex h-9 lg:h-[2.5vw] items-center rounded-md lg:rounded-[0.556vw] border border-border px-5 lg:px-[1.389vw] text-sm lg:text-[0.972vw] text-foreground">
               {o}
             </span>
           ))}
@@ -415,9 +415,9 @@ function ControlPreview({ field }: { field: EditorField }) {
       )
     case "rating":
       return (
-        <div className="flex gap-1.5 text-muted-foreground/40">
+        <div className="flex gap-1.5 lg:gap-[0.417vw] text-muted-foreground/40">
           {Array.from({ length: 5 }, (_, i) => (
-            <FieldGlyph key={i} type="rating" className="size-6" />
+            <FieldGlyph key={i} type="rating" className="size-6 lg:size-[1.667vw]" />
           ))}
         </div>
       )
@@ -426,9 +426,9 @@ function ControlPreview({ field }: { field: EditorField }) {
       const from = field.type === "nps" ? 0 : 1
       const to = field.type === "nps" ? 10 : 5
       return (
-        <div className="flex flex-wrap gap-1.5">
+        <div className="flex flex-wrap gap-1.5 lg:gap-[0.417vw]">
           {Array.from({ length: to - from + 1 }, (_, i) => (
-            <span key={i} className="inline-flex size-8 items-center justify-center rounded-md border border-border text-xs text-foreground">
+            <span key={i} className="inline-flex size-8 lg:size-[2.222vw] items-center justify-center rounded-md lg:rounded-[0.556vw] border border-border text-xs lg:text-[0.833vw] text-foreground">
               {from + i}
             </span>
           ))}
@@ -436,9 +436,9 @@ function ControlPreview({ field }: { field: EditorField }) {
       )
     }
     case "file_upload":
-      return <div className="pointer-events-none flex h-16 items-center justify-center rounded-md border border-dashed border-border text-sm text-muted-foreground">Upload a file</div>
+      return <div className="pointer-events-none flex h-16 lg:h-[4.444vw] items-center justify-center rounded-md lg:rounded-[0.556vw] border border-dashed border-border text-sm lg:text-[0.972vw] text-muted-foreground">Upload a file</div>
     default:
-      return <div className={cn(base, "h-10")}>{field.placeholder || "Short answer"}</div>
+      return <div className={cn(base, "h-10 lg:h-[2.778vw]")}>{field.placeholder || "Short answer"}</div>
   }
 }
 

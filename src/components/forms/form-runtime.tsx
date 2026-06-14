@@ -274,11 +274,11 @@ export function FormRuntime({
 
   if (done) {
     return (
-      <div className="mx-auto flex min-h-[70dvh] w-full max-w-2xl flex-col items-center justify-center text-center">
-        <div className="mx-auto mb-4 flex size-14 items-center justify-center rounded-full bg-success/10 text-success">
-          <Lottie name="success" className="size-52" />
+      <div className="mx-auto flex min-h-[70dvh] w-full max-w-2xl lg:max-w-[46.667vw] flex-col items-center justify-center text-center">
+        <div className="mx-auto mb-4 lg:mb-[1.111vw] flex size-14 lg:size-[3.889vw] items-center justify-center rounded-full bg-success/10 text-success">
+          <Lottie name="success" className="size-52 lg:size-[14.444vw]" />
         </div>
-        <h2 className="mt-4 font-sebenta text-2xl font-bold tracking-tight text-foreground">
+        <h2 className="mt-4 lg:mt-[1.111vw] font-sebenta text-2xl lg:text-[1.667vw] font-bold tracking-tight text-foreground">
           {form.thankYou}
         </h2>
       </div>
@@ -286,21 +286,21 @@ export function FormRuntime({
   }
 
   return (
-    <form onSubmit={onSubmit} noValidate className="mx-auto w-full max-w-2xl">
+    <form onSubmit={onSubmit} noValidate className="mx-auto w-full max-w-2xl lg:max-w-[46.667vw]">
       <FormBranding theme={form.theme} />
-      <header className="mb-8">
-        <h1 className="font-sebenta text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
+      <header className="mb-8 lg:mb-[2.222vw]">
+        <h1 className="font-sebenta text-2xl lg:text-[1.667vw] font-bold tracking-tight text-foreground sm:text-3xl">
           {form.title}
         </h1>
         {form.showProgressBar && pageCount > 1 ? (
-          <div className="mt-4">
-            <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+          <div className="mt-4 lg:mt-[1.111vw]">
+            <div className="h-1.5 lg:h-[0.417vw] overflow-hidden rounded-full bg-muted">
               <div
                 className="h-full rounded-full bg-foreground transition-all"
                 style={{ width: `${((idx + 1) / pageCount) * 100}%` }}
               />
             </div>
-            <p className="mt-1.5 text-xs text-muted-foreground">
+            <p className="mt-1.5 lg:mt-[0.417vw] text-xs lg:text-[0.833vw] text-muted-foreground">
               Step {idx + 1} of {pageCount}
             </p>
           </div>
@@ -308,7 +308,7 @@ export function FormRuntime({
       </header>
 
       {resumed ? (
-        <div className="mb-6 flex items-center justify-between gap-2 rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+        <div className="mb-6 lg:mb-[1.667vw] flex items-center justify-between gap-2 lg:gap-[0.556vw] rounded-md lg:rounded-[0.556vw] border border-border bg-muted/40 px-3 lg:px-[0.833vw] py-2 lg:py-[0.556vw] text-xs lg:text-[0.833vw] text-muted-foreground">
           <span>We restored the answers you started earlier.</span>
           <button
             type="button"
@@ -320,7 +320,7 @@ export function FormRuntime({
         </div>
       ) : null}
 
-      <div className="space-y-7">
+      <div className="space-y-7 lg:space-y-[1.944vw]">
         {currentPage.map((field) =>
           isFieldVisible(field.logic, values) ? (
             <Field
@@ -336,18 +336,18 @@ export function FormRuntime({
       </div>
 
       {error ? (
-        <p role="alert" className="mt-6 text-sm text-destructive">
+        <p role="alert" className="mt-6 lg:mt-[1.667vw] text-sm lg:text-[0.972vw] text-destructive">
           {error}
         </p>
       ) : null}
 
-      <div className="mt-8 flex items-center gap-3">
+      <div className="mt-8 lg:mt-[2.222vw] flex items-center gap-3 lg:gap-[0.833vw]">
         {idx > 0 ? (
           <button
             type="button"
             onClick={goBack}
             disabled={submitting}
-            className="inline-flex h-11 items-center justify-center rounded-md border border-border px-5 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-60"
+            className="inline-flex h-11 lg:h-[3.056vw] items-center justify-center rounded-md lg:rounded-[0.556vw] border border-border px-5 lg:px-[1.389vw] text-sm lg:text-[0.972vw] font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-60"
           >
             Back
           </button>
@@ -355,7 +355,7 @@ export function FormRuntime({
         <button
           type="submit"
           disabled={submitting}
-          className="inline-flex h-11 items-center justify-center rounded-md bg-foreground px-6 text-sm font-medium text-background transition-colors hover:bg-foreground/90 disabled:opacity-60"
+          className="inline-flex h-11 lg:h-[3.056vw] items-center justify-center rounded-md lg:rounded-[0.556vw] bg-foreground px-6 lg:px-[1.667vw] text-sm lg:text-[0.972vw] font-medium text-background transition-colors hover:bg-foreground/90 disabled:opacity-60"
         >
           {isLast ? (submitting ? "Submitting…" : form.submitLabel) : "Next"}
         </button>

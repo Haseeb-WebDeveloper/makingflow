@@ -16,7 +16,7 @@ export default async function DomainsPage() {
         title="Domains"
         description="Serve your forms from your own subdomain, like forms.yourbrand.com/feedback."
       />
-      <div className="mt-6">
+      <div className="mt-6 lg:mt-[1.667vw]">
         <DomainsPanel data={data} />
       </div>
     </PageContainer>

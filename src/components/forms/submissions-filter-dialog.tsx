@@ -62,31 +62,31 @@ export function SubmissionsFilterDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
+          <DialogTitle className="flex items-center gap-2 lg:gap-[0.556vw]">
             <FilterIcon />
             Filters
           </DialogTitle>
         </DialogHeader>
 
         {filters.length === 0 ? (
-          <p className="py-2 text-sm text-muted-foreground">
+          <p className="py-2 lg:py-[0.556vw] text-sm lg:text-[0.972vw] text-muted-foreground">
             No filters yet. Add one to narrow the responses.
           </p>
         ) : (
-          <div className="space-y-2">
+          <div className="space-y-2 lg:space-y-[0.556vw]">
             {filters.map((f, i) => {
               const col = colById.get(f.fieldId)
               const kind = col ? fieldKind(col.type) : "text"
               const ops = col ? operatorsForType(col.type) : []
               const noValue = NO_VALUE_OPERATORS.has(f.operator)
               return (
-                <div key={i} className="flex flex-wrap items-center gap-2">
-                  <div className="w-16 shrink-0 text-sm">
+                <div key={i} className="flex flex-wrap items-center gap-2 lg:gap-[0.556vw]">
+                  <div className="w-16 lg:w-[4.444vw] shrink-0 text-sm lg:text-[0.972vw]">
                     {i === 0 ? (
-                      <span className="px-1 text-muted-foreground">Where</span>
+                      <span className="px-1 lg:px-[0.278vw] text-muted-foreground">Where</span>
                     ) : (
                       <Select value={match} onValueChange={(v) => onChange(filters, v as MatchMode)}>
-                        <SelectTrigger className="h-9 w-16 text-sm">
+                        <SelectTrigger className="h-9 lg:h-[2.5vw] w-16 lg:w-[4.444vw] text-sm lg:text-[0.972vw]">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -98,7 +98,7 @@ export function SubmissionsFilterDialog({
                   </div>
 
                   <Select value={f.fieldId} onValueChange={(v) => onFieldChange(i, v)}>
-                    <SelectTrigger className="h-9 min-w-[150px] flex-1 text-sm">
+                    <SelectTrigger className="h-9 lg:h-[2.5vw] min-w-[150px] lg:min-w-[10.417vw] flex-1 text-sm lg:text-[0.972vw]">
                       <SelectValue placeholder="Field" />
                     </SelectTrigger>
                     <SelectContent>
@@ -114,7 +114,7 @@ export function SubmissionsFilterDialog({
                     value={f.operator}
                     onValueChange={(v) => setRow(i, { operator: v as Operator, value: "" })}
                   >
-                    <SelectTrigger className="h-9 w-[140px] text-sm">
+                    <SelectTrigger className="h-9 lg:h-[2.5vw] w-[140px] lg:w-[9.722vw] text-sm lg:text-[0.972vw]">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -139,9 +139,9 @@ export function SubmissionsFilterDialog({
                     type="button"
                     onClick={() => removeFilter(i)}
                     aria-label="Remove filter"
-                    className="grid size-9 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-destructive"
+                    className="grid size-9 lg:size-[2.5vw] shrink-0 place-items-center rounded-md lg:rounded-[0.556vw] text-muted-foreground hover:bg-muted hover:text-destructive"
                   >
-                    <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                    <svg viewBox="0 0 24 24" className="size-4 lg:size-[1.111vw]" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                       <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
                     </svg>
                   </button>
@@ -151,19 +151,19 @@ export function SubmissionsFilterDialog({
           </div>
         )}
 
-        <div className="mt-1 flex items-center justify-between border-t border-border pt-3">
+        <div className="mt-1 lg:mt-[0.278vw] flex items-center justify-between border-t border-border pt-3 lg:pt-[0.833vw]">
           <button
             type="button"
             onClick={addFilter}
-            className="inline-flex items-center gap-1.5 text-sm font-medium text-foreground hover:text-foreground/80"
+            className="inline-flex items-center gap-1.5 lg:gap-[0.417vw] text-sm lg:text-[0.972vw] font-medium text-foreground hover:text-foreground/80"
           >
-            <span className="text-base leading-none">+</span> Add filter
+            <span className="text-base lg:text-[1.111vw] leading-none">+</span> Add filter
           </button>
           {filters.length > 0 ? (
             <button
               type="button"
               onClick={() => onChange([], match)}
-              className="text-sm text-muted-foreground transition-colors hover:text-destructive"
+              className="text-sm lg:text-[0.972vw] text-muted-foreground transition-colors hover:text-destructive"
             >
               Clear all filters
             </button>
@@ -185,7 +185,7 @@ function ValueEditor({
   value: string
   onChange: (v: string) => void
 }) {
-  const cls = "h-9 min-w-[130px] flex-1 text-sm"
+  const cls = "h-9 lg:h-[2.5vw] min-w-[130px] lg:min-w-[9.028vw] flex-1 text-sm lg:text-[0.972vw]"
 
   if (kind === "single" || kind === "multi") {
     const opts =
@@ -225,7 +225,7 @@ function ValueEditor({
 
 function FilterIcon() {
   return (
-    <svg viewBox="0 0 24 24" className="size-4 text-muted-foreground" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <svg viewBox="0 0 24 24" className="size-4 lg:size-[1.111vw] text-muted-foreground" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
       <path d="M3 5h18M6 12h12M10 19h4" />
     </svg>
   )

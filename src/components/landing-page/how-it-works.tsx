@@ -21,24 +21,24 @@ const STEPS = [
 export function HowItWorks() {
   return (
     <section id="how" className="scroll-mt-20 border-t border-border bg-muted/30">
-      <div className="mx-auto max-w-5xl px-5 py-20 sm:px-8 sm:py-28">
+      <div className="mx-auto max-w-5xl lg:max-w-[71.111vw] px-5 lg:px-[1.389vw] py-20 lg:py-[5.556vw] sm:px-8 sm:py-28">
         <Reveal>
-          <h2 className="max-w-2xl font-sebenta text-3xl font-bold leading-[1.12] tracking-tight text-foreground sm:text-[2.6rem]">
+          <h2 className="max-w-2xl lg:max-w-[46.667vw] font-sebenta text-3xl lg:text-[2.083vw] font-bold leading-[1.12] tracking-tight text-foreground sm:text-[2.6rem]">
             From a sentence to a working form, in about a minute.
           </h2>
         </Reveal>
 
-        <div className="mt-12 overflow-hidden rounded-xl border border-border bg-border">
+        <div className="mt-12 lg:mt-[3.333vw] overflow-hidden rounded-xl lg:rounded-[0.926vw] border border-border bg-border">
           <div className="grid gap-px">
             {STEPS.map((s, i) => (
               <Reveal key={s.n} delay={i * 80} className="bg-background">
-                <div className="grid gap-3 p-6 sm:grid-cols-[auto_1fr] sm:items-baseline sm:gap-9 sm:p-8">
-                  <span className="font-sebenta text-2xl font-bold text-primary sm:text-3xl">
+                <div className="grid gap-3 lg:gap-[0.833vw] p-6 lg:p-[1.667vw] sm:grid-cols-[auto_1fr] sm:items-baseline sm:gap-9 sm:p-8">
+                  <span className="font-sebenta text-2xl lg:text-[1.667vw] font-bold text-primary sm:text-3xl">
                     {s.n}
                   </span>
                   <div className="max-w-[62ch]">
-                    <h3 className="text-lg font-semibold text-foreground">{s.title}</h3>
-                    <p className="mt-2 leading-relaxed text-muted-foreground">{s.body}</p>
+                    <h3 className="text-lg lg:text-[1.25vw] font-semibold text-foreground">{s.title}</h3>
+                    <p className="mt-2 lg:mt-[0.556vw] leading-relaxed text-muted-foreground">{s.body}</p>
                   </div>
                 </div>
               </Reveal>

@@ -30,7 +30,7 @@ function Spinner({ className }: { className?: string }) {
   return (
     <span
       className={cn(
-        "inline-block size-3.5 animate-spin rounded-full border-2 border-current border-t-transparent",
+        "inline-block size-3.5 lg:size-[0.972vw] animate-spin rounded-full border-2 border-current border-t-transparent",
         className
       )}
       aria-hidden
@@ -41,25 +41,25 @@ function Spinner({ className }: { className?: string }) {
 function StatusPill({ status }: { status: WorkspaceDomain["status"] }) {
   if (status === "active") {
     return (
-      <span className="inline-flex items-center gap-1.5 rounded-full bg-success-bg px-2.5 py-1 text-[11px] font-medium text-success-foreground">
-        <Icon name="tick-square" className="size-3.5" />
+      <span className="inline-flex items-center gap-1.5 lg:gap-[0.417vw] rounded-full bg-success-bg px-2.5 lg:px-[0.694vw] py-1 lg:py-[0.278vw] text-[11px] lg:text-[0.764vw] font-medium text-success-foreground">
+        <Icon name="tick-square" className="size-3.5 lg:size-[0.972vw]" />
         Active
       </span>
     );
   }
   if (status === "error") {
     return (
-      <span className="inline-flex items-center gap-1.5 rounded-full bg-destructive-bg px-2.5 py-1 text-[11px] font-medium text-destructive">
-        <Icon name="danger-triangle" className="size-3.5" />
+      <span className="inline-flex items-center gap-1.5 lg:gap-[0.417vw] rounded-full bg-destructive-bg px-2.5 lg:px-[0.694vw] py-1 lg:py-[0.278vw] text-[11px] lg:text-[0.764vw] font-medium text-destructive">
+        <Icon name="danger-triangle" className="size-3.5 lg:size-[0.972vw]" />
         Error
       </span>
     );
   }
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-full border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
-      <span className="relative flex size-1.5">
+    <span className="inline-flex items-center gap-1.5 lg:gap-[0.417vw] rounded-full border border-border px-2.5 lg:px-[0.694vw] py-1 lg:py-[0.278vw] text-[11px] lg:text-[0.764vw] font-medium text-muted-foreground">
+      <span className="relative flex size-1.5 lg:size-[0.417vw]">
         <span className="absolute inline-flex size-full animate-ping rounded-full bg-warning/60" />
-        <span className="relative inline-flex size-1.5 rounded-full bg-warning" />
+        <span className="relative inline-flex size-1.5 lg:size-[0.417vw] rounded-full bg-warning" />
       </span>
       Awaiting DNS
     </span>
@@ -70,12 +70,12 @@ function StatusPill({ status }: { status: WorkspaceDomain["status"] }) {
 function CopyField({ label, value }: { label: string; value: string }) {
   const [copied, setCopied] = React.useState(false);
   return (
-    <div className="grid grid-cols-[4.5rem_1fr] items-center gap-3">
-      <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+    <div className="grid grid-cols-[4.5rem_1fr] items-center gap-3 lg:gap-[0.833vw]">
+      <span className="text-[11px] lg:text-[0.764vw] font-medium uppercase tracking-wide text-muted-foreground">
         {label}
       </span>
-      <div className="flex items-center gap-2">
-        <code className="min-w-0 flex-1 truncate rounded-md border border-border bg-background px-2.5 py-1.5 font-mono text-xs text-foreground">
+      <div className="flex items-center gap-2 lg:gap-[0.556vw]">
+        <code className="min-w-0 flex-1 truncate rounded-md lg:rounded-[0.556vw] border border-border bg-background px-2.5 lg:px-[0.694vw] py-1.5 lg:py-[0.417vw] font-mono text-xs lg:text-[0.833vw] text-foreground">
           {value}
         </code>
         <Button
@@ -95,7 +95,7 @@ function CopyField({ label, value }: { label: string; value: string }) {
         >
           <SVGIcon
             src={copied ? "/icons/tick.svg" : "/icons/copy.svg"}
-            className={copied ? "text-success size-4" : "size-4"}
+            className={copied ? "text-success size-4 lg:size-[1.111vw]" : "size-4"}
           />
         </Button>
       </div>
@@ -123,28 +123,28 @@ function DomainRow({
   const active = domain.status === "active";
 
   return (
-    <div className="overflow-hidden rounded-xl border border-border bg-card">
+    <div className="overflow-hidden rounded-xl lg:rounded-[0.926vw] border border-border bg-card">
       {/* Header */}
-      <div className="flex items-start justify-between gap-3 p-4">
-        <div className="flex min-w-0 items-start gap-3">
+      <div className="flex items-start justify-between gap-3 lg:gap-[0.833vw] p-4 lg:p-[1.111vw]">
+        <div className="flex min-w-0 items-start gap-3 lg:gap-[0.833vw]">
           <span
             className={cn(
-              "mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-lg",
+              "mt-0.5 lg:mt-[0.139vw] flex size-9 lg:size-[2.5vw] shrink-0 items-center justify-center rounded-lg lg:rounded-[0.694vw]",
               active
                 ? "bg-success-bg text-success-foreground"
                 : "bg-muted text-muted-foreground"
             )}
           >
-            <Icon name="discovery" className="size-5" />
+            <Icon name="discovery" className="size-5 lg:size-[1.389vw]" />
           </span>
           <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="truncate text-sm font-semibold text-foreground">
+            <div className="flex flex-wrap items-center gap-2 lg:gap-[0.556vw]">
+              <span className="truncate text-sm lg:text-[0.972vw] font-semibold text-foreground">
                 {domain.domain}
               </span>
               <StatusPill status={domain.status} />
             </div>
-            <p className="mt-0.5 truncate text-xs text-muted-foreground">
+            <p className="mt-0.5 lg:mt-[0.139vw] truncate text-xs lg:text-[0.833vw] text-muted-foreground">
               {active ? (
                 <>
                   Live ·{" "}
@@ -179,9 +179,9 @@ function DomainRow({
 
       {/* DNS setup (only while not active) */}
       {!active ? (
-        <div className="border-t border-border bg-muted/20 p-4">
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-xs text-muted-foreground">
+        <div className="border-t border-border bg-muted/20 p-4 lg:p-[1.111vw]">
+          <div className="flex items-center justify-between gap-3 lg:gap-[0.833vw]">
+            <p className="text-xs lg:text-[0.833vw] text-muted-foreground">
               Add this record at your DNS provider. We check automatically — SSL
               is issued once it resolves.
             </p>
@@ -197,19 +197,19 @@ function DomainRow({
             </Button>
           </div>
 
-          <div className="mt-3 space-y-2 rounded-lg border border-border bg-card p-3">
+          <div className="mt-3 lg:mt-[0.833vw] space-y-2 lg:space-y-[0.556vw] rounded-lg lg:rounded-[0.694vw] border border-border bg-card p-3 lg:p-[0.833vw]">
             <CopyField label="Type" value="CNAME" />
             <CopyField label="Name" value={subLabel} />
             <CopyField label="Value" value={cnameTarget} />
           </div>
 
           {domain.verification.length > 0 ? (
-            <div className="mt-2 space-y-2 rounded-lg border border-border bg-card p-3">
-              <p className="text-[11px] font-medium text-muted-foreground">
+            <div className="mt-2 lg:mt-[0.556vw] space-y-2 lg:space-y-[0.556vw] rounded-lg lg:rounded-[0.694vw] border border-border bg-card p-3 lg:p-[0.833vw]">
+              <p className="text-[11px] lg:text-[0.764vw] font-medium text-muted-foreground">
                 Ownership check — also add:
               </p>
               {domain.verification.map((v, i) => (
-                <div key={i} className="space-y-2">
+                <div key={i} className="space-y-2 lg:space-y-[0.556vw]">
                   <CopyField label="Type" value={v.type.toUpperCase()} />
                   <CopyField label="Name" value={v.domain} />
                   <CopyField label="Value" value={v.value} />
@@ -332,8 +332,8 @@ export function DomainsPanel({ data }: { data: WorkspaceDomains }) {
 
   if (!data.configured) {
     return (
-      <div className="flex items-start gap-2.5 rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">
-        <Icon name="info-square" className="mt-0.5 size-4 shrink-0" />
+      <div className="flex items-start gap-2.5 lg:gap-[0.694vw] rounded-lg lg:rounded-[0.694vw] border border-dashed border-border p-4 lg:p-[1.111vw] text-sm lg:text-[0.972vw] text-muted-foreground">
+        <Icon name="info-square" className="mt-0.5 lg:mt-[0.139vw] size-4 lg:size-[1.111vw] shrink-0" />
         <p>
           Custom domains aren&apos;t configured on this deployment yet. Check
           back soon.
@@ -343,18 +343,18 @@ export function DomainsPanel({ data }: { data: WorkspaceDomains }) {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 lg:space-y-[1.667vw]">
       {/* Add a domain */}
-      <div className="rounded-xl border border-border bg-card p-5">
-        <div className="flex items-center gap-3">
-          <span className="flex size-9 items-center justify-center rounded-lg bg-accent text-accent-foreground">
-            <Icon name="discovery" className="size-5" />
+      <div className="rounded-xl lg:rounded-[0.926vw] border border-border bg-card p-5 lg:p-[1.389vw]">
+        <div className="flex items-center gap-3 lg:gap-[0.833vw]">
+          <span className="flex size-9 lg:size-[2.5vw] items-center justify-center rounded-lg lg:rounded-[0.694vw] bg-accent text-accent-foreground">
+            <Icon name="discovery" className="size-5 lg:size-[1.389vw]" />
           </span>
           <div>
-            <h2 className="text-sm font-semibold text-foreground">
+            <h2 className="text-sm lg:text-[0.972vw] font-semibold text-foreground">
               Add a subdomain
             </h2>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-xs lg:text-[0.833vw] text-muted-foreground">
               Use a subdomain like{" "}
               <span className="font-mono">forms.yourbrand.com</span>. Root
               domains aren&apos;t supported yet.
@@ -362,7 +362,7 @@ export function DomainsPanel({ data }: { data: WorkspaceDomains }) {
           </div>
         </div>
 
-        <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center">
+        <div className="mt-4 lg:mt-[1.111vw] flex flex-col gap-2 lg:gap-[0.556vw] sm:flex-row sm:items-center">
           <Input
             id="add-domain"
             value={value}
@@ -383,15 +383,15 @@ export function DomainsPanel({ data }: { data: WorkspaceDomains }) {
             className="sm:shrink-0"
           >
             {adding ? (
-              <Loading className="size-4" />
+              <Loading className="size-4 lg:size-[1.111vw]" />
             ) : (
-              <SVGIcon src="/icons/plus.svg" className="size-4" />
+              <SVGIcon src="/icons/plus.svg" className="size-4 lg:size-[1.111vw]" />
             )}
             Add domain
           </Button>
         </div>
 
-        <p className="mt-2.5 text-xs text-muted-foreground">
+        <p className="mt-2.5 lg:mt-[0.694vw] text-xs lg:text-[0.833vw] text-muted-foreground">
           Forms will be served at{" "}
           <span className="font-mono text-foreground">{preview}</span>
           <span className="font-mono">/your-form</span>
@@ -400,19 +400,19 @@ export function DomainsPanel({ data }: { data: WorkspaceDomains }) {
 
       {/* Domain list */}
       {data.domains.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-border px-6 py-14 text-center">
-          <span className="mx-auto mb-3 flex size-10 items-center justify-center rounded-lg bg-muted text-muted-foreground">
-            <Icon name="discovery" className="size-5" />
+        <div className="rounded-xl lg:rounded-[0.926vw] border border-dashed border-border px-6 lg:px-[1.667vw] py-14 lg:py-[3.889vw] text-center">
+          <span className="mx-auto mb-3 lg:mb-[0.833vw] flex size-10 lg:size-[2.778vw] items-center justify-center rounded-lg lg:rounded-[0.694vw] bg-muted text-muted-foreground">
+            <Icon name="discovery" className="size-5 lg:size-[1.389vw]" />
           </span>
-          <p className="text-sm font-medium text-foreground">
+          <p className="text-sm lg:text-[0.972vw] font-medium text-foreground">
             No custom domains yet
           </p>
-          <p className="mx-auto mt-1 max-w-sm text-sm text-muted-foreground">
+          <p className="mx-auto mt-1 lg:mt-[0.278vw] max-w-sm lg:max-w-[26.667vw] text-sm lg:text-[0.972vw] text-muted-foreground">
             Add a subdomain above to serve your forms from your own brand.
           </p>
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-3 lg:space-y-[0.833vw]">
           {data.domains.map((d) => (
             <DomainRow
               key={d.id}

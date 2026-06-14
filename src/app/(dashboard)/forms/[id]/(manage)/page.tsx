@@ -38,8 +38,8 @@ export default async function InsightsPage({
   const hasResponses = totals.submissions > 0
 
   return (
-    <div className="space-y-3">
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+    <div className="space-y-3 lg:space-y-[0.833vw]">
+      <div className="grid grid-cols-2 gap-3 lg:gap-[0.833vw] lg:grid-cols-4">
         <StatCard label="Views" icon="show" value={totals.views.toLocaleString()} />
         <StatCard
           label="Unique visitors"
@@ -55,14 +55,14 @@ export default async function InsightsPage({
         />
       </div>
 
-      <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 lg:gap-[0.833vw] lg:grid-cols-3">
         <div className="lg:col-span-2">
           <SubmissionsAreaChart data={data.series} />
         </div>
         <DevicesDonut items={data.breakdowns.devices} />
       </div>
 
-      <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 lg:gap-[0.833vw] lg:grid-cols-3">
         <BreakdownPanel
           title="Sources"
           items={data.breakdowns.sources.map((s) => ({ label: s.key, count: s.count }))}
@@ -73,17 +73,17 @@ export default async function InsightsPage({
         <CountryLeaderboard items={data.breakdowns.countries} />
       </div>
 
-      <div className="pt-4">
-        <h2 className="mb-1 text-sm font-semibold text-foreground">Question breakdown</h2>
+      <div className="pt-4 lg:pt-[1.111vw]">
+        <h2 className="mb-1 lg:mb-[0.278vw] text-sm lg:text-[0.972vw] font-semibold text-foreground">Question breakdown</h2>
         {!hasResponses ? (
-          <p className="mb-3 text-sm text-muted-foreground">
+          <p className="mb-3 lg:mb-[0.833vw] text-sm lg:text-[0.972vw] text-muted-foreground">
             No responses yet — share your form to start collecting.
           </p>
         ) : null}
         {fields.length === 0 ? (
-          <p className="text-sm text-muted-foreground">This form has no questions yet.</p>
+          <p className="text-sm lg:text-[0.972vw] text-muted-foreground">This form has no questions yet.</p>
         ) : (
-          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 lg:gap-[0.833vw] lg:grid-cols-2">
             {fields.map((f) => (
               <FieldInsightCard key={f.id} field={f} formId={id} />
             ))}

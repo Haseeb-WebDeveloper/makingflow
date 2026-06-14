@@ -85,8 +85,8 @@ export function FormPublishButton({
 
   return (
     <>
-      <Button onClick={() => setOpen(true)} className="h-9 px-3.5">
-        <Icon name="send" className="size-4" />
+      <Button onClick={() => setOpen(true)} className="h-9 lg:h-[2.5vw] px-3.5 lg:px-[0.972vw]">
+        <Icon name="send" className="size-4 lg:size-[1.111vw]" />
         {published ? "Share" : "Publish"}
       </Button>
       <PublishDialog

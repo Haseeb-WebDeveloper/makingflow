@@ -108,7 +108,7 @@ export function Icon({ name, className, preserveColors, ...props }: IconProps) {
     <SVGIcon
       src={`/icons/${name}.svg`}
       preserveColors={preserveColors}
-      className={cn("size-5", className)}
+      className={cn("size-5 lg:size-[1.389vw]", className)}
       {...props}
     />
   )

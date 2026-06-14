@@ -76,9 +76,9 @@ export function LoginForm() {
 
       <AuthError message={formError} />
 
-      <form onSubmit={onSubmit} className="space-y-4" noValidate>
-        <div className="space-y-1.5">
-          <Label htmlFor="login-email" className="text-sm font-medium text-foreground">
+      <form onSubmit={onSubmit} className="space-y-4 lg:space-y-[1.111vw]" noValidate>
+        <div className="space-y-1.5 lg:space-y-[0.417vw]">
+          <Label htmlFor="login-email" className="text-sm lg:text-[0.972vw] font-medium text-foreground">
             Email
           </Label>
           <Input
@@ -89,26 +89,26 @@ export function LoginForm() {
             placeholder="you@company.com"
             required
             disabled={pending}
-            className="h-11"
+            className="h-11 lg:h-[3.056vw]"
             aria-invalid={!!fieldErrors.email}
             aria-describedby={fieldErrors.email ? "login-email-error" : undefined}
           />
           {fieldErrors.email && (
-            <p id="login-email-error" className="text-xs text-destructive">
+            <p id="login-email-error" className="text-xs lg:text-[0.833vw] text-destructive">
               {fieldErrors.email}
             </p>
           )}
         </div>
 
         {mode === "password" && (
-          <div className="space-y-1.5">
+          <div className="space-y-1.5 lg:space-y-[0.417vw]">
             <div className="flex items-center justify-between">
-              <Label htmlFor="login-password" className="text-sm font-medium text-foreground">
+              <Label htmlFor="login-password" className="text-sm lg:text-[0.972vw] font-medium text-foreground">
                 Password
               </Label>
               <Link
                 href="/auth/forgot-password"
-                className="text-xs text-muted-foreground transition-colors hover:text-foreground"
+                className="text-xs lg:text-[0.833vw] text-muted-foreground transition-colors hover:text-foreground"
                 tabIndex={pending ? -1 : 0}
               >
                 Forgot?
@@ -122,19 +122,19 @@ export function LoginForm() {
               placeholder="••••••••"
               required
               disabled={pending}
-              className="h-11"
+              className="h-11 lg:h-[3.056vw]"
               aria-invalid={!!fieldErrors.password}
               aria-describedby={fieldErrors.password ? "login-password-error" : undefined}
             />
             {fieldErrors.password && (
-              <p id="login-password-error" className="text-xs text-destructive">
+              <p id="login-password-error" className="text-xs lg:text-[0.833vw] text-destructive">
                 {fieldErrors.password}
               </p>
             )}
           </div>
         )}
 
-        <Button type="submit" disabled={pending} className="h-11 w-full text-sm font-medium">
+        <Button type="submit" disabled={pending} className="h-11 lg:h-[3.056vw] w-full text-sm lg:text-[0.972vw] font-medium">
           {pending
             ? mode === "magic"
               ? "Sending…"
@@ -152,7 +152,7 @@ export function LoginForm() {
           setFormError(null)
           setFieldErrors({})
         }}
-        className="mt-4 w-full text-center text-sm text-muted-foreground transition-colors hover:text-foreground"
+        className="mt-4 lg:mt-[1.111vw] w-full text-center text-sm lg:text-[0.972vw] text-muted-foreground transition-colors hover:text-foreground"
       >
         {mode === "password"
           ? "Email me a magic link instead"

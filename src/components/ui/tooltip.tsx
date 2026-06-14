@@ -21,8 +21,8 @@ function TooltipProvider({
 const Skiper102 = () => {
   return (
     <div className="flex flex-col">
-      <div className="-mt-36 lg:-mt-[144px] mb-36 lg:mb-[144px] grid content-start justify-items-center gap-6 lg:gap-[24px] text-center">
-        <span className="after:to-foreground relative max-w-[14ch] text-xs lg:text-[12px] uppercase leading-tight opacity-40 after:absolute after:left-1/2 after:top-full after:h-16 after:w-px after:bg-gradient-to-b after:from-transparent after:content-['']">
+      <div className="-mt-36 lg:-mt-[10vw] mb-36 lg:mb-[10vw] grid content-start justify-items-center gap-6 lg:gap-[1.667vw] text-center">
+        <span className="after:to-foreground relative max-w-[14ch] text-xs lg:text-[0.833vw] uppercase leading-tight opacity-40 after:absolute after:left-1/2 after:top-full after:h-16 after:w-px after:bg-gradient-to-b after:from-transparent after:content-['']">
           Hover to see border arrow tooltip
         </span>
       </div>
@@ -68,7 +68,7 @@ function TooltipContent({
         data-slot="tooltip-content"
         sideOffset={sideOffset}
         className={cn(
-          "origin-(--radix-tooltip-content-transform-origin) animate-in bg-background text-foreground outline-border fade-in-0 zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 group z-50 w-fit text-balance rounded-md lg:rounded-[8px] px-3 lg:px-[12px] py-1.5 lg:py-[6px] text-xs lg:text-[12px] outline-1",
+          "origin-(--radix-tooltip-content-transform-origin) animate-in bg-background text-foreground outline-border fade-in-0 zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 group z-50 w-fit text-balance rounded-md lg:rounded-[0.556vw] px-3 lg:px-[0.833vw] py-1.5 lg:py-[0.417vw] text-xs lg:text-[0.833vw] outline-1",
           className,
         )}
         {...props}
@@ -92,7 +92,7 @@ const ArrowSvg = (props: React.ComponentProps<"svg">) => (
     height="10"
     viewBox="0 0 20 10"
     fill="none"
-    className="ml-[1px] lg:ml-[1px] mt-[-1px] lg:mt-[-1px]"
+    className="ml-[1px] lg:ml-[0.069vw] mt-[-1px] lg:mt-[-0.069vw]"
     xmlns="http://www.w3.org/2000/svg"
     {...props}
   >

@@ -48,9 +48,9 @@ export function SignupForm() {
 
       <AuthError message={formError} />
 
-      <form onSubmit={onSubmit} className="space-y-4" noValidate>
-        <div className="space-y-1.5">
-          <Label htmlFor="signup-name" className="text-sm font-medium text-foreground">
+      <form onSubmit={onSubmit} className="space-y-4 lg:space-y-[1.111vw]" noValidate>
+        <div className="space-y-1.5 lg:space-y-[0.417vw]">
+          <Label htmlFor="signup-name" className="text-sm lg:text-[0.972vw] font-medium text-foreground">
             Full name
           </Label>
           <Input
@@ -61,19 +61,19 @@ export function SignupForm() {
             placeholder="Alex Rivera"
             required
             disabled={pending}
-            className="h-11"
+            className="h-11 lg:h-[3.056vw]"
             aria-invalid={!!fieldErrors.name}
             aria-describedby={fieldErrors.name ? "signup-name-error" : undefined}
           />
           {fieldErrors.name && (
-            <p id="signup-name-error" className="text-xs text-destructive">
+            <p id="signup-name-error" className="text-xs lg:text-[0.833vw] text-destructive">
               {fieldErrors.name}
             </p>
           )}
         </div>
 
-        <div className="space-y-1.5">
-          <Label htmlFor="signup-email" className="text-sm font-medium text-foreground">
+        <div className="space-y-1.5 lg:space-y-[0.417vw]">
+          <Label htmlFor="signup-email" className="text-sm lg:text-[0.972vw] font-medium text-foreground">
             Email
           </Label>
           <Input
@@ -84,19 +84,19 @@ export function SignupForm() {
             placeholder="you@company.com"
             required
             disabled={pending}
-            className="h-11"
+            className="h-11 lg:h-[3.056vw]"
             aria-invalid={!!fieldErrors.email}
             aria-describedby={fieldErrors.email ? "signup-email-error" : undefined}
           />
           {fieldErrors.email && (
-            <p id="signup-email-error" className="text-xs text-destructive">
+            <p id="signup-email-error" className="text-xs lg:text-[0.833vw] text-destructive">
               {fieldErrors.email}
             </p>
           )}
         </div>
 
-        <div className="space-y-1.5">
-          <Label htmlFor="signup-password" className="text-sm font-medium text-foreground">
+        <div className="space-y-1.5 lg:space-y-[0.417vw]">
+          <Label htmlFor="signup-password" className="text-sm lg:text-[0.972vw] font-medium text-foreground">
             Password
           </Label>
           <Input
@@ -108,23 +108,23 @@ export function SignupForm() {
             required
             minLength={8}
             disabled={pending}
-            className="h-11"
+            className="h-11 lg:h-[3.056vw]"
             aria-invalid={!!fieldErrors.password}
             aria-describedby={fieldErrors.password ? "signup-password-error" : undefined}
           />
           {fieldErrors.password && (
-            <p id="signup-password-error" className="text-xs text-destructive">
+            <p id="signup-password-error" className="text-xs lg:text-[0.833vw] text-destructive">
               {fieldErrors.password}
             </p>
           )}
         </div>
 
-        <Button type="submit" disabled={pending} className="h-11 w-full text-sm font-medium">
+        <Button type="submit" disabled={pending} className="h-11 lg:h-[3.056vw] w-full text-sm lg:text-[0.972vw] font-medium">
           {pending ? "Creating account…" : "Create account"}
         </Button>
       </form>
 
-      <p className="mt-4 text-center text-xs leading-relaxed text-muted-foreground">
+      <p className="mt-4 lg:mt-[1.111vw] text-center text-xs lg:text-[0.833vw] leading-relaxed text-muted-foreground">
         By continuing you agree to our{" "}
         <a href="/terms" className="underline underline-offset-2 hover:text-foreground">
           Terms

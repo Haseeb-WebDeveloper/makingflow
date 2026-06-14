@@ -16,7 +16,7 @@ export default async function IntegrationsPage() {
         title="Integrations"
         description="Connect MakingFlow to the tools your team already uses. Connections apply across every form in your workspace."
       />
-      <div className="mt-6">
+      <div className="mt-6 lg:mt-[1.667vw]">
         <WorkspaceIntegrationsPanel data={data} />
       </div>
     </PageContainer>

@@ -476,14 +476,14 @@ export function FormBuilder({
   // ── Empty state — describe the form ───────────────────────────────
   if (!started) {
     return (
-      <div className="flex min-h-[calc(100dvh-3.5rem)] flex-col items-center justify-center px-6 py-12">
-        <div className="w-full max-w-2xl">
-          <div className="mb-6 flex flex-col items-center text-center">
-            <Lottie name="ai" className="size-32" />
-            <h1 className="mt-2 font-sebenta text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
+      <div className="flex min-h-[calc(100dvh-3.5rem)] flex-col items-center justify-center px-6 lg:px-[1.667vw] py-12 lg:py-[3.333vw]">
+        <div className="w-full max-w-2xl lg:max-w-[46.667vw]">
+          <div className="mb-6 lg:mb-[1.667vw] flex flex-col items-center text-center">
+            <Lottie name="ai" className="size-32 lg:size-[8.889vw]" />
+            <h1 className="mt-2 lg:mt-[0.556vw] font-sebenta text-3xl lg:text-[2.083vw] font-bold tracking-tight text-foreground sm:text-4xl">
               Describe your form
             </h1>
-            <p className="mt-3 max-w-md text-muted-foreground">
+            <p className="mt-3 lg:mt-[0.833vw] max-w-md lg:max-w-[31.111vw] text-muted-foreground">
               Tell MakingFlow what you need in plain language — it builds the
               form live, then refines it as you ask for changes.
             </p>
@@ -504,8 +504,8 @@ export function FormBuilder({
             autoFocus
           />
 
-          <div className="mt-5 flex items-center justify-center gap-3 text-sm text-muted-foreground">
-            <span className="h-px w-8 bg-border" />
+          <div className="mt-5 lg:mt-[1.389vw] flex items-center justify-center gap-3 lg:gap-[0.833vw] text-sm lg:text-[0.972vw] text-muted-foreground">
+            <span className="h-px w-8 lg:w-[2.222vw] bg-border" />
             <span>or</span>
             <button
               type="button"
@@ -514,7 +514,7 @@ export function FormBuilder({
             >
               start from scratch
             </button>
-            <span className="h-px w-8 bg-border" />
+            <span className="h-px w-8 lg:w-[2.222vw] bg-border" />
           </div>
         </div>
       </div>
@@ -524,8 +524,8 @@ export function FormBuilder({
   // ── Active state — conversation + live preview ────────────────────
   return (
     <div className="flex h-[calc(100dvh-3.5rem)] flex-col lg:h-auto lg:flex-row">
-      <aside className="flex h-1/2 shrink-0 flex-col border-b border-border lg:sticky lg:top-0 lg:h-[calc(100dvh-3.5rem)] lg:self-start lg:w-[380px] lg:border-b-0 lg:border-r">
-        <div className="thin-scroll flex-1 space-y-4 overflow-y-auto px-4 py-4">
+      <aside className="flex h-1/2 shrink-0 flex-col border-b border-border lg:sticky lg:top-0 lg:h-[calc(100dvh-3.5rem)] lg:self-start lg:w-[26.389vw] lg:border-b-0 lg:border-r">
+        <div className="thin-scroll flex-1 space-y-4 lg:space-y-[1.111vw] overflow-y-auto px-4 lg:px-[1.111vw] py-4 lg:py-[1.111vw]">
           {chat.map((m) =>
             m.role === "user" ? (
               <UserBubble key={m.id} message={m} />
@@ -535,14 +535,14 @@ export function FormBuilder({
           )}
           {isLoading ? <AssistantRow building /> : null}
           {error ? (
-            <div className="ml-8 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+            <div className="ml-8 lg:ml-[2.222vw] rounded-md lg:rounded-[0.556vw] border border-destructive/30 bg-destructive/5 px-3 lg:px-[0.833vw] py-2 lg:py-[0.556vw] text-sm lg:text-[0.972vw] text-destructive">
               Something went wrong. Check your Gemini key and try again.
             </div>
           ) : null}
           <div ref={endRef} />
         </div>
 
-        <div className="border-t border-border p-3">
+        <div className="border-t border-border p-3 lg:p-[0.833vw]">
           <Composer
             value={draft}
             onChange={setDraft}
@@ -560,7 +560,7 @@ export function FormBuilder({
             <button
               type="button"
               onClick={stop}
-              className="mt-2 px-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
+              className="mt-2 lg:mt-[0.556vw] px-1 lg:px-[0.278vw] text-xs lg:text-[0.833vw] text-muted-foreground transition-colors hover:text-foreground"
             >
               Stop generating
             </button>
@@ -569,19 +569,19 @@ export function FormBuilder({
       </aside>
 
       <main className="relative flex h-1/2 min-w-0 flex-1 flex-col lg:h-fit">
-        <header className="flex items-center justify-between gap-2 border-b border-border bg-background px-4 py-3 sm:px-5">
-          <div className="flex min-w-0 items-center gap-1.5">
+        <header className="flex items-center justify-between gap-2 lg:gap-[0.556vw] border-b border-border bg-background px-4 lg:px-[1.111vw] py-3 lg:py-[0.833vw] sm:px-5">
+          <div className="flex min-w-0 items-center gap-1.5 lg:gap-[0.417vw]">
             <button
               type="button"
               onClick={() =>
                 router.push(formId ? `/forms/${formId}` : "/forms")
               }
               aria-label="Back"
-              className="grid size-8 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              className="grid size-8 lg:size-[2.222vw] shrink-0 place-items-center rounded-md lg:rounded-[0.556vw] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
             >
               <svg
                 viewBox="0 0 24 24"
-                className="size-5"
+                className="size-5 lg:size-[1.389vw]"
                 fill="none"
                 stroke="currentColor"
                 strokeWidth={2}
@@ -592,18 +592,18 @@ export function FormBuilder({
                 <path d="M15 18l-6-6 6-6" />
               </svg>
             </button>
-            <p className="min-w-0 truncate font-sebenta text-sm font-semibold text-foreground">
+            <p className="min-w-0 truncate font-sebenta text-sm lg:text-[0.972vw] font-semibold text-foreground">
               {headerTitle}
             </p>
             {published ? (
-              <span className="flex shrink-0 items-center gap-1 rounded-full bg-success/10 px-2 py-0.5 text-xs font-medium text-success">
-                <span className="size-1.5 rounded-full bg-success" />
+              <span className="flex shrink-0 items-center gap-1 lg:gap-[0.278vw] rounded-full bg-success/10 px-2 lg:px-[0.556vw] py-0.5 lg:py-[0.139vw] text-xs lg:text-[0.833vw] font-medium text-success">
+                <span className="size-1.5 lg:size-[0.417vw] rounded-full bg-success" />
                 Live
               </span>
             ) : null}
             <SaveStatus state={saveState} />
           </div>
-          <div className="flex shrink-0 items-center gap-2">
+          <div className="flex shrink-0 items-center gap-2 lg:gap-[0.556vw]">
             <ModeToggle
               mode={mode}
               onChange={setMode}
@@ -613,7 +613,7 @@ export function FormBuilder({
               variant="outline"
               onClick={saveNow}
               disabled={!currentForm || isLoading || saveState === "saving"}
-              className="h-8 px-3"
+              className="h-8 lg:h-[2.222vw] px-3 lg:px-[0.833vw]"
             >
               {saveState === "saving"
                 ? "Saving…"
@@ -624,7 +624,7 @@ export function FormBuilder({
             <Button
               onClick={() => setPublishOpen(true)}
               disabled={!currentForm || isLoading}
-              className="h-8 px-3"
+              className="h-8 lg:h-[2.222vw] px-3 lg:px-[0.833vw]"
             >
               {published ? "Share" : "Publish"}
             </Button>
@@ -633,11 +633,11 @@ export function FormBuilder({
                 <Button
                   variant="ghost"
                   aria-label="More options"
-                  className="size-8 px-0 text-muted-foreground"
+                  className="size-8 lg:size-[2.222vw] px-0 text-muted-foreground"
                 >
                   <svg
                     viewBox="0 0 24 24"
-                    className="size-5"
+                    className="size-5 lg:size-[1.389vw]"
                     fill="currentColor"
                     aria-hidden
                   >
@@ -647,11 +647,11 @@ export function FormBuilder({
                   </svg>
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-44">
+              <DropdownMenuContent align="end" className="w-44 lg:w-[12.222vw]">
                 <DropdownMenuItem onSelect={startOver}>
                   <SVGIcon
                     src="/icons/plus.svg"
-                    className="size-4 text-muted-foreground"
+                    className="size-4 lg:size-[1.111vw] text-muted-foreground"
                   />
                   New form
                 </DropdownMenuItem>
@@ -659,7 +659,7 @@ export function FormBuilder({
                   <DropdownMenuItem onSelect={unpublish}>
                     <Icon
                       name="hide"
-                      className="size-4 text-muted-foreground"
+                      className="size-4 lg:size-[1.111vw] text-muted-foreground"
                     />
                     Unpublish
                   </DropdownMenuItem>
@@ -669,7 +669,7 @@ export function FormBuilder({
                   onSelect={() => setDeleteOpen(true)}
                   className="text-destructive focus:text-destructive"
                 >
-                  <Icon name="delete" className="size-4 text-destructive" />
+                  <Icon name="delete" className="size-4 lg:size-[1.111vw] text-destructive" />
                   Delete form
                 </DropdownMenuItem>
               </DropdownMenuContent>
@@ -677,7 +677,7 @@ export function FormBuilder({
           </div>
         </header>
 
-        <div className="thin-scroll flex-1 overflow-x-hidden overflow-y-auto bg-canvas px-6 py-10 sm:px-10">
+        <div className="thin-scroll flex-1 overflow-x-hidden overflow-y-auto bg-canvas px-6 lg:px-[1.667vw] py-10 lg:py-[2.778vw] sm:px-10">
           {!currentForm ? (
             // First generation only — there's nothing to show yet, so stream the
             // form in as it builds.
@@ -703,8 +703,8 @@ export function FormBuilder({
       </main>
       {isLoading && currentForm ? (
         <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center">
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-background/95 px-3.5 py-1.5 text-xs font-medium text-muted-foreground shadow-md backdrop-blur">
-            <Loading fill className="size-4 shrink-0" />
+          <span className="inline-flex items-center gap-1.5 lg:gap-[0.417vw] rounded-full border border-border bg-background/95 px-3.5 lg:px-[0.972vw] py-1.5 lg:py-[0.417vw] text-xs lg:text-[0.833vw] font-medium text-muted-foreground shadow-md backdrop-blur">
+            <Loading fill className="size-4 lg:size-[1.111vw] shrink-0" />
             Updating…
           </span>
         </div>
@@ -767,7 +767,7 @@ function ModeToggle({
   disabled?: boolean;
 }) {
   return (
-    <div className="flex items-center rounded-md border border-border bg-muted/50 p-0.5">
+    <div className="flex items-center rounded-md lg:rounded-[0.556vw] border border-border bg-muted/50 p-0.5 lg:p-[0.139vw]">
       {(["edit", "preview"] as const).map((m) => (
         <button
           key={m}
@@ -775,7 +775,7 @@ function ModeToggle({
           disabled={disabled}
           onClick={() => onChange(m)}
           className={cn(
-            "rounded px-2.5 py-1 text-xs font-medium capitalize transition-colors disabled:opacity-50",
+            "rounded lg:rounded-[0.324vw] px-2.5 lg:px-[0.694vw] py-1 lg:py-[0.278vw] text-xs lg:text-[0.833vw] font-medium capitalize transition-colors disabled:opacity-50",
             mode === m
               ? "bg-background text-foreground"
               : "text-muted-foreground hover:text-foreground"
@@ -799,7 +799,7 @@ function SaveStatus({ state }: { state: SaveState }) {
   return (
     <span
       className={cn(
-        "shrink-0 text-xs",
+        "shrink-0 text-xs lg:text-[0.833vw]",
         state === "error" ? "text-destructive" : "text-muted-foreground"
       )}
     >
@@ -811,13 +811,13 @@ function SaveStatus({ state }: { state: SaveState }) {
 function UserBubble({ message }: { message: ChatMessage }) {
   return (
     <div className="flex justify-end">
-      <div className="max-w-[88%] rounded-2xl rounded-br-md bg-foreground px-3.5 py-2 text-sm text-background">
+      <div className="max-w-[88%] rounded-2xl lg:rounded-[1.111vw] rounded-br-md lg:rounded-br-[0.556vw] bg-foreground px-3.5 lg:px-[0.972vw] py-2 lg:py-[0.556vw] text-sm lg:text-[0.972vw] text-background">
         {message.image ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={message.image}
             alt=""
-            className="mb-2 max-h-40 w-full rounded-lg object-cover"
+            className="mb-2 lg:mb-[0.556vw] max-h-40 lg:max-h-[11.111vw] w-full rounded-lg lg:rounded-[0.694vw] object-cover"
           />
         ) : null}
         <p className="whitespace-pre-wrap">{message.text}</p>
@@ -836,22 +836,22 @@ function AssistantRow({
   building?: boolean;
 }) {
   return (
-    <div className="flex items-start gap-2.5">
+    <div className="flex items-start gap-2.5 lg:gap-[0.694vw]">
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src="/logo/logo.svg"
         alt=""
-        className="mt-1 size-6 shrink-0 rounded-md object-contain"
+        className="mt-1 lg:mt-[0.278vw] size-6 lg:size-[1.667vw] shrink-0 rounded-md lg:rounded-[0.556vw] object-contain"
       />
       {building ? (
-        <span className="flex items-center gap-1.5 pt-1 text-sm text-muted-foreground">
+        <span className="flex items-center gap-1.5 lg:gap-[0.417vw] pt-1 lg:pt-[0.278vw] text-sm lg:text-[0.972vw] text-muted-foreground">
           Building your form
           <Dots />
         </span>
       ) : (
         // Render markdown so emphasis (**bold**, *italic*, lists) in the AI's
         // summary shows as formatted text instead of raw asterisks/quotes.
-        <div className="min-w-0 flex-1 pt-0.5">
+        <div className="min-w-0 flex-1 pt-0.5 lg:pt-[0.139vw]">
           <MemoizedMarkdown content={text ?? ""} id={id ?? "assistant"} />
         </div>
       )}
@@ -861,10 +861,10 @@ function AssistantRow({
 
 function Dots() {
   return (
-    <span className="inline-flex gap-0.5">
-      <span className="size-1 animate-bounce rounded-full bg-muted-foreground [animation-delay:-0.2s]" />
-      <span className="size-1 animate-bounce rounded-full bg-muted-foreground [animation-delay:-0.1s]" />
-      <span className="size-1 animate-bounce rounded-full bg-muted-foreground" />
+    <span className="inline-flex gap-0.5 lg:gap-[0.139vw]">
+      <span className="size-1 lg:size-[0.278vw] animate-bounce rounded-full bg-muted-foreground [animation-delay:-0.2s]" />
+      <span className="size-1 lg:size-[0.278vw] animate-bounce rounded-full bg-muted-foreground [animation-delay:-0.1s]" />
+      <span className="size-1 lg:size-[0.278vw] animate-bounce rounded-full bg-muted-foreground" />
     </span>
   );
 }
