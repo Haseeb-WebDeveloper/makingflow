@@ -15,7 +15,11 @@ const client =
   globalForDb._pgClient ??
   postgres(process.env.DATABASE_URL!, {
     prepare: false, // transaction-mode pooler (Supabase pgbouncer) compatible
-    idle_timeout: 20, // close idle conns ourselves (seconds) before the pooler does
+    // Keep warm connections alive between sparse requests so we don't pay a cold
+    // TLS handshake to a remote DB on the first query of each request. Still well
+    // under the pooler's own idle reap.
+    idle_timeout: 90, // seconds
+    max: 5, // small per-instance ceiling — serverless fans out across instances
     max_lifetime: 60 * 30, // recycle a connection after 30 min
     connect_timeout: 10,
   })

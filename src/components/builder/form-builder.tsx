@@ -523,8 +523,8 @@ export function FormBuilder({
 
   // ── Active state — conversation + live preview ────────────────────
   return (
-    <div className="flex h-[calc(100dvh-3.5rem)] flex-col lg:flex-row">
-      <aside className="flex h-1/2 shrink-0 flex-col border-b border-border lg:h-full lg:w-[380px] lg:border-b-0 lg:border-r">
+    <div className="flex h-[calc(100dvh-3.5rem)] flex-col lg:h-auto lg:flex-row">
+      <aside className="flex h-1/2 shrink-0 flex-col border-b border-border lg:sticky lg:top-0 lg:h-[calc(100dvh-3.5rem)] lg:self-start lg:w-[380px] lg:border-b-0 lg:border-r">
         <div className="thin-scroll flex-1 space-y-4 overflow-y-auto px-4 py-4">
           {chat.map((m) =>
             m.role === "user" ? (
@@ -568,7 +568,7 @@ export function FormBuilder({
         </div>
       </aside>
 
-      <main className="relative flex h-1/2 min-w-0 flex-1 flex-col lg:h-full">
+      <main className="relative flex h-1/2 min-w-0 flex-1 flex-col lg:h-fit">
         <header className="flex items-center justify-between gap-2 border-b border-border bg-background px-4 py-3 sm:px-5">
           <div className="flex min-w-0 items-center gap-1.5">
             <button
@@ -709,6 +709,12 @@ export function FormBuilder({
           </div>
         ) : null}
       </main>
+      <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center">
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-background/95 px-3.5 py-1.5 text-xs font-medium text-muted-foreground shadow-md backdrop-blur">
+          <Loading size={12} />
+          Updating…
+        </span>
+      </div>
 
       <PublishDialog
         open={publishOpen}

@@ -1,3 +1,4 @@
+import { cache } from "react"
 import { and, desc, eq, inArray, isNull } from "drizzle-orm"
 import { db } from "@/lib/db"
 import {
@@ -111,8 +112,13 @@ export type FormShell = {
   slug: string | null
 }
 
-/** Lightweight header for the form-detail pages (no fields). Workspace-scoped. */
-export async function getFormShell(id: string): Promise<FormShell | null> {
+/**
+ * Lightweight header for the form-detail pages (no fields). Workspace-scoped.
+ * React cache() deduplicates it across the request — the manage layout and the
+ * tab page both call it (and it doubles as the tenancy guard), so they share one
+ * query instead of three.
+ */
+export const getFormShell = cache(async (id: string): Promise<FormShell | null> => {
   const workspace = await getDefaultWorkspace()
   if (!workspace) return null
   const [row] = await db
@@ -130,7 +136,7 @@ export async function getFormShell(id: string): Promise<FormShell | null> {
     .where(and(eq(forms.id, id), eq(forms.workspaceId, workspace.id), isNull(forms.deletedAt)))
     .limit(1)
   return row ?? null
-}
+})
 
 export type FormSettingsData = {
   status: string
@@ -152,8 +158,9 @@ export type FormSettingsData = {
   coverImageUrl: string | null
 }
 
-/** Current response-collection settings for the Settings tab. Workspace-scoped. */
-export async function getFormSettings(id: string): Promise<FormSettingsData | null> {
+/** Current response-collection settings for the Settings tab. Workspace-scoped.
+ *  cache()-deduped: the manage layout and the Settings page both read it. */
+export const getFormSettings = cache(async (id: string): Promise<FormSettingsData | null> => {
   const workspace = await getDefaultWorkspace()
   if (!workspace) return null
   const [row] = await db
@@ -190,7 +197,7 @@ export async function getFormSettings(id: string): Promise<FormSettingsData | nu
     logoUrl: row.theme?.logoUrl ?? null,
     coverImageUrl: row.theme?.coverImageUrl ?? null,
   }
-}
+})
 
 export type SubmissionColumn = {
   id: string
@@ -212,23 +219,33 @@ export async function getFormSubmissions(
   const workspace = await getDefaultWorkspace()
   if (!workspace) return null
 
-  const [form] = await db
-    .select({ id: forms.id })
-    .from(forms)
-    .where(and(eq(forms.id, id), eq(forms.workspaceId, workspace.id), isNull(forms.deletedAt)))
-    .limit(1)
-  if (!form) return null
+  // The tenancy guard, the field list, and the submission list are independent —
+  // run them in one round-trip instead of three serial hops to the remote DB.
+  const [formRows, fields, subs] = await Promise.all([
+    db
+      .select({ id: forms.id })
+      .from(forms)
+      .where(and(eq(forms.id, id), eq(forms.workspaceId, workspace.id), isNull(forms.deletedAt)))
+      .limit(1),
+    db
+      .select({
+        id: formFields.id,
+        label: formFields.label,
+        type: formFields.type,
+        options: formFields.options,
+      })
+      .from(formFields)
+      .where(and(eq(formFields.formId, id), isNull(formFields.deletedAt)))
+      .orderBy(formFields.position),
+    db
+      .select({ id: submissions.id, submittedAt: submissions.createdAt })
+      .from(submissions)
+      .where(and(eq(submissions.formId, id), eq(submissions.status, "completed")))
+      .orderBy(desc(submissions.createdAt))
+      .limit(limit),
+  ])
+  if (!formRows[0]) return null // not owned — discard the parallel reads
 
-  const fields = await db
-    .select({
-      id: formFields.id,
-      label: formFields.label,
-      type: formFields.type,
-      options: formFields.options,
-    })
-    .from(formFields)
-    .where(and(eq(formFields.formId, id), isNull(formFields.deletedAt)))
-    .orderBy(formFields.position)
   const columns: SubmissionColumn[] = fields
     .filter((f) => !NON_ANSWER_TYPES.has(f.type))
     .map((f) => ({
@@ -237,13 +254,6 @@ export async function getFormSubmissions(
       type: f.type,
       options: f.options ? f.options.map((o) => ({ id: o.id, label: o.label })) : null,
     }))
-
-  const subs = await db
-    .select({ id: submissions.id, submittedAt: submissions.createdAt })
-    .from(submissions)
-    .where(and(eq(submissions.formId, id), eq(submissions.status, "completed")))
-    .orderBy(desc(submissions.createdAt))
-    .limit(limit)
 
   if (subs.length === 0) return { columns, rows: [] }
 

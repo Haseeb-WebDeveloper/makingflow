@@ -58,7 +58,7 @@ export function DevicesDonut({ items }: { items: Bucket[] }) {
       ) : (
         <div className="mt-1 flex flex-col items-center">
           <div className="relative h-40 w-40">
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%" minHeight={160} minWidth={160}>
               <PieChart>
                 <Pie
                   data={data}

@@ -1,3 +1,4 @@
+import { after } from "next/server"
 import { and, eq, isNull } from "drizzle-orm"
 import { generateObject, streamText, type ModelMessage } from "ai"
 import { db } from "@/lib/db"
@@ -144,7 +145,7 @@ export async function POST(request: Request) {
           (body.clarifyCount ?? 0) < 2
         ) {
           // Re-ask the same field; record nothing.
-          await incrementAiCalls(form.workspaceId, calls)
+          after(() => incrementAiCalls(form.workspaceId, calls))
           return turnResponse(
             persona,
             baseLanguage,
@@ -159,7 +160,7 @@ export async function POST(request: Request) {
         // the AI layer) — hand off to the classic runtime, which resumes the
         // shared draft so they can complete the required fields and submit.
         if (cannotRecord && (body.clarifyCount ?? 0) >= 2) {
-          await incrementAiCalls(form.workspaceId, calls)
+          after(() => incrementAiCalls(form.workspaceId, calls))
           return degradeResponse({
             action: "degrade",
             expect: { kind: "done" },
@@ -188,7 +189,7 @@ export async function POST(request: Request) {
       followUpSuggestion.trim()
     ) {
       const q = followUpSuggestion.trim()
-      await incrementAiCalls(form.workspaceId, calls)
+      after(() => incrementAiCalls(form.workspaceId, calls))
       return turnResponse(
         persona,
         baseLanguage,

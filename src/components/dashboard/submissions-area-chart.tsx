@@ -30,7 +30,7 @@ export function SubmissionsAreaChart({ data }: { data: Point[] }) {
       </div>
 
       <div className="mt-4 h-44 w-full">
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="100%" height="100%" minHeight={176}>
           <AreaChart data={rows} margin={{ top: 8, right: 8, bottom: 0, left: -18 }}>
             <defs>
               <linearGradient id="mf-sub-fill" x1="0" y1="0" x2="0" y2="1">

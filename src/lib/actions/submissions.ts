@@ -1,5 +1,6 @@
 "use server"
 
+import { after } from "next/server"
 import { and, eq, isNull, sql } from "drizzle-orm"
 import { db } from "@/lib/db"
 import {
@@ -224,38 +225,43 @@ export async function submitForm(input: {
     return { success: false, error: "Couldn't submit your response. Please try again." }
   }
 
-  // Funnel: record the completion (best-effort, never fails the submit).
+  // Everything below is best-effort, post-commit work (funnel event + integration
+  // delivery — Sheets/webhooks/email, each with its own network I/O and a slow
+  // webhook can take seconds). Defer it with after() so the respondent's response
+  // returns the instant the submission is committed; a down integration can never
+  // delay or fail a stored submission. Read request-scoped context (visitorKey
+  // from headers) NOW, before deferring.
   const visitorKey = await getVisitorKey()
-  await logFormEvent({
-    formId: form.id,
-    type: "complete",
-    submissionId: submissionId ?? undefined,
-    visitorKey,
-  })
-
-  // Deliver to connected integrations. Best-effort — runs AFTER commit and each
-  // path swallows its own errors, so a down integration can never turn a stored
-  // submission into an error for the respondent. Each runs isolated.
   const submittedAt = new Date()
   const webhookAnswers = accepted.map((a) => ({
     fieldId: a.fieldId,
     question: fieldById.get(a.fieldId)?.label || "",
     value: a.value,
   }))
-  await Promise.allSettled([
-    // Google Sheets: workspace connection auto-syncs every form (sheet created lazily).
-    syncSubmissionToSheets(
-      { id: form.id, workspaceId: form.workspaceId, title: form.title },
-      accepted,
-      submittedAt,
-    ),
-    deliverWebhooks(
-      { id: form.id, title: form.title, publicId: form.publicId },
-      webhookAnswers,
-      { id: submissionId ?? "", submittedAt },
-    ),
-    sendSubmissionEmails({ id: form.id, title: form.title }, webhookAnswers),
-  ])
+  const committedId = submissionId
+
+  after(async () => {
+    await logFormEvent({
+      formId: form.id,
+      type: "complete",
+      submissionId: committedId ?? undefined,
+      visitorKey,
+    })
+    await Promise.allSettled([
+      // Google Sheets: workspace connection auto-syncs every form (sheet created lazily).
+      syncSubmissionToSheets(
+        { id: form.id, workspaceId: form.workspaceId, title: form.title },
+        accepted,
+        submittedAt,
+      ),
+      deliverWebhooks(
+        { id: form.id, title: form.title, publicId: form.publicId },
+        webhookAnswers,
+        { id: committedId ?? "", submittedAt },
+      ),
+      sendSubmissionEmails({ id: form.id, title: form.title }, webhookAnswers),
+    ])
+  })
 
   return { success: true }
 }
