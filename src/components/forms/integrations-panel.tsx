@@ -3,12 +3,23 @@
 import * as React from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+} from "@/components/ui/sheet";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { showToast } from "@/components/ui/toast";
 import { enableFormSheet, pauseFormSheet } from "@/lib/actions/integrations";
-import { CardShell, ComingSoonCards } from "@/components/integrations/cards";
+import {
+  CardShell,
+  ComingSoonCards,
+  StatusBadge,
+} from "@/components/integrations/cards";
 import { WebhooksCard } from "@/components/forms/webhooks-card";
 import { EmailCard } from "@/components/forms/email-card";
 import type { GoogleSheetsState, FormWebhook, FormEmailState } from "@/lib/data/integrations";
@@ -31,6 +42,7 @@ export function IntegrationsPanel({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [pending, startTransition] = React.useTransition();
+  const [detailsOpen, setDetailsOpen] = React.useState(false);
 
   // Surface the OAuth round-trip result once, then strip the query param.
   React.useEffect(() => {
@@ -77,102 +89,137 @@ export function IntegrationsPanel({
     });
   }
 
-  // The left-hand status line in the Google card footer.
-  let footerLead: React.ReactNode;
-  if (!configured) {
-    footerLead = (
-      <span className="text-xs text-muted-foreground">Not available</span>
-    );
-  } else if (!connected) {
-    footerLead = (
-      <Button asChild size="sm" variant="outline">
-        <a href={`/api/integrations/google/connect?formId=${formId}`}>
-          <Icon name="login" />
-          Connect
-        </a>
-      </Button>
-    );
-  } else if (status === "syncing" && spreadsheetUrl) {
-    footerLead = (
-      <a
-        href={spreadsheetUrl}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="inline-flex items-center gap-1.5 text-sm font-medium text-foreground hover:underline"
-      >
-        Open spreadsheet
-        <Icon name="discovery" className="size-3.5" />
-      </a>
-    );
-  } else if (status === "pending") {
-    footerLead = (
-      <span className="text-xs text-muted-foreground">
-        Sheet created on first response
-      </span>
-    );
-  } else {
-    footerLead = <span className="text-xs text-muted-foreground">Paused</span>;
-  }
-
   return (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-      {/* ── Google Sheets (active) ── */}
-      <CardShell>
-        <div className="flex items-start justify-between gap-3">
-          <SVGIcon src="/integrations/google-sheets.svg" className="size-9" />
-          {status === "syncing" ? (
-            <span className="inline-flex items-center gap-1 rounded-full bg-success-bg px-2 py-0.5 text-[11px] font-medium text-success-foreground">
-              <span className="size-1.5 rounded-full bg-success" />
-              Active
-            </span>
-          ) : null}
-        </div>
-
-        <h3 className="mt-3 text-sm font-semibold text-foreground">
-          Google Sheets
-        </h3>
-        <p className="mt-1 flex-1 text-sm text-muted-foreground">
-          {connected
-            ? "New submissions are added to this form's spreadsheet as rows, in real time."
-            : "Connect Google once for the whole workspace — every form syncs automatically."}
-        </p>
-
-        <div className="mt-4 flex items-center justify-between gap-3 border-t border-border pt-3">
-          {footerLead}
-          {configured && connected ? (
-            <Switch
-              checked={on}
-              disabled={pending}
-              onCheckedChange={onToggle}
-            />
-          ) : (
-            <Switch checked={false} disabled />
-          )}
-        </div>
-
-        {configured && connected ? (
-          <div className="mt-2.5 flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
-            <span className="truncate">
-              Connected as {connection!.accountEmail}
-            </span>
-            <Link
-              href="/integrations"
-              className="shrink-0 font-medium text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
-            >
-              Manage
-            </Link>
+    <>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {/* ── Google Sheets (active) ── */}
+        <CardShell>
+          <div className="flex items-start justify-between gap-3">
+            <SVGIcon src="/icons/google-sheet.svg" className="size-9" />
+            {status === "syncing" ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-success-bg px-2 py-0.5 text-[11px] font-medium text-success-foreground">
+                <span className="size-1.5 rounded-full bg-success" />
+                Active
+              </span>
+            ) : null}
           </div>
-        ) : null}
-      </CardShell>
 
-      {/* ── Webhooks ── */}
-      <WebhooksCard formId={formId} webhooks={webhooks} />
+          <h3 className="mt-3 text-sm font-semibold text-foreground">
+            Google Sheets
+          </h3>
+          <p className="mt-1 flex-1 text-sm text-muted-foreground">
+            {connected
+              ? "New submissions are added to this form's spreadsheet as rows, in real time."
+              : "Connect Google once for the whole workspace — every form syncs automatically."}
+          </p>
 
-      {/* ── Email notifications ── */}
-      <EmailCard formId={formId} state={email} ownerEmail={ownerEmail} />
+          <div className="mt-4 flex items-center justify-between gap-3 border-t border-border pt-3">
+            {!configured ? (
+              <span className="text-xs text-muted-foreground">Not available</span>
+            ) : connected ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setDetailsOpen(true)}
+              >
+                View details
+              </Button>
+            ) : (
+              <Button asChild size="sm" variant="outline">
+                <a href={`/api/integrations/google/connect?formId=${formId}`}>
+                  <Icon name="login" />
+                  Connect
+                </a>
+              </Button>
+            )}
 
-      {/* ── Coming soon ── */}
-      <ComingSoonCards />
-    </div>
+            {configured && connected ? (
+              <Switch
+                checked={on}
+                disabled={pending}
+                onCheckedChange={onToggle}
+              />
+            ) : (
+              <Switch checked={false} disabled />
+            )}
+          </div>
+        </CardShell>
+
+        {/* ── Webhooks ── */}
+        <WebhooksCard formId={formId} webhooks={webhooks} />
+
+        {/* ── Email notifications ── */}
+        <EmailCard formId={formId} state={email} ownerEmail={ownerEmail} />
+
+        {/* ── Coming soon ── */}
+        <ComingSoonCards />
+      </div>
+
+      {/* ── Right-side details: this form's sheet (mirrors the workspace page) ── */}
+      <Sheet open={detailsOpen} onOpenChange={setDetailsOpen}>
+        <SheetContent side="right" className="w-full sm:max-w-md">
+          <SheetHeader>
+            <div className="flex items-center gap-3">
+              <SVGIcon src="/icons/google-sheet.svg" className="size-9" />
+              <div>
+                <SheetTitle>Google Sheets</SheetTitle>
+                <SheetDescription>
+                  {connection
+                    ? `Connected as ${connection.accountEmail}`
+                    : "Not connected"}
+                </SheetDescription>
+              </div>
+            </div>
+          </SheetHeader>
+
+          <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 lg:px-6">
+            <p className="text-sm text-muted-foreground">
+              New submissions to this form are appended to its spreadsheet as
+              rows, in real time. The sheet is created on the first response.
+            </p>
+
+            <div className="mt-4 flex items-center justify-between gap-3 rounded-lg border border-border p-3">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <StatusBadge status={status} />
+                  {spreadsheetUrl ? (
+                    <a
+                      href={spreadsheetUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground hover:underline"
+                    >
+                      Open sheet
+                      <Icon name="discovery" className="size-3" />
+                    </a>
+                  ) : null}
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {status === "pending"
+                    ? "The sheet is created on the first response."
+                    : status === "syncing"
+                      ? "Syncing new submissions automatically."
+                      : "Sync is paused for this form."}
+                </p>
+              </div>
+              <Switch
+                checked={on}
+                disabled={pending}
+                onCheckedChange={onToggle}
+              />
+            </div>
+          </div>
+
+          <div className="border-t border-border p-4 lg:p-6">
+            <Button asChild variant="outline" size="sm">
+              <Link href="/integrations">
+                <Icon name="swap" />
+                Manage all integrations
+              </Link>
+            </Button>
+          </div>
+        </SheetContent>
+      </Sheet>
+    </>
   );
 }

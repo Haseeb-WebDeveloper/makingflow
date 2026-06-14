@@ -8,6 +8,7 @@ import type { AnswerValue } from "@/lib/db/schema"
 import { isFieldVisible, NON_ANSWER_TYPES, isEmpty } from "@/lib/builder/logic"
 import { collectClientMeta, track } from "@/lib/forms/client-meta"
 import { Control, Check, FormBranding } from "@/components/forms/field-control"
+import { SVGIcon } from "@/components/ui/svg-icon"
 import { FormRuntime } from "@/components/forms/form-runtime"
 import type { Expect, TurnMeta, TurnPrev, TurnRequest } from "@/lib/forms/conversation-types"
 import { cn } from "@/lib/utils"
@@ -414,7 +415,7 @@ export function ConversationalRuntime({ form }: { form: PublicForm }) {
 
       {showComposer && currentField?.type !== "file_upload" ? (
         <div className="shrink-0 pt-3">
-          <div className="flex items-end gap-2">
+          <div className="rounded-2xl border border-border bg-background p-2.5 transition-colors focus-within:border-foreground/30">
             <textarea
               rows={1}
               value={input}
@@ -427,16 +428,19 @@ export function ConversationalRuntime({ form }: { form: PublicForm }) {
                   sendTyped()
                 }
               }}
-              className="scrollbar-thin max-h-32 min-h-[2.75rem] flex-1 resize-none rounded-2xl border border-input bg-background px-4 py-2.5 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:border-foreground/40"
+              className="thin-scroll block max-h-40 w-full resize-none border-0 bg-transparent px-2 pt-1 text-base text-foreground outline-none placeholder:text-muted-foreground"
             />
-            <button
-              type="button"
-              onClick={sendTyped}
-              disabled={composerDisabled || !input.trim()}
-              className="inline-flex h-11 shrink-0 items-center justify-center rounded-xl bg-foreground px-4 text-sm font-medium text-background transition-colors hover:bg-foreground/90 disabled:opacity-50"
-            >
-              Send
-            </button>
+            <div className="flex items-center justify-end pl-1 pr-0.5 pt-1">
+              <button
+                type="button"
+                onClick={sendTyped}
+                disabled={composerDisabled || !input.trim()}
+                aria-label="Send"
+                className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-foreground text-background transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-30"
+              >
+                <SVGIcon src="/icons/arrow-up.svg" className="size-5" />
+              </button>
+            </div>
           </div>
           <p className="mt-2 text-center text-[11px] text-muted-foreground">
             Made with{" "}

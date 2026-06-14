@@ -69,9 +69,11 @@ function PhoneInput({
     >
       <BasePhoneInput.default
         className={cn(
-          "flex",
+          // One unified field: the wrapper owns the border + focus; the country
+          // button and number input sit borderless inside it.
+          "flex h-11 w-full items-center gap-1 rounded-md border border-input bg-background py-0 pl-1 pr-2 transition-colors focus-within:border-foreground/40",
           props["aria-invalid"] &&
-            "[&_*[data-slot=combobox-trigger]]:border-destructive [&_*[data-slot=combobox-trigger]]:ring-destructive/50",
+            "border-destructive focus-within:border-destructive",
           className
         )}
         flagComponent={FlagComponent}
@@ -87,16 +89,11 @@ function PhoneInput({
 }
 
 function InputComponent({ className, ...props }: ComponentProps<typeof Input>) {
-  const { variant } = useContext(PhoneInputContext)
-
   return (
     <Input
       className={cn(
-        "rounded-s-none focus:z-1",
-        variant === "sm" &&
-          "h-7",
-        variant === "lg" &&
-          "h-9",
+        // Borderless + transparent: the wrapper draws the field border/focus.
+        "h-9 flex-1 rounded-none border-0 bg-transparent px-2 shadow-none focus-visible:border-0 focus-visible:ring-0",
         className
       )}
       {...props}
@@ -119,7 +116,7 @@ function CountrySelect({
   options: countryList,
   onChange,
 }: CountrySelectProps) {
-  const { variant, popupClassName } = useContext(PhoneInputContext)
+  const { popupClassName } = useContext(PhoneInputContext)
   const [searchValue, setSearchValue] = useState("")
 
   const filteredCountries = useMemo(() => {
@@ -142,10 +139,11 @@ function CountrySelect({
       <ComboboxTrigger
         render={
           <Button
-            variant="outline"
-            size={variant}
+            variant="ghost"
+            size="sm"
             className={cn(
-              "rounded-s-lg rounded-e-none flex gap-1 border-e-0 px-2.5 py-0 leading-none hover:bg-transparent focus:z-10 data-pressed:bg-transparent",
+              // Borderless trigger that lives inside the unified field wrapper.
+              "h-9 gap-1 rounded-md px-2 leading-none hover:bg-muted focus-visible:ring-0 data-pressed:bg-transparent",
               disabled && "opacity-50"
             )}
             disabled={disabled}

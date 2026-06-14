@@ -38,13 +38,13 @@ export type UploadedFile = {
 export function Field({
   field,
   value,
-  invalid,
+  error,
   onChange,
   testMode,
 }: {
   field: PublicField
   value: AnswerValue | undefined
-  invalid: boolean
+  error?: string
   onChange: (v: AnswerValue) => void
   testMode?: boolean
 }) {
@@ -68,7 +68,12 @@ export function Field({
       {field.description ? (
         <p className="-mt-1 text-xs text-muted-foreground">{field.description}</p>
       ) : null}
-      <Control field={field} value={value} invalid={invalid} onChange={onChange} testMode={testMode} />
+      <Control field={field} value={value} invalid={!!error} onChange={onChange} testMode={testMode} />
+      {error ? (
+        <p role="alert" className="text-xs font-medium text-destructive">
+          {error}
+        </p>
+      ) : null}
     </div>
   )
 }
@@ -83,12 +88,12 @@ export function FormBranding({ theme }: { theme?: PublicTheme | null }) {
         <img
           src={theme.coverImageUrl}
           alt=""
-          className="mb-5 h-32 w-full rounded-xl object-cover sm:h-44"
+          className="mb-4 h-32 w-full rounded-xl object-cover sm:h-44"
         />
       ) : null}
       {theme.logoUrl ? (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={theme.logoUrl} alt="" className="h-10 w-auto object-contain sm:h-12" />
+        <img src={theme.logoUrl} alt="" className="h-12 w-auto object-contain sm:h-14 rounded-md" />
       ) : null}
     </div>
   )
@@ -346,7 +351,7 @@ function DateControl({
         <span>{valid ? format(parsed as Date, "PPP") : "Select a date"}</span>
         <CalendarGlyph className="size-4 shrink-0 text-muted-foreground" />
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-auto">
+      <PopoverContent align="start" className="w-auto" initialFocus={false}>
         <Calendar
           mode="single"
           selected={valid ? parsed : undefined}
@@ -355,7 +360,6 @@ function DateControl({
             onChange(d ? format(d, "yyyy-MM-dd") : "")
             setOpen(false)
           }}
-          autoFocus
         />
       </PopoverContent>
     </Popover>
@@ -446,9 +450,16 @@ function FileControl({
       {files.map((f, i) => (
         <div
           key={i}
-          className="flex items-center gap-2.5 rounded-md border border-border bg-background px-3 py-2 text-sm"
+          className="flex items-center gap-2.5 rounded-md border border-border bg-background p-2 pr-3 text-sm"
         >
-          <FileIcon />
+          {f.mime?.startsWith("image/") && f.url ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={f.url} alt="" className="size-10 shrink-0 rounded-md border border-border object-cover" />
+          ) : (
+            <span className="grid size-10 shrink-0 place-items-center rounded-md border border-border bg-muted/40">
+              <FileIcon />
+            </span>
+          )}
           <span className="min-w-0 flex-1 truncate text-foreground">{f.name}</span>
           <span className="shrink-0 text-xs text-muted-foreground">{prettyBytes(f.bytes)}</span>
           <button

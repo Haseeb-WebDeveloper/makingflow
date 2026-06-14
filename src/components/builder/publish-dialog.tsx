@@ -154,7 +154,7 @@ export function PublishDialog({
           </section>
         ) : null}
 
-        <DialogFooter className="sticky bottom-0 z-10 -mx-6 -mb-6 mt-0 items-center gap-2 border-t border-border bg-popover px-6 pt-4 pb-6 sm:justify-between lg:-mx-[1.7vw] lg:-mb-[1.7vw] lg:px-[1.7vw] lg:pt-[1.111vw] lg:pb-[1.7vw]">
+        <DialogFooter className="sticky -bottom-6 z-10 -mx-6 -mb-6 mt-0 items-center gap-2 border-t border-border bg-popover px-6 pt-4 pb-6 sm:justify-between lg:-bottom-[1.7vw] lg:-mx-[1.7vw] lg:-mb-[1.7vw] lg:px-[1.7vw] lg:pt-[1.111vw] lg:pb-[1.7vw]">
           {published ? (
             <>
               <Button
