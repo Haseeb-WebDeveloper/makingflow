@@ -120,9 +120,10 @@ export const integrationTypeEnum = pgEnum('integration_type', [
   'webhook',
   'email',
   'discord',
+  'notion',
 ])
 
-export const connectionProviderEnum = pgEnum('connection_provider', ['google'])
+export const connectionProviderEnum = pgEnum('connection_provider', ['google', 'notion'])
 
 export const customDomainStatusEnum = pgEnum('custom_domain_status', [
   'pending', // added; awaiting DNS + Vercel verification
@@ -268,11 +269,31 @@ export type DiscordIntegrationConfig = {
   includeAnswers?: boolean
 }
 
+export type NotionIntegrationConfig = {
+  databaseId: string
+  databaseUrl?: string // deep link shown in the UI ("Open database")
+  // The mandatory Notion title property we own (set to the submission id, so a
+  // page can later be located and archived). Stored in case we rename it.
+  titlePropertyName: string
+  // Append-only property set (frozen). A new field adds a property; a removed
+  // field keeps its property so historical pages still resolve. `name` is the
+  // Notion property name (unique), `type` the Notion property type.
+  properties: { fieldId: string; name: string; type: string }[]
+}
+
 export type IntegrationConfig =
   | WebhookIntegrationConfig
   | GoogleSheetsIntegrationConfig
   | EmailIntegrationConfig
   | DiscordIntegrationConfig
+  | NotionIntegrationConfig
+
+// Provider-specific extras on a workspace connection that don't fit the fixed
+// columns. Notion: the auto-created "MakingFlow Submissions" parent page (one
+// per workspace) under which every form's database is created.
+export type ConnectionMetadata = {
+  notion?: { parentPageId?: string; workspaceId?: string; botId?: string }
+}
 
 // One DNS challenge Vercel returns when a domain is added — surfaced in the UI
 // until the user's DNS is configured correctly.
@@ -435,6 +456,7 @@ export const workspaceConnections = pgTable(
     refreshToken: text('refresh_token'),
     expiresAt: timestamp('expires_at', { withTimezone: true }),
     scopes: text('scopes').array().notNull().default(sql`'{}'::text[]`),
+    metadata: jsonb('metadata').$type<ConnectionMetadata>(),
     ...timestamps,
   },
   (table) => [index('workspace_connections_workspace_idx').on(table.workspaceId)],

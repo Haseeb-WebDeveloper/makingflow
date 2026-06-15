@@ -8,25 +8,30 @@ import {
   formIntegrations,
   workspaceConnections,
   type GoogleSheetsIntegrationConfig,
+  type NotionIntegrationConfig,
 } from "@/lib/db/schema"
 import { getDefaultWorkspace } from "@/lib/auth/session"
 import { createFormSheet, refreshFormSheetHeader } from "@/lib/integrations/sheets-provision"
+import { createFormDatabase, TITLE_PROP } from "@/lib/integrations/notion-provision"
 
 type Result = { success: true } | { success: false; error: string }
 
-async function workspaceGoogleConnection(workspaceId: string) {
+async function workspaceConnection(workspaceId: string, provider: "google" | "notion") {
   const [conn] = await db
     .select()
     .from(workspaceConnections)
     .where(
       and(
         eq(workspaceConnections.workspaceId, workspaceId),
-        eq(workspaceConnections.provider, "google"),
+        eq(workspaceConnections.provider, provider),
       ),
     )
     .limit(1)
   return conn ?? null
 }
+
+const workspaceGoogleConnection = (workspaceId: string) =>
+  workspaceConnection(workspaceId, "google")
 
 /**
  * Resume / create a form's Google Sheets sync. Under the global model every
@@ -156,6 +161,135 @@ export async function disconnectGoogle(returnFormId?: string): Promise<Result> {
         and(
           eq(workspaceConnections.workspaceId, workspace.id),
           eq(workspaceConnections.provider, "google"),
+        ),
+      )
+  })
+
+  if (returnFormId) revalidatePath(`/forms/${returnFormId}/integrations`)
+  revalidatePath("/integrations")
+  return { success: true }
+}
+
+// ── Notion (mirror of the Google actions; global connect-once model) ─────────
+
+/**
+ * Resume / create a form's Notion sync. Like Sheets, every form syncs once the
+ * workspace connects; this un-pauses a form or creates its database eagerly.
+ * Reuses the existing database when present.
+ */
+export async function enableFormNotion(formId: string): Promise<Result> {
+  const workspace = await getDefaultWorkspace()
+  if (!workspace) return { success: false, error: "No workspace" }
+
+  const [form] = await db
+    .select({ id: forms.id, title: forms.title })
+    .from(forms)
+    .where(and(eq(forms.id, formId), eq(forms.workspaceId, workspace.id), isNull(forms.deletedAt)))
+    .limit(1)
+  if (!form) return { success: false, error: "Form not found" }
+
+  const conn = await workspaceConnection(workspace.id, "notion")
+  if (!conn) return { success: false, error: "Connect a Notion account first" }
+
+  const [existing] = await db
+    .select()
+    .from(formIntegrations)
+    .where(and(eq(formIntegrations.formId, formId), eq(formIntegrations.type, "notion")))
+    .limit(1)
+
+  try {
+    const prev = existing?.config as NotionIntegrationConfig | undefined
+    const config = prev?.databaseId ? prev : await createFormDatabase(conn, formId, form.title)
+
+    if (existing) {
+      await db
+        .update(formIntegrations)
+        .set({ enabled: true, config })
+        .where(eq(formIntegrations.id, existing.id))
+    } else {
+      await db.insert(formIntegrations).values({
+        formId,
+        workspaceId: workspace.id,
+        type: "notion",
+        enabled: true,
+        config,
+      })
+    }
+  } catch (err) {
+    console.error("[enableFormNotion] failed", err)
+    return { success: false, error: "Couldn't set up the Notion database. Reconnect Notion and try again." }
+  }
+
+  revalidatePath(`/forms/${formId}/integrations`)
+  revalidatePath("/integrations")
+  return { success: true }
+}
+
+/** Pause Notion sync for a single form (keeps the database for later). */
+export async function pauseFormNotion(formId: string): Promise<Result> {
+  const workspace = await getDefaultWorkspace()
+  if (!workspace) return { success: false, error: "No workspace" }
+
+  const [existing] = await db
+    .select({ id: formIntegrations.id })
+    .from(formIntegrations)
+    .where(
+      and(
+        eq(formIntegrations.formId, formId),
+        eq(formIntegrations.workspaceId, workspace.id),
+        eq(formIntegrations.type, "notion"),
+      ),
+    )
+    .limit(1)
+
+  if (existing) {
+    await db.update(formIntegrations).set({ enabled: false }).where(eq(formIntegrations.id, existing.id))
+  } else {
+    const [form] = await db
+      .select({ id: forms.id })
+      .from(forms)
+      .where(and(eq(forms.id, formId), eq(forms.workspaceId, workspace.id), isNull(forms.deletedAt)))
+      .limit(1)
+    const conn = await workspaceConnection(workspace.id, "notion")
+    if (!form || !conn) return { success: false, error: "Nothing to pause" }
+    await db.insert(formIntegrations).values({
+      formId,
+      workspaceId: workspace.id,
+      type: "notion",
+      enabled: false,
+      config: { databaseId: "", titlePropertyName: TITLE_PROP, properties: [] },
+    })
+  }
+
+  revalidatePath(`/forms/${formId}/integrations`)
+  revalidatePath("/integrations")
+  return { success: true }
+}
+
+/**
+ * Disconnect the workspace's Notion account (global off-switch). Deletes the
+ * grant and disables every form's Notion sync (databases are left intact).
+ */
+export async function disconnectNotion(returnFormId?: string): Promise<Result> {
+  const workspace = await getDefaultWorkspace()
+  if (!workspace) return { success: false, error: "No workspace" }
+
+  await db.transaction(async (tx) => {
+    await tx
+      .update(formIntegrations)
+      .set({ enabled: false })
+      .where(
+        and(
+          eq(formIntegrations.workspaceId, workspace.id),
+          eq(formIntegrations.type, "notion"),
+        ),
+      )
+    await tx
+      .delete(workspaceConnections)
+      .where(
+        and(
+          eq(workspaceConnections.workspaceId, workspace.id),
+          eq(workspaceConnections.provider, "notion"),
         ),
       )
   })

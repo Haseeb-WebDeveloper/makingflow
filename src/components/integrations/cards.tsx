@@ -1,10 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Switch } from "@/components/ui/switch";
-import { Icon } from "@/components/ui/icon";
 import type { FormSyncStatus } from "@/lib/data/integrations";
-import { SVGIcon } from "../ui/svg-icon";
 
 /** The shared card container — identical chrome on every integration card. */
 export function CardShell({ children }: { children: React.ReactNode }) {
@@ -38,38 +35,3 @@ export function StatusBadge({ status }: { status: FormSyncStatus }) {
   );
 }
 
-const COMING_SOON = [
-  { name: "Notion", domain: "Append responses to a database", icon: "notion" },
-] as const;
-
-/** The "coming soon" placeholder cards shared by both integration surfaces. */
-export function ComingSoonCards() {
-  return (
-    <>
-      {COMING_SOON.map((it) => (
-        <CardShell key={it.name}>
-          <div className="flex items-start justify-between gap-3">
-            <SVGIcon
-              src={`/logo/${it.icon}.svg`}
-              preserveColors
-              className="size-9"
-            />
-            <span className="shrink-0 rounded border border-border px-1.5 py-px text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-              Soon
-            </span>
-          </div>
-          <h3 className="mt-3 text-sm font-semibold text-foreground">
-            {it.name}
-          </h3>
-          <p className="mt-1 flex-1 text-sm text-muted-foreground">
-            {it.domain}
-          </p>
-          <div className="mt-4 flex items-center justify-between gap-3 border-t border-border pt-3">
-            <span className="text-xs text-muted-foreground">Coming soon</span>
-            <Switch checked={false} disabled />
-          </div>
-        </CardShell>
-      ))}
-    </>
-  );
-}

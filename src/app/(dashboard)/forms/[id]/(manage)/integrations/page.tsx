@@ -2,7 +2,7 @@ import type { Metadata } from "next"
 import { notFound } from "next/navigation"
 import { Icon } from "@/components/ui/icon"
 import { IntegrationsPanel } from "@/components/forms/integrations-panel"
-import { getGoogleSheetsState, getFormWebhooks, getFormEmail, getFormDiscord } from "@/lib/data/integrations"
+import { getGoogleSheetsState, getFormWebhooks, getFormEmail, getFormDiscord, getNotionState } from "@/lib/data/integrations"
 import { getRequiredUser } from "@/lib/auth/session"
 
 export const metadata: Metadata = { title: "Integrations · MakingFlow" }
@@ -13,11 +13,12 @@ export default async function FormIntegrationsPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
-  const [state, webhooks, email, discord, user] = await Promise.all([
+  const [state, webhooks, email, discord, notion, user] = await Promise.all([
     getGoogleSheetsState(id),
     getFormWebhooks(id),
     getFormEmail(id),
     getFormDiscord(id),
+    getNotionState(id),
     getRequiredUser(),
   ])
   if (!state) notFound()
@@ -37,6 +38,7 @@ export default async function FormIntegrationsPage({
           webhooks={webhooks}
           email={email}
           discord={discord}
+          notion={notion}
           ownerEmail={user.email}
         />
       </div>

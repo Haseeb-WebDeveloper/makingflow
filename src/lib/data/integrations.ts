@@ -5,10 +5,12 @@ import {
   formIntegrations,
   workspaceConnections,
   type GoogleSheetsIntegrationConfig,
+  type NotionIntegrationConfig,
 } from "@/lib/db/schema"
 import { getDefaultWorkspace } from "@/lib/auth/session"
 import { isGoogleConfigured } from "@/lib/integrations/google"
 import { isEmailConfigured } from "@/lib/email/provider"
+import { isNotionConfigured } from "@/lib/integrations/notion"
 
 /**
  * Sync state of one form under the global model:
@@ -71,6 +73,46 @@ export async function getGoogleSheetsState(formId: string): Promise<GoogleSheets
     connection: conn ? { accountEmail: conn.accountEmail } : null,
     status: statusOf(Boolean(conn), row),
     spreadsheetUrl: cfg?.spreadsheetUrl ?? null,
+  }
+}
+
+// ── Per-form Notion ─────────────────────────────────────────────────────────
+
+export type NotionState = {
+  configured: boolean
+  connection: { workspaceName: string } | null
+  status: FormSyncStatus
+  databaseUrl: string | null
+}
+
+export async function getNotionState(formId: string): Promise<NotionState> {
+  const configured = isNotionConfigured()
+  const workspace = await getDefaultWorkspace()
+  if (!workspace) return { configured, connection: null, status: "inactive", databaseUrl: null }
+
+  const [conn] = await db
+    .select({ accountEmail: workspaceConnections.accountEmail })
+    .from(workspaceConnections)
+    .where(
+      and(
+        eq(workspaceConnections.workspaceId, workspace.id),
+        eq(workspaceConnections.provider, "notion"),
+      ),
+    )
+    .limit(1)
+
+  const [row] = await db
+    .select({ enabled: formIntegrations.enabled, config: formIntegrations.config })
+    .from(formIntegrations)
+    .where(and(eq(formIntegrations.formId, formId), eq(formIntegrations.type, "notion")))
+    .limit(1)
+
+  const cfg = row?.config as NotionIntegrationConfig | undefined
+  return {
+    configured,
+    connection: conn ? { workspaceName: conn.accountEmail } : null,
+    status: statusOf(Boolean(conn), row),
+    databaseUrl: cfg?.databaseUrl ?? null,
   }
 }
 
@@ -201,6 +243,12 @@ export async function getFormDiscord(formId: string): Promise<FormDiscordState> 
 export type WorkspaceEmailForm = { id: string; title: string; status: "on" | "paused" }
 export type WorkspaceWebhookForm = { id: string; title: string; total: number; active: number }
 export type WorkspaceDiscordForm = { id: string; title: string; status: "on" | "paused" }
+export type WorkspaceNotionForm = {
+  id: string
+  title: string
+  status: FormSyncStatus
+  databaseUrl: string | null
+}
 
 export type WorkspaceIntegrations = {
   configured: boolean
@@ -214,23 +262,43 @@ export type WorkspaceIntegrations = {
   email: { configured: boolean; forms: WorkspaceEmailForm[] }
   webhook: { forms: WorkspaceWebhookForm[] }
   discord: { forms: WorkspaceDiscordForm[] }
+  notion: {
+    configured: boolean
+    connection: { workspaceName: string } | null
+    forms: WorkspaceNotionForm[]
+  }
 }
 
 export async function getWorkspaceIntegrations(): Promise<WorkspaceIntegrations | null> {
   const workspace = await getDefaultWorkspace()
   if (!workspace) return null
 
-  const [conn] = await db
-    .select({ accountEmail: workspaceConnections.accountEmail })
-    .from(workspaceConnections)
-    .where(
-      and(
-        eq(workspaceConnections.workspaceId, workspace.id),
-        eq(workspaceConnections.provider, "google"),
-      ),
-    )
-    .limit(1)
+  const [conn, notionConn] = await Promise.all([
+    db
+      .select({ accountEmail: workspaceConnections.accountEmail })
+      .from(workspaceConnections)
+      .where(
+        and(
+          eq(workspaceConnections.workspaceId, workspace.id),
+          eq(workspaceConnections.provider, "google"),
+        ),
+      )
+      .limit(1)
+      .then((r) => r[0]),
+    db
+      .select({ accountEmail: workspaceConnections.accountEmail })
+      .from(workspaceConnections)
+      .where(
+        and(
+          eq(workspaceConnections.workspaceId, workspace.id),
+          eq(workspaceConnections.provider, "notion"),
+        ),
+      )
+      .limit(1)
+      .then((r) => r[0]),
+  ])
   const connected = Boolean(conn)
+  const notionConnected = Boolean(notionConn)
 
   const formRows = await db
     .select({ id: forms.id, title: forms.title })
@@ -258,6 +326,9 @@ export async function getWorkspaceIntegrations(): Promise<WorkspaceIntegrations 
   )
   const discordByForm = new Map(
     integrationRows.filter((r) => r.type === "discord").map((r) => [r.formId, r]),
+  )
+  const notionByForm = new Map(
+    integrationRows.filter((r) => r.type === "notion").map((r) => [r.formId, r]),
   )
   const webhookByForm = new Map<string, { total: number; active: number }>()
   for (const r of integrationRows) {
@@ -309,6 +380,20 @@ export async function getWorkspaceIntegrations(): Promise<WorkspaceIntegrations 
           title: title(f.title),
           status: discordByForm.get(f.id)!.enabled ? ("on" as const) : ("paused" as const),
         })),
+    },
+    notion: {
+      configured: isNotionConfigured(),
+      connection: notionConn ? { workspaceName: notionConn.accountEmail } : null,
+      forms: formRows.map((f) => {
+        const row = notionByForm.get(f.id)
+        const cfg = row?.config as NotionIntegrationConfig | undefined
+        return {
+          id: f.id,
+          title: title(f.title),
+          status: statusOf(notionConnected, row),
+          databaseUrl: cfg?.databaseUrl ?? null,
+        }
+      }),
     },
   }
 }

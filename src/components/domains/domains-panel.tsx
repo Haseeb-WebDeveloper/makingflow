@@ -345,7 +345,7 @@ export function DomainsPanel({ data }: { data: WorkspaceDomains }) {
   return (
     <div className="space-y-6">
       {/* Add a domain */}
-      <div className="rounded-xl border border-border bg-card p-5">
+      <div className="rounded-xl border border-border bg-card p-5 max-w-xl">
         <div className="flex items-center gap-3">
           <span className="flex size-9 items-center justify-center rounded-lg bg-accent text-accent-foreground">
             <Icon name="discovery" className="size-5" />
@@ -380,7 +380,7 @@ export function DomainsPanel({ data }: { data: WorkspaceDomains }) {
           <Button
             onClick={onAdd}
             disabled={busy || !value.trim()}
-            className="sm:shrink-0"
+            className="sm:shrink-0 h-10"
           >
             {adding ? (
               <Loading className="size-4" />

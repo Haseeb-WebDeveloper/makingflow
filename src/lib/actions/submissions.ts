@@ -19,6 +19,7 @@ import { syncSubmissionToSheets, deleteSubmissionFromSheet } from "@/lib/integra
 import { deliverWebhooks } from "@/lib/integrations/webhook"
 import { sendSubmissionEmails } from "@/lib/integrations/email"
 import { deliverDiscord } from "@/lib/integrations/discord"
+import { syncSubmissionToNotion, deleteSubmissionFromNotion } from "@/lib/integrations/notion-sync"
 import { getDefaultWorkspace } from "@/lib/auth/session"
 import { NON_ANSWER_TYPES, isEmpty } from "@/lib/builder/logic"
 
@@ -376,6 +377,11 @@ export async function submitForm(input: {
       ),
       sendSubmissionEmails({ id: form.id, title: form.title }, webhookAnswers),
       deliverDiscord({ id: form.id, title: form.title }, webhookAnswers),
+      syncSubmissionToNotion(
+        { id: form.id, workspaceId: form.workspaceId, title: form.title },
+        accepted,
+        committedId ?? "",
+      ),
     ])
   })
 
@@ -415,9 +421,12 @@ export async function deleteSubmission(submissionId: string): Promise<SubmitResu
 
   // Remove the matching sheet row off the request path — a Sheets outage must
   // not fail a delete that already committed in our DB.
-  after(() =>
-    deleteSubmissionFromSheet({ id: sub.formId, workspaceId: sub.workspaceId }, submissionId),
-  )
+  after(async () => {
+    await Promise.allSettled([
+      deleteSubmissionFromSheet({ id: sub.formId, workspaceId: sub.workspaceId }, submissionId),
+      deleteSubmissionFromNotion({ id: sub.formId, workspaceId: sub.workspaceId }, submissionId),
+    ])
+  })
 
   return { success: true }
 }

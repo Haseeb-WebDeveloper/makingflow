@@ -15,19 +15,17 @@ import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { showToast } from "@/components/ui/toast";
 import { enableFormSheet, pauseFormSheet } from "@/lib/actions/integrations";
-import {
-  CardShell,
-  ComingSoonCards,
-  StatusBadge,
-} from "@/components/integrations/cards";
+import { CardShell, StatusBadge } from "@/components/integrations/cards";
 import { WebhooksCard } from "@/components/forms/webhooks-card";
 import { EmailCard } from "@/components/forms/email-card";
 import { DiscordCard } from "@/components/forms/discord-card";
+import { NotionCard } from "@/components/forms/notion-card";
 import type {
   GoogleSheetsState,
   FormWebhook,
   FormEmailState,
   FormDiscordState,
+  NotionState,
 } from "@/lib/data/integrations";
 import { SVGIcon } from "../ui/svg-icon";
 
@@ -37,6 +35,7 @@ export function IntegrationsPanel({
   webhooks,
   email,
   discord,
+  notion,
   ownerEmail,
 }: {
   formId: string;
@@ -44,6 +43,7 @@ export function IntegrationsPanel({
   webhooks: FormWebhook[];
   email: FormEmailState;
   discord: FormDiscordState;
+  notion: NotionState;
   ownerEmail: string;
 }) {
   const router = useRouter();
@@ -54,15 +54,22 @@ export function IntegrationsPanel({
 
   // Surface the OAuth round-trip result once, then strip the query param.
   React.useEffect(() => {
-    const status = searchParams.get("google");
-    if (!status) return;
+    const google = searchParams.get("google");
+    const notionStatus = searchParams.get("notion");
+    if (!google && !notionStatus) return;
+
+    const provider = google ? "Google" : "Notion";
+    const status = google ?? notionStatus;
     if (status === "connected") {
-      showToast("Google connected, all forms now sync to Sheets", {
-        type: "success",
-      });
+      showToast(
+        google
+          ? "Google connected, all forms now sync to Sheets"
+          : "Notion connected, all forms now sync to Notion",
+        { type: "success" }
+      );
     } else if (status === "error") {
       const reason = searchParams.get("reason");
-      showToast("Couldn't connect Google", {
+      showToast(`Couldn't connect ${provider}`, {
         type: "error",
         description:
           reason === "denied" ? "Access was declined." : "Please try again.",
@@ -168,8 +175,8 @@ export function IntegrationsPanel({
         {/* ── Discord ── */}
         <DiscordCard formId={formId} state={discord} />
 
-        {/* ── Coming soon ── */}
-        <ComingSoonCards />
+        {/* ── Notion ── */}
+        <NotionCard formId={formId} state={notion} />
       </div>
 
       {/* ── Right-side details: this form's sheet (mirrors the workspace page) ── */}
