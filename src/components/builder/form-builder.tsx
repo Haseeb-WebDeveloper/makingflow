@@ -69,7 +69,11 @@ type SaveState = "idle" | "saving" | "saved" | "error";
 let _seq = 0;
 const rid = () => `m${++_seq}`;
 
-const BUILDER_PHRASES = ["Reading your request…", "Designing the form…", "Adding the fields…"];
+const BUILDER_PHRASES = [
+  "Reading your request…",
+  "Designing the form…",
+  "Adding the fields…",
+];
 
 export function FormBuilder({
   initialForm,
@@ -152,7 +156,9 @@ export function FormBuilder({
   // Delete-on-leave: when "New form" created this draft and the user leaves it
   // still empty, discard it. `enteredBlank` is captured at mount; `discarded`
   // makes the delete fire at most once.
-  const enteredBlankRef = useRef(initialForm ? isBlankForm(initialForm) : false);
+  const enteredBlankRef = useRef(
+    initialForm ? isBlankForm(initialForm) : false
+  );
   const draftDiscardedRef = useRef(false);
 
   const { object, submit, isLoading, error, stop } = useObject({
@@ -743,7 +749,7 @@ export function FormBuilder({
             canvas is scrolled. */}
       </main>
       {isLoading && !firstBuild ? (
-        <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center">
+        <div className="pointer-events-none absolute inset-0 pl-[380px] z-20 flex items-center justify-center">
           <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-background/95 px-3.5 py-1.5 text-xs font-medium text-muted-foreground shadow-md backdrop-blur">
             <Loading fill className="size-4 shrink-0" />
             Updating…
@@ -896,7 +902,6 @@ function AssistantRow({
     </div>
   );
 }
-
 
 /**
  * Read an image File into a data URL, downscaling its long edge so the payload

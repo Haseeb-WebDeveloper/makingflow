@@ -103,6 +103,9 @@ function cldDeliver(url: string, transform: string): string {
   const marker = "/image/upload/"
   const i = url.indexOf(marker)
   if (i === -1) return url
+  // SVGs are vector — rasterizing them (f_auto / q_auto / resize) blurs them and
+  // can crop. Serve the original so the logo/banner stays crisp at any size.
+  if (/\.svg(\?|$)/i.test(url)) return url
   return `${url.slice(0, i + marker.length)}${transform}/${url.slice(i + marker.length)}`
 }
 
