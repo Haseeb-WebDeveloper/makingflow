@@ -32,6 +32,10 @@ import {
 import { UserMenu } from "@/components/dashboard/user-menu";
 import { FormRowMenu } from "@/components/dashboard/form-row-menu";
 import { NewFormButton } from "@/components/dashboard/new-form-button";
+import {
+  WorkspaceSwitcher,
+  type SwitcherWorkspace,
+} from "@/components/dashboard/workspace-switcher";
 import { SVGIcon } from "../ui/svg-icon";
 
 const FORMS_IN_SIDEBAR = 10;
@@ -40,7 +44,8 @@ export type DashboardShellProps = {
   navItems: DashboardNavItem[];
   forms: FormSummary[];
   user: { email: string; name: string; avatarUrl: string | null };
-  workspace: { name: string; plan: string } | null;
+  workspaces: SwitcherWorkspace[];
+  activeWorkspaceId: string | null;
   children: React.ReactNode;
 };
 
@@ -48,7 +53,8 @@ export function DashboardShell({
   navItems,
   forms,
   user,
-  workspace,
+  workspaces,
+  activeWorkspaceId,
   children,
 }: DashboardShellProps) {
   const pathname = usePathname() ?? "";
@@ -67,15 +73,14 @@ export function DashboardShell({
   }, []);
 
   const shownForms = forms.slice(0, FORMS_IN_SIDEBAR);
+  const activeWorkspace =
+    workspaces.find((w) => w.id === activeWorkspaceId) ?? workspaces[0] ?? null;
 
   return (
     <TooltipProvider delayDuration={300}>
       <SidebarProvider defaultOpen>
         <Sidebar collapsible="icon" variant="sidebar">
           <SidebarHeader className="h-14 flex-row items-center gap-2 border-b border-border px-4 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0">
-            {/* {workspace ? (
-              <WorkspaceChip name={workspace.name} plan={workspace.plan} />
-            ) : null} */}
             <SVGIcon src="/logo/logo.svg" preserveColors className="size-6 shrink-0 rounded" />
             <span className="truncate text-lg font-semibold tracking-tight group-data-[collapsible=icon]:hidden">
               MakingFlow
@@ -83,6 +88,11 @@ export function DashboardShell({
           </SidebarHeader>
 
           <SidebarContent>
+            {workspaces.length > 0 ? (
+              <SidebarGroup className="pb-0">
+                <WorkspaceSwitcher workspaces={workspaces} activeId={activeWorkspaceId} />
+              </SidebarGroup>
+            ) : null}
             <SidebarGroup>
               <SidebarGroupContent>
                 <SidebarMenu>
@@ -193,7 +203,7 @@ export function DashboardShell({
             </SidebarGroup>
           </SidebarContent>
 
-          {workspace?.plan === "free" ? (
+          {/* {activeWorkspace?.plan === "free" ? (
             <SidebarFooter className="px-2 pb-3 group-data-[collapsible=icon]:hidden">
               <div className="rounded-md border border-sidebar-border p-3 bg-background">
                 <p className="text-sm font-medium text-sidebar-foreground">
@@ -210,7 +220,7 @@ export function DashboardShell({
                 </Link>
               </div>
             </SidebarFooter>
-          ) : null}
+          ) : null} */}
 
           <SidebarRail />
         </Sidebar>

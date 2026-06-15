@@ -1,9 +1,13 @@
 import { cache } from 'react'
 import { redirect } from 'next/navigation'
-import { eq } from 'drizzle-orm'
+import { cookies } from 'next/headers'
+import { asc, eq, sql } from 'drizzle-orm'
 import { createClient } from '@/lib/supabase/server'
 import { db } from '@/lib/db'
 import { users, workspaceMembers, workspaces } from '@/lib/db/schema'
+
+/** Cookie holding the user's active workspace id (set by switchWorkspace / accept). */
+export const ACTIVE_WORKSPACE_COOKIE = 'mf_ws'
 
 type WorkspaceContext = {
   id: string
@@ -16,16 +20,21 @@ type WorkspaceContext = {
 /**
  * The single auth+tenant read, cached per request. One local JWT verification
  * (getClaims — no network round-trip to Supabase Auth, vs getUser) plus ONE DB
- * query that joins the user row to their default workspace membership. Collapses
- * what used to be two serial remote round-trips (user, then workspace) into one.
+ * query that joins the user row to ALL of their workspace memberships.
  *
  * We trust only `sub` from the token; everything authorization-relevant
- * (membership, role, plan) comes from our own tables. v1 ships one workspace per
- * user, so limit(1) is the default tenant.
+ * (membership, role, plan) comes from our own tables. A user may belong to
+ * several workspaces (their own + any they're invited to); the ACTIVE one is
+ * chosen from the `mf_ws` cookie when it names a workspace they actually belong
+ * to, otherwise the deterministic default (owner-first, then earliest joined).
+ *
+ * NOTE: reads cookies(), so this stays a per-request React cache() — never wrap
+ * it in `"use cache"` (a cached function can't read request cookies).
  */
 const getSession = cache(
   async (): Promise<{
     user: typeof users.$inferSelect
+    workspaces: WorkspaceContext[]
     workspace: WorkspaceContext | null
   } | null> => {
     try {
@@ -34,7 +43,7 @@ const getSession = cache(
       const userId = data?.claims?.sub
       if (error || !userId) return null
 
-      const [row] = await db
+      const rows = await db
         .select({
           user: users,
           workspace: {
@@ -49,20 +58,33 @@ const getSession = cache(
         .leftJoin(workspaceMembers, eq(workspaceMembers.userId, users.id))
         .leftJoin(workspaces, eq(workspaces.id, workspaceMembers.workspaceId))
         .where(eq(users.id, userId))
-        .limit(1)
-      if (!row) return null
+        // Deterministic default ordering: owners first, then earliest joined.
+        .orderBy(
+          sql`case when ${workspaceMembers.role} = 'owner' then 0 else 1 end`,
+          asc(workspaceMembers.createdAt),
+        )
+      if (rows.length === 0) return null
 
-      const workspace: WorkspaceContext | null =
-        row.workspace.id == null
-          ? null
-          : {
-              id: row.workspace.id,
-              name: row.workspace.name!,
-              slug: row.workspace.slug!,
-              plan: row.workspace.plan!,
-              role: row.workspace.role!,
-            }
-      return { user: row.user, workspace }
+      const user = rows[0].user
+      const list: WorkspaceContext[] = rows
+        .filter((r) => r.workspace.id != null)
+        .map((r) => ({
+          id: r.workspace.id!,
+          name: r.workspace.name!,
+          slug: r.workspace.slug!,
+          plan: r.workspace.plan!,
+          role: r.workspace.role!,
+        }))
+
+      // Active workspace: the cookie's choice if the user is a member of it
+      // (the find over their OWN rows is the membership check — a stale or
+      // forged cookie simply falls back to the default at index 0).
+      const cookieStore = await cookies()
+      const preferred = cookieStore.get(ACTIVE_WORKSPACE_COOKIE)?.value
+      const workspace =
+        (preferred ? list.find((w) => w.id === preferred) : undefined) ?? list[0] ?? null
+
+      return { user, workspaces: list, workspace }
     } catch {
       // Auth/DB unreachable — treat as unauthenticated rather than 500 the page.
       return null
@@ -89,3 +111,7 @@ export async function getOptionalUser() {
  * (getRequiredUser in the dashboard layout) handles the redirect.
  */
 export const getDefaultWorkspace = cache(async () => (await getSession())?.workspace ?? null)
+
+/** All workspaces the caller belongs to (for the sidebar switcher). Derived from
+ *  the same cached session read — no extra query. */
+export const getMyWorkspaces = cache(async () => (await getSession())?.workspaces ?? [])

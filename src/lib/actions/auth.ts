@@ -30,6 +30,14 @@ function safeNext(next: string | null | undefined, fallback = DEFAULT_HOME): str
   return next
 }
 
+/** Post-auth destination for an invite token, if a valid-looking one was passed. */
+function inviteDestination(invite: FormDataEntryValue | null, fallback = DEFAULT_HOME): string {
+  if (typeof invite !== 'string') return fallback
+  const token = invite.trim()
+  if (!token || !/^[a-zA-Z0-9]+$/.test(token)) return fallback
+  return `/invite/${token}`
+}
+
 function callbackUrl(next: string): string {
   return `${getAppOrigin()}/auth/callback?next=${encodeURIComponent(next)}`
 }
@@ -94,7 +102,8 @@ export async function loginAction(
     return { success: false, error: 'Wrong email or password.' }
   }
 
-  return { success: true, data: { redirectTo: DEFAULT_HOME } }
+  // When the user came from an invite link, land them on the accept page.
+  return { success: true, data: { redirectTo: inviteDestination(formData.get('invite')) } }
 }
 
 export async function signupAction(
@@ -113,13 +122,16 @@ export async function signupAction(
     }
   }
 
+  // If they signed up from an invite, route post-confirmation to the accept page.
+  const dest = inviteDestination(formData.get('invite'))
+
   const supabase = await createClient()
   const { data, error } = await supabase.auth.signUp({
     email: parsed.data.email,
     password: parsed.data.password,
     options: {
       data: { name: parsed.data.name },
-      emailRedirectTo: callbackUrl(DEFAULT_HOME),
+      emailRedirectTo: callbackUrl(dest),
     },
   })
 
@@ -146,7 +158,7 @@ export async function signupAction(
 
   // A session means email confirmation is OFF — go straight in. Otherwise the
   // user must confirm via the emailed link first.
-  if (data.session) return { success: true, data: { redirectTo: DEFAULT_HOME, email: parsed.data.email } }
+  if (data.session) return { success: true, data: { redirectTo: dest, email: parsed.data.email } }
   return { success: true, data: { needsConfirmation: true, email: parsed.data.email } }
 }
 

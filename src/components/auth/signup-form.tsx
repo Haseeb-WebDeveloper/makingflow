@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useTransition } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { signupAction } from "@/lib/actions/auth"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -14,6 +14,9 @@ type FieldErrors = Record<string, string>
 
 export function SignupForm() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const invite = searchParams.get("invite")
+  const postAuthNext = invite ? `/invite/${invite}` : "/forms"
   const [formError, setFormError] = useState<string | null>(null)
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
   const [pending, startTransition] = useTransition()
@@ -23,6 +26,7 @@ export function SignupForm() {
     setFormError(null)
     setFieldErrors({})
     const fd = new FormData(e.currentTarget)
+    if (invite) fd.set("invite", invite)
 
     startTransition(async () => {
       const res = await signupAction(fd)
@@ -44,7 +48,7 @@ export function SignupForm() {
 
   return (
     <div>
-      <GoogleButton next="/forms" label="Sign up with Google" />
+      <GoogleButton next={postAuthNext} label="Sign up with Google" />
       <AuthDivider label="or" />
 
       <AuthError message={formError} />

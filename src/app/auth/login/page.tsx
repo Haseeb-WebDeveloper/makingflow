@@ -8,8 +8,17 @@ import { getOptionalUser } from "@/lib/auth/session"
 
 export const metadata: Metadata = { title: "Sign in · MakingFlow" }
 
-export default async function LoginPage() {
-  if (await getOptionalUser()) redirect("/forms")
+function inviteRedirect(invite: string | undefined): string {
+  return invite && /^[a-zA-Z0-9]+$/.test(invite) ? `/invite/${invite}` : "/forms"
+}
+
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ invite?: string }>
+}) {
+  const { invite } = await searchParams
+  if (await getOptionalUser()) redirect(inviteRedirect(invite))
 
   return (
     <AuthShell

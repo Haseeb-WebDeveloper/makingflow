@@ -1,4 +1,4 @@
-import { getRequiredUser, getDefaultWorkspace } from "@/lib/auth/session"
+import { getRequiredUser, getDefaultWorkspace, getMyWorkspaces } from "@/lib/auth/session"
 import { getWorkspaceForms } from "@/lib/data/forms"
 import { DashboardShell } from "@/components/dashboard/dashboard-shell"
 import { MAKINGFLOW_NAV } from "@/components/dashboard/dashboard-nav"
@@ -16,7 +16,10 @@ export default async function DashboardLayout({
   children: React.ReactNode
 }) {
   const user = await getRequiredUser()
-  const workspace = await getDefaultWorkspace()
+  const [workspace, workspaces] = await Promise.all([
+    getDefaultWorkspace(),
+    getMyWorkspaces(),
+  ])
   const forms = workspace ? await getWorkspaceForms(workspace.id) : []
 
   return (
@@ -29,7 +32,13 @@ export default async function DashboardLayout({
         publicId: f.publicId,
       }))}
       user={{ email: user.email, name: user.name ?? "", avatarUrl: user.avatarUrl }}
-      workspace={workspace ? { name: workspace.name, plan: workspace.plan } : null}
+      workspaces={workspaces.map((w) => ({
+        id: w.id,
+        name: w.name,
+        plan: w.plan,
+        role: w.role,
+      }))}
+      activeWorkspaceId={workspace?.id ?? null}
     >
       {children}
     </DashboardShell>

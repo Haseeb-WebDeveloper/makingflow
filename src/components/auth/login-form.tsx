@@ -23,6 +23,9 @@ export function LoginForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const redirectTo = safeRedirect(searchParams.get("redirectTo"))
+  const invite = searchParams.get("invite")
+  // When arriving from an invite link, send the user to the accept page next.
+  const postAuthNext = invite ? `/invite/${invite}` : redirectTo
 
   const [mode, setMode] = useState<Mode>("password")
   const [formError, setFormError] = useState<string | null>(null)
@@ -48,7 +51,7 @@ export function LoginForm() {
 
     startTransition(async () => {
       if (mode === "magic") {
-        fd.set("next", redirectTo)
+        fd.set("next", postAuthNext)
         const res = await sendMagicLink(fd)
         if (!res.success) {
           setFormError(res.error)
@@ -59,20 +62,21 @@ export function LoginForm() {
         return
       }
 
+      if (invite) fd.set("invite", invite)
       const res = await loginAction(fd)
       if (!res.success) {
         setFormError(res.error)
         if (res.fieldErrors) setFieldErrors(res.fieldErrors)
         return
       }
-      router.push(redirectTo)
+      router.push(res.data.redirectTo)
       router.refresh()
     })
   }
 
   return (
     <div>
-      <GoogleButton next={redirectTo} />
+      <GoogleButton next={postAuthNext} />
       <AuthDivider label="or" />
 
       <AuthError message={formError} />

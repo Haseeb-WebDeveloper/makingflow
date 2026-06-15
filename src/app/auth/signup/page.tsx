@@ -1,3 +1,4 @@
+import { Suspense } from "react"
 import Link from "next/link"
 import { redirect } from "next/navigation"
 import type { Metadata } from "next"
@@ -7,8 +8,17 @@ import { getOptionalUser } from "@/lib/auth/session"
 
 export const metadata: Metadata = { title: "Create your account · MakingFlow" }
 
-export default async function SignupPage() {
-  if (await getOptionalUser()) redirect("/forms")
+function inviteRedirect(invite: string | undefined): string {
+  return invite && /^[a-zA-Z0-9]+$/.test(invite) ? `/invite/${invite}` : "/forms"
+}
+
+export default async function SignupPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ invite?: string }>
+}) {
+  const { invite } = await searchParams
+  if (await getOptionalUser()) redirect(inviteRedirect(invite))
 
   return (
     <AuthShell
@@ -23,7 +33,10 @@ export default async function SignupPage() {
         </>
       }
     >
-      <SignupForm />
+      {/* SignupForm reads searchParams (?invite=) → needs a Suspense boundary */}
+      <Suspense fallback={<div className="h-80" aria-hidden />}>
+        <SignupForm />
+      </Suspense>
     </AuthShell>
   )
 }
