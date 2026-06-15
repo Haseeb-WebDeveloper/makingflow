@@ -1,4 +1,5 @@
 import { Reveal } from "./reveal"
+import { Eyebrow } from "./eyebrow"
 
 const SUGGESTIONS = [
   "Summarize this week",
@@ -8,12 +9,12 @@ const SUGGESTIONS = [
 
 export function AskAiSection() {
   return (
-    <section className="border-t border-border bg-muted/30">
-      <div className="mx-auto max-w-5xl px-5 py-20 sm:px-8 sm:py-28">
+    <section className="border-t border-border bg-[linear-gradient(180deg,var(--accent),var(--background))]">
+      <div className="mx-auto max-w-7xl px-5 py-20 sm:px-8 sm:py-28">
         <div className="grid gap-x-14 gap-y-10 lg:grid-cols-[1fr_1.15fr] lg:items-center">
           <div>
             <Reveal>
-              <p className="text-sm font-medium text-primary">AI summaries</p>
+              <Eyebrow>AI summaries</Eyebrow>
             </Reveal>
             <Reveal delay={80}>
               <h2 className="mt-4 max-w-md font-sebenta text-3xl font-bold leading-[1.12] tracking-tight text-foreground sm:text-[2.6rem]">
@@ -51,7 +52,7 @@ export function AskAiSection() {
 
               <div className="space-y-4 p-4 sm:p-5">
                 <div className="flex justify-end">
-                  <p className="max-w-[85%] rounded-2xl rounded-br-md bg-foreground px-3.5 py-2 text-sm text-background">
+                  <p className="max-w-[85%] rounded-xl rounded-br-md bg-foreground px-3.5 py-2 text-sm text-background">
                     What are candidates most excited about, and what worries them?
                   </p>
                 </div>

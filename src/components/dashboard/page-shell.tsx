@@ -2,7 +2,7 @@ import { Icon, type IconName } from "@/components/ui/icon"
 
 /** Standard content width + padding for every dashboard page. */
 export function PageContainer({ children }: { children: React.ReactNode }) {
-  return <div className="mx-auto w-full max-w-6xl px-6 py-8 sm:px-8">{children}</div>
+  return <div className="mx-auto w-full max-w-7xl px-6 py-8 sm:px-8">{children}</div>
 }
 
 export function PageHeader({
@@ -50,7 +50,7 @@ export function EmptyState({
       ) : null}
       <p className="text-sm font-medium text-foreground">{title}</p>
       {description ? (
-        <p className="mt-1 max-w-sm text-sm text-muted-foreground">{description}</p>
+        <p className="mt-1 max-w-sm text-sm text-muted-foreground text-balance">{description}</p>
       ) : null}
       {action ? <div className="mt-5">{action}</div> : null}
     </div>

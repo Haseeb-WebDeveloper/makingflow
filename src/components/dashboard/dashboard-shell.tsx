@@ -222,7 +222,7 @@ export function DashboardShell({
               <Link
                 href="/forms/new"
                 prefetch
-                className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm font-medium text-foreground transition-colors"
+                className="gradient-border inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium text-foreground"
               >
                 <SVGIcon src="/icons/plus.svg" className="size-4 text-foreground" />
                 New form

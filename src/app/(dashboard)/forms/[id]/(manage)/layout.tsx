@@ -44,7 +44,7 @@ export default async function FormManageLayout({
     <div className="flex min-h-0 flex-1 flex-col">
       <RecordRecentForm id={id} title={shell.title || "Untitled form"} />
       <div className="border-b border-border bg-background">
-        <div className="mx-auto w-full max-w-6xl px-6 pt-6 sm:px-8">
+        <div className="mx-auto w-full max-w-7xl px-6 pt-6 sm:px-8">
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
               <div className="flex items-center gap-2.5">
@@ -84,7 +84,7 @@ export default async function FormManageLayout({
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col">
-        <div className="mx-auto w-full max-w-6xl flex-1 px-6 py-8 sm:px-8">{children}</div>
+        <div className="mx-auto w-full max-w-7xl flex-1 px-6 py-8 sm:px-8">{children}</div>
       </div>
     </div>
   )

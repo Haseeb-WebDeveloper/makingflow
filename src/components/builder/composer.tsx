@@ -24,6 +24,7 @@ export function Composer({
   rows = 5,
   maxRows = 6,
   autoFocus = false,
+  animatedBorder = false,
   className,
 }: {
   value: string
@@ -41,6 +42,8 @@ export function Composer({
   /** Grow with content up to this many rows, then scroll. */
   maxRows?: number
   autoFocus?: boolean
+  /** Wrap the box in the moving brand-gradient border (the new-form prompt). */
+  animatedBorder?: boolean
   className?: string
 }) {
   const fileRef = useRef<HTMLInputElement>(null)
@@ -66,7 +69,10 @@ export function Composer({
   return (
     <div
       className={cn(
-        "rounded-2xl border border-border bg-background p-3 transition-colors focus-within:border-foreground/30",
+        "rounded-2xl bg-background p-3 transition-colors",
+        animatedBorder
+          ? "gradient-border [--gb-width:4px]"
+          : "border border-border focus-within:border-foreground/30",
         className,
       )}
     >

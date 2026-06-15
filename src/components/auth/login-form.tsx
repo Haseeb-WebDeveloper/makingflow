@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { GoogleButton } from "@/components/auth/google-button"
+import { PasswordInput } from "@/components/auth/password-input"
 import { AuthDivider, AuthError } from "@/components/auth/auth-shell"
 
 type Mode = "password" | "magic"
@@ -114,10 +115,9 @@ export function LoginForm() {
                 Forgot?
               </Link>
             </div>
-            <Input
+            <PasswordInput
               id="login-password"
               name="password"
-              type="password"
               autoComplete="current-password"
               placeholder="••••••••"
               required

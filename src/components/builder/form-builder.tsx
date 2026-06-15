@@ -502,6 +502,7 @@ export function FormBuilder({
             rows={3}
             maxRows={10}
             autoFocus
+            animatedBorder
           />
 
           <div className="mt-5 flex items-center justify-center gap-3 text-sm text-muted-foreground">

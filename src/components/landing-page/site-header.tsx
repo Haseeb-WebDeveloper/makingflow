@@ -3,23 +3,33 @@
 import { useState } from "react"
 import Link from "next/link"
 import { cn } from "@/lib/utils"
+import { SVGIcon } from "../ui/svg-icon"
 
-// Only link to anchors that actually exist on the page. Features/Pricing/etc.
-// pages don't exist yet, so they're left out rather than shipped broken.
-const LINKS = [{ name: "How it works", href: "#how" }]
+// Anchors map to real sections on the landing page.
+const LINKS = [
+  { name: "Features", href: "#features" },
+  { name: "How it works", href: "#how" },
+  { name: "Pricing", href: "#pricing" },
+  { name: "Integration", href: "#integration" },
+]
 
 export function SiteHeader({ isAuthed = false }: { isAuthed?: boolean }) {
   const [open, setOpen] = useState(false)
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-border bg-background/80 backdrop-blur-sm">
-      <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-5 sm:px-8">
+    <header className="absolute top-0 z-50 w-full">
+      <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-5 sm:px-8">
         {/* Wordmark */}
         <Link
           href="/"
-          className="font-sebenta text-xl font-bold tracking-tight text-foreground"
+          className="flex items-center gap-1 font-sebenta text-xl font-bold tracking-tight text-foreground"
           aria-label="MakingFlow home"
         >
+          <SVGIcon
+            src="/logo/logo.svg"
+            preserveColors
+            className="size-6 rounded"
+          />
           MakingFlow
         </Link>
 
@@ -57,7 +67,7 @@ export function SiteHeader({ isAuthed = false }: { isAuthed?: boolean }) {
                 href="/auth/signup"
                 className="rounded-md bg-foreground px-4 py-2 text-sm font-medium text-background transition-colors hover:bg-foreground/90"
               >
-                Start for free
+                Try it for free
               </Link>
             </>
           )}

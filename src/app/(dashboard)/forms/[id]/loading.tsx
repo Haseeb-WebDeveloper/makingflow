@@ -12,7 +12,7 @@ export default function FormDetailLoading() {
     <div className="flex min-h-0 flex-1 flex-col">
       {/* Header chrome (title + status + actions, then the tab strip) */}
       <div className="border-b border-border bg-background">
-        <div className="mx-auto w-full max-w-6xl px-6 pt-6 sm:px-8">
+        <div className="mx-auto w-full max-w-7xl px-6 pt-6 sm:px-8">
           <div className="flex items-start justify-between gap-4">
             <div className="flex items-center gap-2.5">
               <Skeleton className="h-6 w-48" />
@@ -34,7 +34,7 @@ export default function FormDetailLoading() {
 
       {/* Content (matches the default Insights tab) */}
       <div className="flex min-h-0 flex-1 flex-col">
-        <div className="mx-auto w-full max-w-6xl flex-1 px-6 py-8 sm:px-8">
+        <div className="mx-auto w-full max-w-7xl flex-1 px-6 py-8 sm:px-8">
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
               {Array.from({ length: 4 }).map((_, i) => (

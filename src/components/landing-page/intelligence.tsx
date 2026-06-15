@@ -1,11 +1,12 @@
 import { Reveal } from "./reveal"
+import { Eyebrow } from "./eyebrow"
 
 export function Intelligence() {
   return (
     <section className="border-t border-border bg-background">
-      <div className="mx-auto max-w-5xl px-5 py-20 sm:px-8 sm:py-28">
+      <div className="mx-auto max-w-7xl px-5 py-20 sm:px-8 sm:py-28">
         <Reveal>
-          <p className="text-sm font-medium text-primary">What “thinking” actually means</p>
+          <Eyebrow>What “thinking” actually means</Eyebrow>
         </Reveal>
         <Reveal delay={80}>
           <h2 className="mt-4 max-w-2xl font-sebenta text-3xl font-bold leading-[1.12] tracking-tight text-foreground sm:text-[2.6rem]">
@@ -96,7 +97,7 @@ function Capability({
   children: React.ReactNode
 }) {
   return (
-    <div className="flex h-full flex-col rounded-xl border border-border p-5 sm:p-6">
+    <div className="flex h-full flex-col rounded-xl border border-border bg-background p-5 shadow-sm transition-shadow hover:shadow-md sm:p-6">
       <h3 className="text-base font-semibold text-foreground">{title}</h3>
       <p className="mt-1.5 max-w-[46ch] text-sm leading-relaxed text-muted-foreground">{body}</p>
       <div className="mt-5">{children}</div>
@@ -108,7 +109,7 @@ function Bubble({ side, children }: { side: "user" | "ai"; children: React.React
   if (side === "user") {
     return (
       <div className="flex justify-end">
-        <span className="max-w-[80%] rounded-2xl rounded-br-md bg-foreground px-3 py-1.5 text-sm text-background">
+        <span className="max-w-[80%] rounded-xl rounded-br-md bg-foreground px-3 py-1.5 text-sm text-background">
           {children}
         </span>
       </div>
@@ -116,7 +117,7 @@ function Bubble({ side, children }: { side: "user" | "ai"; children: React.React
   }
   return (
     <div className="flex justify-start">
-      <span className="max-w-[88%] rounded-2xl rounded-bl-md bg-muted px-3 py-1.5 text-sm text-foreground">
+      <span className="max-w-[88%] rounded-xl rounded-bl-md bg-muted px-3 py-1.5 text-sm text-foreground">
         {children}
       </span>
     </div>

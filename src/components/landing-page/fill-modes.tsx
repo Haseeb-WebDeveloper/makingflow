@@ -2,8 +2,8 @@ import { Reveal } from "./reveal"
 
 export function FillModes() {
   return (
-    <section className="border-t border-border bg-muted/30">
-      <div className="mx-auto max-w-5xl px-5 py-20 sm:px-8 sm:py-28">
+    <section className="border-t border-border bg-[linear-gradient(180deg,color-mix(in_oklab,var(--primary)_6%,var(--background)),var(--background))]">
+      <div className="mx-auto max-w-7xl px-5 py-20 sm:px-8 sm:py-28">
         <Reveal>
           <h2 className="max-w-2xl font-sebenta text-3xl font-bold leading-[1.12] tracking-tight text-foreground sm:text-[2.6rem]">
             One form. Two ways to fill it.
@@ -67,7 +67,7 @@ function ModeCard({
   children: React.ReactNode
 }) {
   return (
-    <div className="flex h-full flex-col rounded-xl border border-border bg-background p-6 sm:p-7">
+    <div className="flex h-full flex-col rounded-xl border border-border bg-background p-6 shadow-sm sm:p-7">
       <span className="inline-flex w-fit items-center rounded-full border border-border px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
         {label}
       </span>
@@ -92,7 +92,7 @@ function ChatLine({ side, children }: { side: "ai" | "user"; children: React.Rea
     <div className={side === "user" ? "flex justify-end" : "flex justify-start"}>
       <span
         className={
-          "max-w-[88%] rounded-2xl px-3 py-1.5 text-sm " +
+          "max-w-[88%] rounded-xl px-3 py-1.5 text-sm " +
           (side === "user"
             ? "rounded-br-md bg-foreground text-background"
             : "rounded-bl-md bg-muted text-foreground")

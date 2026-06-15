@@ -22,7 +22,7 @@ export default function DashboardError({
   }, [error])
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col items-center justify-center px-6 py-24 text-center sm:px-8">
+    <div className="mx-auto flex w-full max-w-7xl flex-col items-center justify-center px-6 py-24 text-center sm:px-8">
       <span className="mb-4 flex size-12 items-center justify-center rounded-xl bg-destructive/10 text-destructive">
         <Icon name="info-square" className="size-6" />
       </span>

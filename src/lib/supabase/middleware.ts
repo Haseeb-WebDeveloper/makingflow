@@ -10,6 +10,8 @@ import { type NextRequest, NextResponse } from 'next/server'
 // must NOT be public here. Marketing pages get their own distinct paths.)
 const PUBLIC_PATHS = [
   '/', // marketing home (exact match only — see isPublicPath)
+  '/terms', // legal: terms of service (marketing, no protected route here)
+  '/privacy', // legal: privacy policy (marketing, no protected route here)
   '/f', // public form-fill runtime: /f/[formId]
   '/auth', // login, signup, callback, magic-link, password reset
   '/api/forms', // public submission + conversational turn endpoint (/api/forms/turn)

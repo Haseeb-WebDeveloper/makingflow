@@ -31,7 +31,7 @@ export default async function CheckEmailPage({
         </Link>
       }
     >
-      <div className="space-y-4 text-sm text-muted-foreground">
+      <div className="space-y-4 text-sm text-center text-muted-foreground">
         <p>
           Open the link on this device to{" "}
           {isMagic ? "sign in" : "finish creating your account"}. The link expires

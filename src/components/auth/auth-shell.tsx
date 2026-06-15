@@ -14,9 +14,9 @@ export function AuthShell({
   footer?: React.ReactNode;
 }) {
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-background px-5 py-12">
-      <div className="w-full max-w-sm">
-        <div className="mb-8 flex justify-center">
+    <div className="flex min-h-screen flex-col items-center justify-center bg-background px-5 pb-12 pt-8">
+      <div className="w-full max-w-md">
+        <div className="mb-2 flex justify-center">
           <Link
             href="/"
             className="font-sebenta text-xl font-bold tracking-tight text-foreground"
@@ -25,7 +25,7 @@ export function AuthShell({
             <SVGIcon
               src="/logo/logo.svg"
               preserveColors
-              className="size-8 rounded"
+              className="size-10 rounded"
             />
           </Link>
         </div>

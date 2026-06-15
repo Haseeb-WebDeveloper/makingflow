@@ -377,3 +377,44 @@
   background-color: var(--border);
   border-radius: 9999px;
 }
+
+/* ── Moving gradient border ────────────────────────────────────────────────
+   A brand-hued conic gradient that rotates around the element's edge. The
+   interior is painted by a padding-box layer (--gb-fill), so only the ring
+   (--gb-width) shows the gradient; the conic sits on the border-box layer.
+   Used on the New-form CTA and the new-form composer. The @property below is
+   what lets the angle interpolate (a plain CSS var would jump, not rotate).
+   Keep the element's own radius (rounded-md/rounded-2xl) — the ring follows it. */
+@property --gb-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+
+.gradient-border {
+  --gb-fill: var(--background);
+  --gb-width: 2.5px;
+  border: var(--gb-width) solid transparent;
+  background:
+    linear-gradient(var(--gb-fill), var(--gb-fill)) padding-box,
+    conic-gradient(
+        from var(--gb-angle),
+        var(--primary),
+        #5b4bff,
+        #c77dff,
+        #5b4bff,
+        var(--primary)
+      )
+      border-box;
+  animation: gb-spin 4s linear infinite;
+}
+@keyframes gb-spin {
+  to {
+    --gb-angle: 360deg;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .gradient-border {
+    animation: none;
+  }
+}

@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { GoogleButton } from "@/components/auth/google-button"
+import { PasswordInput } from "@/components/auth/password-input"
 import { AuthDivider, AuthError } from "@/components/auth/auth-shell"
 
 type FieldErrors = Record<string, string>
@@ -99,10 +100,9 @@ export function SignupForm() {
           <Label htmlFor="signup-password" className="text-sm font-medium text-foreground">
             Password
           </Label>
-          <Input
+          <PasswordInput
             id="signup-password"
             name="password"
-            type="password"
             autoComplete="new-password"
             placeholder="At least 8 characters"
             required

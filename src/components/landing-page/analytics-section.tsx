@@ -1,4 +1,5 @@
 import { Reveal } from "./reveal"
+import { Eyebrow } from "./eyebrow"
 
 const TREND = [4, 6, 5, 9, 8, 12, 10, 15, 13, 18, 16, 22, 21, 27]
 
@@ -18,9 +19,9 @@ const DROP_OFF = [
 export function AnalyticsSection() {
   return (
     <section className="border-t border-border bg-background">
-      <div className="mx-auto max-w-5xl px-5 py-20 sm:px-8 sm:py-28">
+      <div className="mx-auto max-w-7xl px-5 py-20 sm:px-8 sm:py-28">
         <Reveal>
-          <p className="text-sm font-medium text-primary">Built-in analytics</p>
+          <Eyebrow>Built-in analytics</Eyebrow>
         </Reveal>
         <Reveal delay={80}>
           <h2 className="mt-4 max-w-2xl font-sebenta text-3xl font-bold leading-[1.12] tracking-tight text-foreground sm:text-[2.6rem]">
