@@ -104,6 +104,9 @@ export type FormShell = {
   customDomainId: string | null
   domain: string | null
   slug: string | null
+  // True when post-submit AI summary/screening is opted in (drives the
+  // response-detail "Generate" affordance).
+  intelligenceEnabled: boolean
 }
 
 /**
@@ -125,12 +128,20 @@ export async function getFormShell(id: string, workspaceId: string): Promise<For
       customDomainId: forms.customDomainId,
       slug: forms.slug,
       domain: customDomains.domain,
+      aiConfig: forms.aiConfig,
     })
     .from(forms)
     .leftJoin(customDomains, eq(customDomains.id, forms.customDomainId))
     .where(and(eq(forms.id, id), eq(forms.workspaceId, workspaceId), isNull(forms.deletedAt)))
     .limit(1)
-  return row ?? null
+  if (!row) return null
+  const { aiConfig, ...shell } = row
+  return {
+    ...shell,
+    intelligenceEnabled:
+      !!aiConfig?.summaryEnabled ||
+      (!!aiConfig?.screeningEnabled && !!aiConfig?.screeningCriteria?.trim()),
+  }
 }
 
 export type FormSettingsData = {
@@ -148,6 +159,10 @@ export type FormSettingsData = {
   persona: string
   followUpsEnabled: boolean
   clarifyVagueAnswers: boolean
+  // Submission intelligence (post-submit AI; opt-in, both off by default).
+  summaryEnabled: boolean
+  screeningEnabled: boolean
+  screeningCriteria: string
   // Branding (logo + banner).
   logoUrl: string | null
   coverImageUrl: string | null
@@ -190,6 +205,9 @@ export async function getFormSettings(id: string, workspaceId: string): Promise<
     persona: row.aiConfig?.persona ?? "",
     followUpsEnabled: row.aiConfig?.followUpsEnabled ?? false,
     clarifyVagueAnswers: row.aiConfig?.clarifyVagueAnswers ?? false,
+    summaryEnabled: row.aiConfig?.summaryEnabled ?? false,
+    screeningEnabled: row.aiConfig?.screeningEnabled ?? false,
+    screeningCriteria: row.aiConfig?.screeningCriteria ?? "",
     logoUrl: row.theme?.logoUrl ?? null,
     coverImageUrl: row.theme?.coverImageUrl ?? null,
   }
@@ -202,9 +220,18 @@ export type SubmissionColumn = {
   options: { id: string; label: string }[] | null
 }
 
+export type SubmissionRowData = {
+  id: string
+  submittedAt: Date
+  values: Record<string, AnswerValue>
+  aiSummary: string | null
+  aiScore: number | null
+  aiScreenReason: string | null
+}
+
 export type SubmissionsTable = {
   columns: SubmissionColumn[]
-  rows: { id: string; submittedAt: Date; values: Record<string, AnswerValue> }[]
+  rows: SubmissionRowData[]
 }
 
 /** Submissions for the responses table — columns = answerable fields, rows = answers. */
@@ -234,7 +261,13 @@ export async function getFormSubmissions(
       .where(and(eq(formFields.formId, id), isNull(formFields.deletedAt)))
       .orderBy(formFields.position),
     db
-      .select({ id: submissions.id, submittedAt: submissions.createdAt })
+      .select({
+        id: submissions.id,
+        submittedAt: submissions.createdAt,
+        aiSummary: submissions.aiSummary,
+        aiScore: submissions.aiScore,
+        aiScreenReason: submissions.aiScreenReason,
+      })
       .from(submissions)
       .where(and(eq(submissions.formId, id), eq(submissions.status, "completed")))
       .orderBy(desc(submissions.createdAt))
@@ -273,6 +306,13 @@ export async function getFormSubmissions(
 
   return {
     columns,
-    rows: subs.map((s) => ({ id: s.id, submittedAt: s.submittedAt, values: byId.get(s.id) ?? {} })),
+    rows: subs.map((s) => ({
+      id: s.id,
+      submittedAt: s.submittedAt,
+      values: byId.get(s.id) ?? {},
+      aiSummary: s.aiSummary,
+      aiScore: s.aiScore,
+      aiScreenReason: s.aiScreenReason,
+    })),
   }
 }

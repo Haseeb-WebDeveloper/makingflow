@@ -24,7 +24,17 @@ export default async function SubmissionsPage({
     id: r.id,
     submittedAt: r.submittedAt.toISOString(),
     values: r.values,
+    aiSummary: r.aiSummary,
+    aiScore: r.aiScore,
+    aiScreenReason: r.aiScreenReason,
   }))
 
-  return <SubmissionsView columns={data.columns} rawRows={rawRows} formTitle={shell.title} />
+  return (
+    <SubmissionsView
+      columns={data.columns}
+      rawRows={rawRows}
+      formTitle={shell.title}
+      intelligenceEnabled={shell.intelligenceEnabled}
+    />
+  )
 }

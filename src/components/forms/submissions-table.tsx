@@ -10,6 +10,14 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Icon } from "@/components/ui/icon"
+import { Badge } from "@/components/ui/badge"
+
+/** Badge tone for a 0–100 fit score: strong / medium / weak. */
+export function scoreVariant(score: number): "default" | "secondary" | "destructive" {
+  if (score >= 70) return "default"
+  if (score >= 40) return "secondary"
+  return "destructive"
+}
 
 export type Cell = string | { kind: "files"; files: { name: string; url: string }[] }
 
@@ -25,10 +33,18 @@ export function SubmissionsTable({
   columns,
   rows,
   onDelete,
+  onOpen,
+  showScore = false,
+  scoreById,
 }: {
   columns: string[]
   rows: SubmissionRow[]
   onDelete?: (id: string) => void
+  /** When set, clicking a row opens the detail panel instead of inline-expanding. */
+  onOpen?: (id: string) => void
+  /** Render a leading Score column (screening enabled). */
+  showScore?: boolean
+  scoreById?: Map<string, number | null>
 }) {
   const [expanded, setExpanded] = useState<string | null>(null)
 
@@ -38,6 +54,7 @@ export function SubmissionsTable({
         <TableHeader>
           <TableRow>
             <TableHead className="whitespace-nowrap">Submitted</TableHead>
+            {showScore ? <TableHead className="whitespace-nowrap">Score</TableHead> : null}
             {columns.map((c, i) => (
               <TableHead key={i} className="whitespace-nowrap">
                 {c || `Question ${i + 1}`}
@@ -52,12 +69,14 @@ export function SubmissionsTable({
         </TableHeader>
         <TableBody>
           {rows.map((r) => {
-            const toggle = () => setExpanded(expanded === r.id ? null : r.id)
+            const toggle = () =>
+              onOpen ? onOpen(r.id) : setExpanded(expanded === r.id ? null : r.id)
+            const score = scoreById?.get(r.id)
             return (
             <TableRow
               key={r.id}
               tabIndex={0}
-              aria-expanded={expanded === r.id}
+              aria-expanded={onOpen ? undefined : expanded === r.id}
               onClick={toggle}
               onKeyDown={(e) => {
                 if (e.key === "Enter" || e.key === " ") {
@@ -70,6 +89,15 @@ export function SubmissionsTable({
               <TableCell className="whitespace-nowrap text-muted-foreground">
                 {formatDate(r.submittedAt)}
               </TableCell>
+              {showScore ? (
+                <TableCell className="whitespace-nowrap">
+                  {score != null ? (
+                    <Badge variant={scoreVariant(score)}>{score}</Badge>
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
+                  )}
+                </TableCell>
+              ) : null}
               {r.cells.map((cell, i) => (
                 <TableCell
                   key={i}

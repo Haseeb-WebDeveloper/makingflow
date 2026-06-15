@@ -635,6 +635,7 @@ export const submissions = pgTable(
     // AI artifacts — always nullable, never required to accept a submission.
     aiSummary: text('ai_summary'),
     aiScore: integer('ai_score'), // screening score 0-100
+    aiScreenReason: text('ai_screen_reason'), // one-line rationale for aiScore
     // Computed values from answer points (quiz result, lead score), keyed by
     // whatever the calculation defines.
     calculations: jsonb('calculations').$type<Record<string, number>>(),

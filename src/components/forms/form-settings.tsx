@@ -162,6 +162,10 @@ function diffPatch(base: FormSettingsData, next: FormSettingsData): FormSettings
   if (next.followUpsEnabled !== base.followUpsEnabled) p.followUpsEnabled = next.followUpsEnabled
   if (next.clarifyVagueAnswers !== base.clarifyVagueAnswers)
     p.clarifyVagueAnswers = next.clarifyVagueAnswers
+  if (next.summaryEnabled !== base.summaryEnabled) p.summaryEnabled = next.summaryEnabled
+  if (next.screeningEnabled !== base.screeningEnabled) p.screeningEnabled = next.screeningEnabled
+  if (next.screeningCriteria !== base.screeningCriteria)
+    p.screeningCriteria = next.screeningCriteria
   if (next.logoUrl !== base.logoUrl) p.logoUrl = next.logoUrl
   if (next.coverImageUrl !== base.coverImageUrl) p.coverImageUrl = next.coverImageUrl
   return p
@@ -301,6 +305,41 @@ export const FormSettings = forwardRef<
             />
           </>
         ) : null}
+      </div>
+
+      <h2 className="mb-1 mt-8 text-sm font-semibold text-foreground">Submission intelligence</h2>
+      <div className="rounded-lg border border-border px-4">
+        <SettingRow
+          title="AI summary"
+          description="After each response, generate a short AI summary shown at the top of the response detail. Works on classic and conversational forms."
+          control={
+            <Switch
+              checked={state.summaryEnabled}
+              onCheckedChange={(v) => setState((s) => ({ ...s, summaryEnabled: v }))}
+            />
+          }
+        />
+
+        <SettingRow
+          title="Screening & scoring"
+          description="Score each response 0–100 against criteria you describe in plain language (e.g. how well a candidate fits the role)."
+          control={
+            <Switch
+              checked={state.screeningEnabled}
+              onCheckedChange={(v) => setState((s) => ({ ...s, screeningEnabled: v }))}
+            />
+          }
+        >
+          {state.screeningEnabled ? (
+            <textarea
+              rows={3}
+              placeholder="Describe what a strong response looks like. e.g. “Rate fit for a senior motion designer: weight portfolio quality, relevant experience, and availability.”"
+              value={state.screeningCriteria}
+              onChange={(e) => setState((s) => ({ ...s, screeningCriteria: e.target.value }))}
+              className="scrollbar-thin w-full resize-none rounded-md border border-input bg-input/30 px-3 py-2 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:border-foreground/40"
+            />
+          ) : null}
+        </SettingRow>
       </div>
 
       <h2 className="mb-1 mt-8 text-sm font-semibold text-foreground">Branding</h2>

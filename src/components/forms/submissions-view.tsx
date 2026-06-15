@@ -10,6 +10,7 @@ import {
   type SubmissionRow,
 } from "@/components/forms/submissions-table"
 import { SubmissionsFilterDialog } from "@/components/forms/submissions-filter-dialog"
+import { SubmissionDetailSheet, type SubmissionDetail } from "@/components/forms/submission-detail"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -58,10 +59,12 @@ export function SubmissionsView({
   columns,
   rawRows,
   formTitle,
+  intelligenceEnabled = false,
 }: {
   columns: FilterColumn[]
   rawRows: RawRow[]
   formTitle: string
+  intelligenceEnabled?: boolean
 }) {
   const [search, setSearch] = useState("")
   const [filters, setFilters] = useState<Filter[]>([])
@@ -69,6 +72,7 @@ export function SubmissionsView({
   const [dialogOpen, setDialogOpen] = useState(false)
   const [deletedIds, setDeletedIds] = useState<Set<string>>(() => new Set())
   const [pendingDelete, setPendingDelete] = useState<string | null>(null)
+  const [openId, setOpenId] = useState<string | null>(null)
   const [isDeleting, startDelete] = useTransition()
 
   // Locally hide rows the owner has deleted so the table updates instantly; a
@@ -96,6 +100,28 @@ export function SubmissionsView({
   const activeCount = filters.filter(conditionComplete).length
   const columnLabels = columns.map((c) => c.label)
 
+  // Show the Score column once any response carries a screening score.
+  const scoreById = useMemo(
+    () => new Map(liveRows.map((r) => [r.id, r.aiScore ?? null])),
+    [liveRows],
+  )
+  const hasScores = useMemo(() => liveRows.some((r) => r.aiScore != null), [liveRows])
+
+  // Build the detail for the open response (answers + AI fields).
+  const openDetail: SubmissionDetail | null = useMemo(() => {
+    if (!openId) return null
+    const row = liveRows.find((r) => r.id === openId)
+    if (!row) return null
+    return {
+      id: row.id,
+      submittedAt: row.submittedAt,
+      answers: columns.map((c) => ({ label: c.label, cell: toCell(row.values[c.id], c.type) })),
+      aiSummary: row.aiSummary ?? null,
+      aiScore: row.aiScore ?? null,
+      aiScreenReason: row.aiScreenReason ?? null,
+    }
+  }, [openId, liveRows, columns])
+
   function confirmDelete() {
     const id = pendingDelete
     if (!id) return
@@ -103,6 +129,7 @@ export function SubmissionsView({
       const res = await deleteSubmission(id)
       if (res.success) {
         setDeletedIds((prev) => new Set(prev).add(id))
+        setOpenId((cur) => (cur === id ? null : cur))
         showToast("Response deleted", { type: "success" })
       } else {
         showToast(res.error, { type: "error" })
@@ -173,8 +200,21 @@ export function SubmissionsView({
           columns={columnLabels}
           rows={displayRows}
           onDelete={(id) => setPendingDelete(id)}
+          onOpen={(id) => setOpenId(id)}
+          showScore={hasScores}
+          scoreById={scoreById}
         />
       )}
+
+      <SubmissionDetailSheet
+        detail={openDetail}
+        open={openId !== null}
+        onOpenChange={(o) => {
+          if (!o) setOpenId(null)
+        }}
+        intelligenceEnabled={intelligenceEnabled}
+        onDelete={(id) => setPendingDelete(id)}
+      />
 
       <SubmissionsFilterDialog
         open={dialogOpen}

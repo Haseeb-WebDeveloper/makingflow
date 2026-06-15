@@ -7,7 +7,14 @@ export type FilterColumn = {
   type: string
   options: { id: string; label: string }[] | null
 }
-export type RawRow = { id: string; submittedAt: string; values: Record<string, AnswerValue> }
+export type RawRow = {
+  id: string
+  submittedAt: string
+  values: Record<string, AnswerValue>
+  aiSummary?: string | null
+  aiScore?: number | null
+  aiScreenReason?: string | null
+}
 export type Filter = FieldCondition // { fieldId, operator, value? }
 export type MatchMode = "all" | "any"
 

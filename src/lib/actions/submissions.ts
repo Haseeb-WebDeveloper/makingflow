@@ -21,6 +21,7 @@ import { sendSubmissionEmails } from "@/lib/integrations/email"
 import { deliverDiscord } from "@/lib/integrations/discord"
 import { syncSubmissionToNotion, deleteSubmissionFromNotion } from "@/lib/integrations/notion-sync"
 import { destroyAssets, resourceTypeFromMime } from "@/lib/cloudinary/delete"
+import { processSubmission, intelligenceEnabled } from "@/lib/ai/submission-intelligence"
 import { getDefaultWorkspace } from "@/lib/auth/session"
 import { NON_ANSWER_TYPES, isEmpty } from "@/lib/builder/logic"
 
@@ -355,6 +356,7 @@ export async function submitForm(input: {
     value: a.value,
   }))
   const committedId = submissionId
+  const wantsIntelligence = intelligenceEnabled(form.aiConfig)
 
   after(async () => {
     await logFormEvent({
@@ -384,6 +386,9 @@ export async function submitForm(input: {
         committedId ?? "",
       ),
     ])
+    // Post-submission AI summary/screening (opt-in; self-gates on aiConfig).
+    // Runs after delivery so a slow model never delays integrations.
+    if (wantsIntelligence) await processSubmission(committedId ?? "")
   })
 
   return { success: true }
@@ -448,5 +453,35 @@ export async function deleteSubmission(submissionId: string): Promise<SubmitResu
     ])
   })
 
+  return { success: true }
+}
+
+/**
+ * Owner-side: (re)generate the AI summary/score for one submission on demand —
+ * powers the "Generate" button in the response detail and lets owners backfill
+ * responses collected before they enabled intelligence. Respects the form's
+ * opt-in flags (no-op if neither is on). Workspace-scoped.
+ */
+export async function generateSubmissionIntelligence(
+  submissionId: string,
+): Promise<SubmitResult> {
+  const workspace = await getDefaultWorkspace()
+  if (!workspace) return { success: false, error: "Not authorized" }
+
+  const [sub] = await db
+    .select({ id: submissions.id, formId: submissions.formId, workspaceId: submissions.workspaceId })
+    .from(submissions)
+    .where(eq(submissions.id, submissionId))
+    .limit(1)
+  if (!sub || sub.workspaceId !== workspace.id) {
+    return { success: false, error: "Submission not found" }
+  }
+
+  const result = await processSubmission(submissionId)
+  if (!result) {
+    return { success: false, error: "Couldn't generate. Check that AI summary or screening is enabled." }
+  }
+
+  revalidatePath(`/forms/${sub.formId}/submissions`)
   return { success: true }
 }

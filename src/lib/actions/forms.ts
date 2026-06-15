@@ -412,6 +412,10 @@ export type FormSettingsPatch = {
   persona?: string | null
   followUpsEnabled?: boolean
   clarifyVagueAnswers?: boolean
+  // Submission intelligence (post-submit AI; opt-in).
+  summaryEnabled?: boolean
+  screeningEnabled?: boolean
+  screeningCriteria?: string | null
   // Branding (logo + banner) — null clears the asset.
   logoUrl?: string | null
   coverImageUrl?: string | null
@@ -484,13 +488,20 @@ export async function updateFormSettings(
   if (
     patch.persona !== undefined ||
     patch.followUpsEnabled !== undefined ||
-    patch.clarifyVagueAnswers !== undefined
+    patch.clarifyVagueAnswers !== undefined ||
+    patch.summaryEnabled !== undefined ||
+    patch.screeningEnabled !== undefined ||
+    patch.screeningCriteria !== undefined
   ) {
     const aiConfig: FormAiConfig = { ...(row.aiConfig ?? {}) }
     if (patch.persona !== undefined) aiConfig.persona = patch.persona?.trim() || undefined
     if (patch.followUpsEnabled !== undefined) aiConfig.followUpsEnabled = patch.followUpsEnabled
     if (patch.clarifyVagueAnswers !== undefined)
       aiConfig.clarifyVagueAnswers = patch.clarifyVagueAnswers
+    if (patch.summaryEnabled !== undefined) aiConfig.summaryEnabled = patch.summaryEnabled
+    if (patch.screeningEnabled !== undefined) aiConfig.screeningEnabled = patch.screeningEnabled
+    if (patch.screeningCriteria !== undefined)
+      aiConfig.screeningCriteria = patch.screeningCriteria?.trim() || undefined
     set.aiConfig = aiConfig
   }
 
