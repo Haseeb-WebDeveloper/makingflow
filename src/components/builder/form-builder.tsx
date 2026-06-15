@@ -846,8 +846,9 @@ export function FormBuilder({
           <AlertDialogHeader>
             <AlertDialogTitle>Delete this form?</AlertDialogTitle>
             <AlertDialogDescription>
-              This permanently removes “{headerTitle}” and all of its
-              submissions. This can&apos;t be undone.
+              This permanently deletes “{headerTitle}” and all of its
+              submissions. Uploaded files and images are also erased from
+              storage. This can&apos;t be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

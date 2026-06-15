@@ -1,10 +1,12 @@
 "use server"
 
-import { and, eq, isNull, notInArray, sql } from "drizzle-orm"
+import { after } from "next/server"
+import { and, eq, inArray, isNull, notInArray, sql } from "drizzle-orm"
 import { revalidatePath, updateTag } from "next/cache"
 import { db } from "@/lib/db"
-import { forms, formFields, type FormSettings, type FormAiConfig, type FormTheme, type FieldLogic } from "@/lib/db/schema"
+import { forms, formFields, uploads, type FormSettings, type FormAiConfig, type FormTheme, type FieldConfig, type FieldLogic } from "@/lib/db/schema"
 import { getRequiredUser, getDefaultWorkspace } from "@/lib/auth/session"
+import { destroyAssets, assetFromUrl, resourceTypeFromMime, type CloudinaryAsset } from "@/lib/cloudinary/delete"
 import { type EditorForm, DEFAULT_FORM_TITLE } from "@/lib/builder/form-model"
 
 type SaveResult = { success: true; id: string } | { success: false; error: string }
@@ -325,6 +327,14 @@ export async function duplicateForm(
 }
 
 /** Soft-delete a form (and hide it everywhere). Workspace-scoped. */
+/**
+ * Permanently delete a form and everything it owns. The DB cascade removes
+ * fields, submissions, answers, events, integrations and translations; we
+ * additionally erase every Cloudinary asset the form touched (respondent
+ * uploads + logo/cover + inline image blocks) so nothing is left in storage
+ * (GDPR + storage reclaim). Hard delete by design — there is no trash/restore;
+ * the confirmation dialog warns the user accordingly. Workspace-scoped.
+ */
 export async function deleteForm(
   formId: string,
 ): Promise<{ success: boolean; error?: string }> {
@@ -332,19 +342,56 @@ export async function deleteForm(
   const workspace = await getDefaultWorkspace()
   if (!workspace) return { success: false, error: "No workspace" }
 
-  const result = await db
-    .update(forms)
-    .set({ deletedAt: new Date() })
-    .where(
-      and(
-        eq(forms.id, formId),
-        eq(forms.workspaceId, workspace.id),
-        isNull(forms.deletedAt),
-      ),
-    )
-    .returning({ id: forms.id })
+  // Confirm ownership and grab the form's branding assets (stored as URLs).
+  const [form] = await db
+    .select({ id: forms.id, theme: forms.theme })
+    .from(forms)
+    .where(and(eq(forms.id, formId), eq(forms.workspaceId, workspace.id)))
+    .limit(1)
+  if (!form) return { success: false, error: "Form not found" }
 
-  if (result.length === 0) return { success: false, error: "Form not found" }
+  // Gather Cloudinary assets to erase before the row goes away:
+  //  - respondent uploads (uploads.formId is set-null on delete → would orphan)
+  //  - inline image blocks (config.imageUrl) and the logo/cover (theme).
+  const uploadRows = await db
+    .select({ id: uploads.id, storageKey: uploads.storageKey, mimeType: uploads.mimeType })
+    .from(uploads)
+    .where(eq(uploads.formId, formId))
+
+  const imageFields = await db
+    .select({ config: formFields.config })
+    .from(formFields)
+    .where(eq(formFields.formId, formId))
+
+  const assets: CloudinaryAsset[] = [
+    ...uploadRows.map((u) => ({
+      publicId: u.storageKey,
+      resourceType: resourceTypeFromMime(u.mimeType),
+    })),
+    ...imageFields
+      .map((f) => assetFromUrl((f.config as FieldConfig | null)?.imageUrl))
+      .filter((a): a is CloudinaryAsset => a !== null),
+    ...[form.theme?.logoUrl, form.theme?.coverImageUrl]
+      .map((url) => assetFromUrl(url))
+      .filter((a): a is CloudinaryAsset => a !== null),
+  ]
+
+  try {
+    // Cascade clears fields/submissions/answers/events/integrations/translations.
+    await db.delete(forms).where(eq(forms.id, formId))
+    // uploads.formId is set-null (not cascade), so remove those rows explicitly.
+    if (uploadRows.length > 0) {
+      await db.delete(uploads).where(inArray(uploads.id, uploadRows.map((u) => u.id)))
+    }
+  } catch (err) {
+    console.error("[deleteForm] failed", err)
+    return { success: false, error: "Couldn't delete the form. Please try again." }
+  }
+
+  // Erase the Cloudinary assets off the request path — a storage outage must
+  // never fail a delete that already committed.
+  if (assets.length > 0) after(async () => destroyAssets(assets))
+
   updateTag(`form-${formId}`)
   updateTag(`workspace-forms-${workspace.id}`)
   revalidatePath("/forms")

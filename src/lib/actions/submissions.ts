@@ -1,7 +1,7 @@
 "use server"
 
 import { after } from "next/server"
-import { and, eq, isNull, sql } from "drizzle-orm"
+import { and, eq, inArray, isNull, sql } from "drizzle-orm"
 import { db } from "@/lib/db"
 import {
   forms,
@@ -20,6 +20,7 @@ import { deliverWebhooks } from "@/lib/integrations/webhook"
 import { sendSubmissionEmails } from "@/lib/integrations/email"
 import { deliverDiscord } from "@/lib/integrations/discord"
 import { syncSubmissionToNotion, deleteSubmissionFromNotion } from "@/lib/integrations/notion-sync"
+import { destroyAssets, resourceTypeFromMime } from "@/lib/cloudinary/delete"
 import { getDefaultWorkspace } from "@/lib/auth/session"
 import { NON_ANSWER_TYPES, isEmpty } from "@/lib/builder/logic"
 
@@ -408,8 +409,21 @@ export async function deleteSubmission(submissionId: string): Promise<SubmitResu
     return { success: false, error: "Submission not found" }
   }
 
+  // Capture the respondent's uploaded files before the delete so we can erase
+  // them from Cloudinary (GDPR) — uploads.submissionId is set-null on delete,
+  // so they'd otherwise orphan with the asset left live.
+  const uploadRows = await db
+    .select({ id: uploads.id, storageKey: uploads.storageKey, mimeType: uploads.mimeType })
+    .from(uploads)
+    .where(eq(uploads.submissionId, submissionId))
+
   try {
     await db.delete(submissions).where(eq(submissions.id, submissionId))
+    if (uploadRows.length > 0) {
+      await db.delete(uploads).where(
+        inArray(uploads.id, uploadRows.map((u) => u.id)),
+      )
+    }
   } catch (err) {
     console.error("[deleteSubmission] failed", err)
     return { success: false, error: "Couldn't delete the response. Please try again." }
@@ -419,12 +433,18 @@ export async function deleteSubmission(submissionId: string): Promise<SubmitResu
   revalidatePath(`/forms/${sub.formId}`)
   revalidatePath(`/forms/${sub.formId}/submissions`)
 
-  // Remove the matching sheet row off the request path — a Sheets outage must
-  // not fail a delete that already committed in our DB.
+  // Off the request path — neither an integration outage nor a Cloudinary
+  // failure may fail a delete that already committed in our DB.
   after(async () => {
     await Promise.allSettled([
       deleteSubmissionFromSheet({ id: sub.formId, workspaceId: sub.workspaceId }, submissionId),
       deleteSubmissionFromNotion({ id: sub.formId, workspaceId: sub.workspaceId }, submissionId),
+      destroyAssets(
+        uploadRows.map((u) => ({
+          publicId: u.storageKey,
+          resourceType: resourceTypeFromMime(u.mimeType),
+        })),
+      ),
     ])
   })
 
