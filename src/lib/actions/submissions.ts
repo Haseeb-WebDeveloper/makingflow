@@ -18,6 +18,7 @@ import { getServerSubmissionMeta } from "@/lib/analytics/request-meta"
 import { syncSubmissionToSheets, deleteSubmissionFromSheet } from "@/lib/integrations/sync"
 import { deliverWebhooks } from "@/lib/integrations/webhook"
 import { sendSubmissionEmails } from "@/lib/integrations/email"
+import { deliverDiscord } from "@/lib/integrations/discord"
 import { getDefaultWorkspace } from "@/lib/auth/session"
 import { NON_ANSWER_TYPES, isEmpty } from "@/lib/builder/logic"
 
@@ -374,6 +375,7 @@ export async function submitForm(input: {
         { id: committedId ?? "", submittedAt },
       ),
       sendSubmissionEmails({ id: form.id, title: form.title }, webhookAnswers),
+      deliverDiscord({ id: form.id, title: form.title }, webhookAnswers),
     ])
   })
 

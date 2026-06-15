@@ -1,6 +1,6 @@
 "use client"
 
-import { useRef, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import dynamic from "next/dynamic"
 import { format, parse } from "date-fns"
 import type { PublicField, PublicTheme } from "@/lib/data/public-form"
@@ -24,10 +24,17 @@ import { cn } from "@/lib/utils"
 // them when the form actually has that field. `PhoneInput` pulls
 // react-phone-number-input + every country flag (~100KB); `Calendar` pulls
 // react-day-picker. Most forms have neither.
-const PhoneInput = dynamic(() =>
-  import("@/components/reui/phone-input").then((m) => m.PhoneInput),
+// A `loading` fallback keeps the lazy load contained to its OWN local Suspense
+// boundary. Without it, the first-render suspension bubbles up to the route's
+// loading.tsx — so opening the date picker flashed the whole-form skeleton.
+const PhoneInput = dynamic(
+  () => import("@/components/reui/phone-input").then((m) => m.PhoneInput),
+  { loading: () => <div className="h-9 w-full animate-pulse rounded-md border border-input bg-muted/30" /> },
 )
-const Calendar = dynamic(() => import("@/components/ui/calendar").then((m) => m.Calendar))
+const Calendar = dynamic(
+  () => import("@/components/ui/calendar").then((m) => m.Calendar),
+  { loading: () => <div className="h-[19rem] w-60 animate-pulse rounded-md bg-muted/30" /> },
+)
 
 export type UploadedFile = {
   storageKey: string
@@ -363,6 +370,12 @@ function DateControl({
   const [open, setOpen] = useState(false)
   const parsed = value ? parse(value, "yyyy-MM-dd", new Date()) : undefined
   const valid = parsed && !isNaN(parsed.getTime())
+
+  // Warm the calendar chunk as soon as a date field is on screen, so the first
+  // click opens the picker instantly instead of showing a loading state.
+  useEffect(() => {
+    void import("@/components/ui/calendar")
+  }, [])
 
   return (
     <Popover open={open} onOpenChange={setOpen}>

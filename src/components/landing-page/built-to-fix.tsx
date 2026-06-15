@@ -1,5 +1,4 @@
 import { Reveal } from "./reveal"
-import { ConversationLoop } from "./conversation-loop"
 
 type IconName = "clock" | "wand" | "plug" | "shield"
 
@@ -47,9 +46,59 @@ export function BuiltToFix() {
         </Reveal>
 
         <div className="mt-12 grid gap-5 lg:grid-cols-[0.9fr_1.1fr]">
-          {/* A living conversational form — it listens and adapts, on a loop. */}
+          {/* Static product snapshot — a few representative pieces, no motion. */}
           <Reveal className="h-full">
-            <ConversationLoop />
+            <div className="flex h-full min-h-[20rem] flex-col justify-center gap-3 rounded-xl border border-border bg-[linear-gradient(160deg,color-mix(in_oklab,var(--primary)_7%,var(--background)),color-mix(in_oklab,var(--secondary)_12%,var(--background)))] p-5 sm:p-6">
+              {/* AI summary */}
+              <div className="rounded-lg border border-border bg-background p-4">
+                <div className="flex items-center gap-2">
+                  <span className="grid size-6 place-items-center rounded-md bg-primary/10 text-primary">
+                    <svg viewBox="0 0 24 24" className="size-3.5" fill="currentColor" aria-hidden>
+                      <path d="M12 2l1.6 4.8L18 8l-4.4 1.2L12 14l-1.6-4.8L6 8l4.4-1.2L12 2z" />
+                    </svg>
+                  </span>
+                  <span className="text-xs font-semibold text-foreground">AI summary</span>
+                </div>
+                <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
+                  Sentiment trending <span className="font-medium text-success">positive</span> 8
+                  of 10 respondents are happy.
+                </p>
+              </div>
+
+              {/* adaptive conversation snippet */}
+              <div className="space-y-2 rounded-lg border border-border bg-background p-4">
+                <div className="flex justify-start">
+                  <span className="max-w-[85%] rounded-2xl rounded-bl-md bg-muted px-3 py-1.5 text-xs text-foreground">
+                    What could we improve?
+                  </span>
+                </div>
+                <div className="flex justify-end">
+                  <span className="max-w-[85%] rounded-2xl rounded-br-md bg-foreground px-3 py-1.5 text-xs text-background">
+                    Faster onboarding for new hires.
+                  </span>
+                </div>
+              </div>
+
+              {/* integration */}
+              <div className="flex items-center gap-3 rounded-lg border border-border bg-background p-4">
+                <span className="grid size-9 shrink-0 place-items-center rounded-md bg-success/10 text-success">
+                  <svg viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                    <rect x="4" y="4" width="16" height="16" rx="2" />
+                    <path d="M9 4v16M4 10h16" />
+                  </svg>
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-foreground">Google Sheets</p>
+                  <p className="text-xs text-muted-foreground">Every response, synced in real time</p>
+                </div>
+                <span className="inline-flex items-center gap-1 rounded-full bg-success/10 px-2 py-0.5 text-[10px] font-medium text-success">
+                  <svg viewBox="0 0 24 24" className="size-3" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                    <path d="M20 6 9 17l-5-5" />
+                  </svg>
+                  Synced
+                </span>
+              </div>
+            </div>
           </Reveal>
 
           {/* 2×2 feature cards */}

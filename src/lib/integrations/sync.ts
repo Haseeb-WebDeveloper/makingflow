@@ -18,14 +18,7 @@ import {
   DEFAULT_SHEET_NAME,
 } from "@/lib/integrations/google"
 import { createFormSheet, reconcileFormSheet } from "@/lib/integrations/sheets-provision"
-
-/** Render any answer value as a single cell string. */
-function cell(value: AnswerValue | undefined): string {
-  if (value == null) return ""
-  if (Array.isArray(value)) return value.map((v) => String(v)).join(", ")
-  if (typeof value === "object") return JSON.stringify(value)
-  return String(value)
-}
+import { answerToCell as cell } from "@/lib/submissions/answer-format"
 
 /** The workspace's Google connection (the global Sheets on-switch), or null. */
 async function googleConnection(workspaceId: string): Promise<WorkspaceConnection | null> {

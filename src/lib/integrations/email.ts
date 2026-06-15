@@ -8,15 +8,9 @@ import {
   type EmailIntegrationConfig,
 } from "@/lib/db/schema"
 import { isEmailConfigured, sendEmail } from "@/lib/email/provider"
+import { answerFiles, answerToCell } from "@/lib/submissions/answer-format"
 
 export type EmailAnswer = { question: string; value: AnswerValue }
-
-function cell(value: AnswerValue): string {
-  if (value == null) return ""
-  if (Array.isArray(value)) return value.map((v) => String(v)).join(", ")
-  if (typeof value === "object") return JSON.stringify(value)
-  return String(value)
-}
 
 function escapeHtml(s: string): string {
   return s
@@ -26,15 +20,31 @@ function escapeHtml(s: string): string {
     .replace(/"/g, "&quot;")
 }
 
+/** The answer cell as HTML — uploads become clickable links, everything else
+ * is escaped plain text. */
+function cellHtml(value: AnswerValue): string {
+  const files = answerFiles(value)
+  if (files) {
+    return files
+      .map((f) =>
+        f.url
+          ? `<a href="${escapeHtml(f.url)}" style="color:#0f1a0a">${escapeHtml(f.name)}</a>`
+          : escapeHtml(f.name),
+      )
+      .join(", ")
+  }
+  return escapeHtml(answerToCell(value)) || "—"
+}
+
 function buildHtml(title: string, answers: EmailAnswer[], link: string): string {
   const rows = answers
     .map(
       (a) =>
         `<tr><td style="padding:6px 0;color:#5c5c52;font-size:13px;vertical-align:top;width:40%">${escapeHtml(
           a.question || "—",
-        )}</td><td style="padding:6px 0;color:#0f1a0a;font-size:13px">${escapeHtml(
-          cell(a.value),
-        ) || "—"}</td></tr>`,
+        )}</td><td style="padding:6px 0;color:#0f1a0a;font-size:13px">${cellHtml(
+          a.value,
+        )}</td></tr>`,
     )
     .join("")
 

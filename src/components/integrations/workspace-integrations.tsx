@@ -39,6 +39,7 @@ export function WorkspaceIntegrationsPanel({
   const [detailsOpen, setDetailsOpen] = React.useState(false);
   const [emailOpen, setEmailOpen] = React.useState(false);
   const [webhookOpen, setWebhookOpen] = React.useState(false);
+  const [discordOpen, setDiscordOpen] = React.useState(false);
 
   React.useEffect(() => {
     const status = searchParams.get("google");
@@ -59,11 +60,12 @@ export function WorkspaceIntegrationsPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const { configured, connection, forms, email, webhook } = data;
+  const { configured, connection, forms, email, webhook, discord } = data;
   const connected = Boolean(connection);
   const syncingCount = forms.filter((f) => f.status === "syncing").length;
   const emailActive = email.forms.some((f) => f.status === "on");
   const webhookActive = webhook.forms.reduce((n, f) => n + f.active, 0);
+  const discordActive = discord.forms.some((f) => f.status === "on");
 
   function run(
     action: () => Promise<{ success: boolean; error?: string }>,
@@ -219,6 +221,42 @@ export function WorkspaceIntegrationsPanel({
               variant="outline"
               size="sm"
               onClick={() => setWebhookOpen(true)}
+            >
+              Manage
+            </Button>
+          </div>
+        </CardShell>
+
+        {/* ── Discord (per-form; managed from each form) ── */}
+        <CardShell>
+          <div className="flex items-start justify-between gap-3">
+            <SVGIcon src="/logo/discord.svg" preserveColors className="size-9" />
+            {discordActive ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-success-bg px-2 py-0.5 text-[11px] font-medium text-success-foreground">
+                <span className="size-1.5 rounded-full bg-success" />
+                On
+              </span>
+            ) : null}
+          </div>
+
+          <h3 className="mt-3 text-sm font-semibold text-foreground">Discord</h3>
+          <p className="mt-1 flex-1 text-sm text-muted-foreground">
+            Post each new response to a Discord channel via an incoming webhook.
+            Set up per form.
+          </p>
+
+          <div className="mt-4 flex items-center justify-between gap-3 border-t border-border pt-3">
+            <span className="text-xs text-muted-foreground">
+              {discord.forms.length === 0
+                ? "Not set up on any form"
+                : `${discord.forms.length} form${
+                    discord.forms.length === 1 ? "" : "s"
+                  } configured`}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setDiscordOpen(true)}
             >
               Manage
             </Button>
@@ -437,6 +475,68 @@ export function WorkspaceIntegrationsPanel({
                         </p>
                         <span className="mt-1 inline-flex rounded-full border border-border px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
                           {f.active} of {f.total} active
+                        </span>
+                      </div>
+                      <Icon
+                        name="discovery"
+                        className="size-4 shrink-0 text-muted-foreground group-hover:text-foreground"
+                      />
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      {/* ── Discord: per-form management list ── */}
+      <Sheet open={discordOpen} onOpenChange={setDiscordOpen}>
+        <SheetContent side="right" className="w-full sm:max-w-md">
+          <SheetHeader>
+            <div className="flex items-center gap-3">
+              <SVGIcon
+                src="/logo/discord.svg"
+                preserveColors
+                className="size-9"
+              />
+              <div>
+                <SheetTitle>Discord</SheetTitle>
+                <SheetDescription>
+                  Discord is set up per form. Open a form to manage its channel
+                  webhook.
+                </SheetDescription>
+              </div>
+            </div>
+          </SheetHeader>
+
+          <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4">
+            {discord.forms.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                No form posts to Discord yet. Open a form&apos;s Integrations tab
+                to set one up.
+              </p>
+            ) : (
+              <ul className="divide-y divide-border">
+                {discord.forms.map((f) => (
+                  <li key={f.id}>
+                    <Link
+                      href={`/forms/${f.id}/integrations`}
+                      onClick={() => setDiscordOpen(false)}
+                      className="group flex items-center gap-3 py-3"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium text-foreground group-hover:underline">
+                          {f.title}
+                        </p>
+                        <span
+                          className={
+                            f.status === "on"
+                              ? "mt-1 inline-flex items-center gap-1 rounded-full bg-success-bg px-2 py-0.5 text-[11px] font-medium text-success-foreground"
+                              : "mt-1 inline-flex rounded-full border border-border px-2 py-0.5 text-[11px] font-medium text-muted-foreground"
+                          }
+                        >
+                          {f.status === "on" ? "On" : "Paused"}
                         </span>
                       </div>
                       <Icon

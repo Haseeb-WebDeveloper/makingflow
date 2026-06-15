@@ -39,7 +39,6 @@ export function StatusBadge({ status }: { status: FormSyncStatus }) {
 }
 
 const COMING_SOON = [
-  { name: "Discord", domain: "Post submissions to a channel", icon: "discord" },
   { name: "Notion", domain: "Append responses to a database", icon: "notion" },
 ] as const;
 

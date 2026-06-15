@@ -119,6 +119,7 @@ export const integrationTypeEnum = pgEnum('integration_type', [
   'google_sheets',
   'webhook',
   'email',
+  'discord',
 ])
 
 export const connectionProviderEnum = pgEnum('connection_provider', ['google'])
@@ -262,10 +263,16 @@ export type EmailIntegrationConfig = {
   includeAnswers?: boolean
 }
 
+export type DiscordIntegrationConfig = {
+  webhookUrl: string // Discord incoming-webhook URL; the token in it IS the secret
+  includeAnswers?: boolean
+}
+
 export type IntegrationConfig =
   | WebhookIntegrationConfig
   | GoogleSheetsIntegrationConfig
   | EmailIntegrationConfig
+  | DiscordIntegrationConfig
 
 // One DNS challenge Vercel returns when a domain is added — surfaced in the UI
 // until the user's DNS is configured correctly.

@@ -22,10 +22,12 @@ import {
 } from "@/components/integrations/cards";
 import { WebhooksCard } from "@/components/forms/webhooks-card";
 import { EmailCard } from "@/components/forms/email-card";
+import { DiscordCard } from "@/components/forms/discord-card";
 import type {
   GoogleSheetsState,
   FormWebhook,
   FormEmailState,
+  FormDiscordState,
 } from "@/lib/data/integrations";
 import { SVGIcon } from "../ui/svg-icon";
 
@@ -34,12 +36,14 @@ export function IntegrationsPanel({
   state,
   webhooks,
   email,
+  discord,
   ownerEmail,
 }: {
   formId: string;
   state: GoogleSheetsState;
   webhooks: FormWebhook[];
   email: FormEmailState;
+  discord: FormDiscordState;
   ownerEmail: string;
 }) {
   const router = useRouter();
@@ -160,6 +164,9 @@ export function IntegrationsPanel({
 
         {/* ── Email notifications ── */}
         <EmailCard formId={formId} state={email} ownerEmail={ownerEmail} />
+
+        {/* ── Discord ── */}
+        <DiscordCard formId={formId} state={discord} />
 
         {/* ── Coming soon ── */}
         <ComingSoonCards />

@@ -152,8 +152,55 @@ export async function getFormEmail(formId: string): Promise<FormEmailState> {
   }
 }
 
+// ── Per-form Discord ────────────────────────────────────────────────────────
+
+export type FormDiscordState = {
+  // The webhook URL is its own secret, so it never leaves the server — the card
+  // only learns whether one is set (and a masked hint), not the URL itself.
+  notification: { id: string; hasWebhook: boolean; maskedUrl: string | null; includeAnswers: boolean; enabled: boolean } | null
+}
+
+/** Mask a Discord webhook URL down to a non-sensitive hint (…/123456/abcd••••). */
+function maskWebhookUrl(url: string): string {
+  const m = url.match(/\/webhooks\/(\d+)\/([\w-]+)$/)
+  if (!m) return "Webhook connected"
+  return `…/webhooks/${m[1]}/${m[2].slice(0, 4)}••••`
+}
+
+/** The form's single Discord webhook config — without exposing the URL/token. */
+export async function getFormDiscord(formId: string): Promise<FormDiscordState> {
+  const workspace = await getDefaultWorkspace()
+  if (!workspace) return { notification: null }
+
+  const [row] = await db
+    .select({ id: formIntegrations.id, enabled: formIntegrations.enabled, config: formIntegrations.config })
+    .from(formIntegrations)
+    .where(
+      and(
+        eq(formIntegrations.formId, formId),
+        eq(formIntegrations.workspaceId, workspace.id),
+        eq(formIntegrations.type, "discord"),
+      ),
+    )
+    .limit(1)
+
+  const cfg = row?.config as { webhookUrl?: string; includeAnswers?: boolean } | null
+  return {
+    notification: row
+      ? {
+          id: row.id,
+          hasWebhook: Boolean(cfg?.webhookUrl),
+          maskedUrl: cfg?.webhookUrl ? maskWebhookUrl(cfg.webhookUrl) : null,
+          includeAnswers: cfg?.includeAnswers ?? false,
+          enabled: row.enabled,
+        }
+      : null,
+  }
+}
+
 export type WorkspaceEmailForm = { id: string; title: string; status: "on" | "paused" }
 export type WorkspaceWebhookForm = { id: string; title: string; total: number; active: number }
+export type WorkspaceDiscordForm = { id: string; title: string; status: "on" | "paused" }
 
 export type WorkspaceIntegrations = {
   configured: boolean
@@ -166,6 +213,7 @@ export type WorkspaceIntegrations = {
   }[]
   email: { configured: boolean; forms: WorkspaceEmailForm[] }
   webhook: { forms: WorkspaceWebhookForm[] }
+  discord: { forms: WorkspaceDiscordForm[] }
 }
 
 export async function getWorkspaceIntegrations(): Promise<WorkspaceIntegrations | null> {
@@ -208,6 +256,9 @@ export async function getWorkspaceIntegrations(): Promise<WorkspaceIntegrations 
   const emailByForm = new Map(
     integrationRows.filter((r) => r.type === "email").map((r) => [r.formId, r]),
   )
+  const discordByForm = new Map(
+    integrationRows.filter((r) => r.type === "discord").map((r) => [r.formId, r]),
+  )
   const webhookByForm = new Map<string, { total: number; active: number }>()
   for (const r of integrationRows) {
     if (r.type !== "webhook") continue
@@ -249,6 +300,15 @@ export async function getWorkspaceIntegrations(): Promise<WorkspaceIntegrations 
           const w = webhookByForm.get(f.id)!
           return { id: f.id, title: title(f.title), total: w.total, active: w.active }
         }),
+    },
+    discord: {
+      forms: formRows
+        .filter((f) => discordByForm.has(f.id))
+        .map((f) => ({
+          id: f.id,
+          title: title(f.title),
+          status: discordByForm.get(f.id)!.enabled ? ("on" as const) : ("paused" as const),
+        })),
     },
   }
 }
