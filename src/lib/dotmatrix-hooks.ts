@@ -36,7 +36,8 @@ export function useCyclePhase({ active, cycleMsBase, speed = 1 }: UseCyclePhaseO
 
   useEffect(() => {
     if (!active) {
-      setPhase(0);
+      // No RAF while inactive; the hook returns 0 directly (see below), so we
+      // don't need to setState here.
       return;
     }
 
@@ -56,7 +57,7 @@ export function useCyclePhase({ active, cycleMsBase, speed = 1 }: UseCyclePhaseO
     return () => cancelAnimationFrame(rafId);
   }, [active, cycleMsBase, speed]);
 
-  return phase;
+  return active ? phase : 0;
 }
 
 interface UseSteppedCycleOptions {
@@ -124,10 +125,11 @@ export function useSteppedCycle({
     if (!active) {
       activeRef.current = false;
       currentStepRef.current = idleStep;
-      setStep(idleStep);
+      // Hook returns `idleStep` directly while inactive — no setState needed.
       return;
     }
 
+    let first = true;
     const updateStep = (now: number) => {
       if (!activeRef.current) {
         startMsRef.current = now;
@@ -136,7 +138,10 @@ export function useSteppedCycle({
 
       const elapsed = Math.max(0, now - startMsRef.current);
       const nextStep = Math.floor((elapsed % cycleMs) / stepMs) % safeSteps;
-      if (nextStep !== currentStepRef.current) {
+      // Always sync on the first frame after (re)activation so a stale step from
+      // a previous active session can't briefly show through.
+      if (first || nextStep !== currentStepRef.current) {
+        first = false;
         currentStepRef.current = nextStep;
         setStep(nextStep);
       }

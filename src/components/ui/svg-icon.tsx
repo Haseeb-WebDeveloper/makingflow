@@ -20,8 +20,10 @@ interface SVGIconProps extends React.HTMLAttributes<HTMLDivElement> {
  */
 export function SVGIcon({ src, className, preserveColors = false, ...props }: SVGIconProps) {
   if (preserveColors) {
-    // Render as img to preserve original colors
+    // Render as img to preserve original colors. next/image can't recolor or
+    // mask local SVGs the way this primitive needs, so a raw <img> is correct.
     return (
+      // eslint-disable-next-line @next/next/no-img-element
       <img
         src={src}
         alt=""

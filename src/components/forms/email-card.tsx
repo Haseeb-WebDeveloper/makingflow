@@ -11,7 +11,6 @@ import {
 } from "@/components/ui/sheet";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
-import { Icon } from "@/components/ui/icon";
 import { showToast } from "@/components/ui/toast";
 import { CardShell } from "@/components/integrations/cards";
 import {

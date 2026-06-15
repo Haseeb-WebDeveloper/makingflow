@@ -195,7 +195,7 @@ function ScaleRow({ from, to }: { from: number; to: number }) {
   )
 }
 
-function IconRow({ count, kind }: { count: number; kind: "star" }) {
+function IconRow({ count }: { count: number; kind: "star" }) {
   return (
     <div className="flex gap-1.5 text-muted-foreground/50">
       {Array.from({ length: count }, (_, i) => (

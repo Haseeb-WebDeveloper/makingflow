@@ -30,7 +30,6 @@ import {
   type FormSummary,
 } from "@/components/dashboard/command-menu";
 import { UserMenu } from "@/components/dashboard/user-menu";
-import { WorkspaceChip } from "@/components/dashboard/workspace-chip";
 import { FormRowMenu } from "@/components/dashboard/form-row-menu";
 import { NewFormButton } from "@/components/dashboard/new-form-button";
 import { SVGIcon } from "../ui/svg-icon";

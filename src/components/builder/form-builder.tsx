@@ -681,7 +681,7 @@ export function FormBuilder({
       </aside>
 
       <main className="relative flex h-1/2 min-w-0 flex-1 flex-col lg:h-fit">
-        <header className="flex items-center justify-between gap-2 border-b border-border bg-background px-4 py-3 sm:px-5">
+        <header className="flex items-center justify-between gap-2 border-b border-border bg-background px-4 py-3 sm:px-5 lg:sticky lg:top-0 lg:z-10">
           <div className="flex min-w-0 items-center gap-1.5">
             <button
               type="button"

@@ -34,8 +34,13 @@ function initials(name: string): string {
 
 export function UserMenu({ user, settingsHref = "/settings" }: UserMenuProps) {
   const { theme, setTheme } = useTheme()
-  const [mounted, setMounted] = React.useState(false)
-  React.useEffect(() => setMounted(true), [])
+  // Defer reading the resolved theme until after hydration (next-themes only
+  // knows it client-side). useSyncExternalStore avoids a setState-in-effect.
+  const mounted = React.useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false,
+  )
   const currentTheme = mounted ? (theme ?? "system") : "system"
 
   return (
