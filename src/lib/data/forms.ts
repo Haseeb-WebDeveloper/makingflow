@@ -153,6 +153,8 @@ export type FormSettingsData = {
   showProgressBar: boolean
   submitButtonLabel: string
   thankYouMessage: string
+  successBody: string
+  successVideoUrl: string | null
   // Response experience (classic vs conversational chat).
   renderMode: "classic" | "conversational"
   aiEnabled: boolean
@@ -200,6 +202,8 @@ export async function getFormSettings(id: string, workspaceId: string): Promise<
     showProgressBar: row.settings?.showProgressBar ?? false,
     submitButtonLabel: row.settings?.submitButtonLabel ?? "",
     thankYouMessage: row.settings?.thankYouMessage ?? "",
+    successBody: row.settings?.successBody ?? "",
+    successVideoUrl: row.settings?.successVideoUrl ?? null,
     renderMode: row.renderMode,
     aiEnabled: row.aiEnabled,
     persona: row.aiConfig?.persona ?? "",

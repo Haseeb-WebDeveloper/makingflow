@@ -105,7 +105,14 @@ export function Composer({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={(e) => {
-          if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+          // Enter sends; Shift+Enter inserts a newline. Ignore Enter mid-IME
+          // composition so confirming a character never submits. Cmd/Ctrl+Enter
+          // still sends too, for muscle memory.
+          const send =
+            e.key === "Enter" &&
+            !e.shiftKey &&
+            !e.nativeEvent.isComposing
+          if (send || ((e.metaKey || e.ctrlKey) && e.key === "Enter")) {
             e.preventDefault()
             if (canSubmit) onSubmit()
           }

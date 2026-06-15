@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useRef, useState } from "react"
 import {
   DndContext,
   PointerSensor,
@@ -29,6 +29,9 @@ import {
 import { FieldGlyph } from "@/components/builder/field-glyph"
 import { InsertPalette } from "@/components/builder/insert-palette"
 import { LogicEditor, starterLogic } from "@/components/builder/logic-editor"
+import { uploadToCloudinary } from "@/lib/cloudinary/upload"
+import { showToast } from "@/components/ui/toast"
+import { SuccessPageEditor, type SuccessPage } from "@/components/builder/success-page-editor"
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -39,12 +42,24 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
 
+export type BuilderTheme = { logoUrl?: string; coverImageUrl?: string }
+
 export function FormEditor({
   form,
   onChange,
+  theme,
+  onThemeChange,
+  successPage,
+  onSuccessPageChange,
 }: {
   form: EditorForm
   onChange: (next: EditorForm) => void
+  /** Branding (logo/banner) shown at the top of the canvas — edit mode only. */
+  theme?: BuilderTheme
+  onThemeChange?: (next: BuilderTheme) => void
+  /** Post-submit success page — edit mode only. */
+  successPage?: SuccessPage
+  onSuccessPageChange?: (next: SuccessPage) => void
 }) {
   const [activeId, setActiveId] = useState<string | null>(null)
   const [paletteOpen, setPaletteOpen] = useState(false)
@@ -99,6 +114,10 @@ export function FormEditor({
 
   return (
     <div className="mx-auto w-full max-w-2xl">
+      {onThemeChange ? (
+        <BrandingHeader theme={theme ?? {}} onChange={onThemeChange} />
+      ) : null}
+
       <textarea
         rows={1}
         value={form.title}
@@ -143,8 +162,173 @@ export function FormEditor({
         </span>
       </div>
 
+      {onSuccessPageChange && successPage ? (
+        <SuccessPageEditor value={successPage} onChange={onSuccessPageChange} />
+      ) : null}
+
       <InsertPalette open={paletteOpen} onOpenChange={setPaletteOpen} onPick={insertField} />
     </div>
+  )
+}
+
+/** Editable banner + logo at the top of the canvas (Cloudinary-backed). */
+function BrandingHeader({
+  theme,
+  onChange,
+}: {
+  theme: BuilderTheme
+  onChange: (next: BuilderTheme) => void
+}) {
+  const [busy, setBusy] = useState<"logo" | "banner" | null>(null)
+  const bannerRef = useRef<HTMLInputElement>(null)
+  const logoRef = useRef<HTMLInputElement>(null)
+
+  async function pick(kind: "logo" | "banner", file?: File | null) {
+    if (!file) return
+    if (!file.type.startsWith("image/")) {
+      showToast("Please choose an image file.", { type: "error" })
+      return
+    }
+    if (file.size > 8 * 1024 * 1024) {
+      showToast("That image is too large (max 8MB).", { type: "error" })
+      return
+    }
+    setBusy(kind)
+    try {
+      const r = await uploadToCloudinary(file, "formAssets")
+      onChange({ ...theme, [kind === "logo" ? "logoUrl" : "coverImageUrl"]: r.secureUrl })
+    } catch {
+      showToast("Couldn't upload that image. Please try again.", { type: "error" })
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  return (
+    <div className="mb-6">
+      {theme.coverImageUrl ? (
+        <div className="group relative mb-4">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={theme.coverImageUrl}
+            alt=""
+            className="h-32 w-full rounded-xl border border-border object-cover sm:h-44"
+          />
+          <div className="absolute right-2 top-2 flex gap-1.5 opacity-0 transition-opacity group-hover:opacity-100">
+            <OverlayButton onClick={() => bannerRef.current?.click()} disabled={busy === "banner"}>
+              {busy === "banner" ? "Uploading…" : "Replace"}
+            </OverlayButton>
+            <OverlayButton onClick={() => onChange({ ...theme, coverImageUrl: undefined })}>
+              Remove
+            </OverlayButton>
+          </div>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => bannerRef.current?.click()}
+          disabled={busy === "banner"}
+          className="mb-4 flex h-20 w-full items-center justify-center gap-2 rounded-xl border border-dashed border-border text-sm text-muted-foreground transition-colors hover:bg-muted/50 disabled:opacity-60"
+        >
+          {busy === "banner" ? (
+            "Uploading…"
+          ) : (
+            <>
+              <Plus className="size-4" />
+              Add banner
+            </>
+          )}
+        </button>
+      )}
+
+      <div>
+        {theme.logoUrl ? (
+          <div className="flex items-center gap-3">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={theme.logoUrl}
+              alt=""
+              className="h-14 w-auto rounded-md border border-border object-contain"
+            />
+            <button
+              type="button"
+              onClick={() => logoRef.current?.click()}
+              disabled={busy === "logo"}
+              className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground disabled:opacity-60"
+            >
+              {busy === "logo" ? "Uploading…" : "Replace"}
+            </button>
+            <button
+              type="button"
+              onClick={() => onChange({ ...theme, logoUrl: undefined })}
+              className="text-sm font-medium text-destructive hover:underline"
+            >
+              Remove
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => logoRef.current?.click()}
+            disabled={busy === "logo"}
+            className="inline-flex items-center gap-2 rounded-lg border border-dashed border-border px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted/50 disabled:opacity-60"
+          >
+            {busy === "logo" ? (
+              "Uploading…"
+            ) : (
+              <>
+                <Plus className="size-4" />
+                Add logo
+              </>
+            )}
+          </button>
+        )}
+      </div>
+
+      <input
+        ref={bannerRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(e) => {
+          const f = e.target.files?.[0]
+          e.target.value = ""
+          void pick("banner", f)
+        }}
+      />
+      <input
+        ref={logoRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(e) => {
+          const f = e.target.files?.[0]
+          e.target.value = ""
+          void pick("logo", f)
+        }}
+      />
+    </div>
+  )
+}
+
+function OverlayButton({
+  children,
+  onClick,
+  disabled,
+}: {
+  children: React.ReactNode
+  onClick: () => void
+  disabled?: boolean
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="rounded-md bg-background/90 px-2.5 py-1 text-xs font-medium text-foreground shadow-sm ring-1 ring-border backdrop-blur transition-colors hover:bg-background disabled:opacity-60"
+    >
+      {children}
+    </button>
   )
 }
 

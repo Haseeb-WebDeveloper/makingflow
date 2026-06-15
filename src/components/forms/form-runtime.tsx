@@ -8,6 +8,7 @@ import type { AnswerValue } from "@/lib/db/schema";
 import { isValidPhoneNumber } from "react-phone-number-input";
 import { isFieldVisible, NON_ANSWER_TYPES, isEmpty } from "@/lib/builder/logic";
 import { Field, FormBranding } from "@/components/forms/field-control";
+import { SuccessContent } from "@/components/forms/success-content";
 import { collectClientMeta, track } from "@/lib/forms/client-meta";
 
 // The Lottie WASM player only appears on the post-submit success screen — code-
@@ -281,6 +282,11 @@ export function FormRuntime({
         <h2 className="mt-4 font-sebenta text-2xl font-bold tracking-tight text-foreground">
           {form.thankYou}
         </h2>
+        <SuccessContent
+          body={form.successBody}
+          videoUrl={form.successVideoUrl}
+          className="mt-6 w-full"
+        />
       </div>
     );
   }

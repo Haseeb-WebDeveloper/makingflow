@@ -5,7 +5,6 @@ import {
   useEffect,
   useImperativeHandle,
   useMemo,
-  useRef,
   useState,
   useTransition,
 } from "react"
@@ -14,9 +13,7 @@ import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { updateFormSettings, type FormSettingsPatch } from "@/lib/actions/forms"
 import type { FormSettingsData } from "@/lib/data/forms"
-import { uploadToCloudinary } from "@/lib/cloudinary/upload"
 import { showToast } from "@/components/ui/toast"
-import { cn } from "@/lib/utils"
 
 function SettingRow({
   title,
@@ -45,93 +42,6 @@ function SettingRow({
   )
 }
 
-/** Cloudinary-backed image picker for the Branding section (logo / banner). */
-function ImageUpload({
-  label,
-  description,
-  value,
-  onChange,
-  variant,
-}: {
-  label: string
-  description: string
-  value: string | null
-  onChange: (url: string | null) => void
-  variant: "logo" | "banner"
-}) {
-  const inputRef = useRef<HTMLInputElement>(null)
-  const [uploading, setUploading] = useState(false)
-
-  async function pick(file?: File | null) {
-    if (!file) return
-    if (!file.type.startsWith("image/")) {
-      showToast("Please choose an image file.", { type: "error" })
-      return
-    }
-    if (file.size > 8 * 1024 * 1024) {
-      showToast("That image is too large (max 8MB).", { type: "error" })
-      return
-    }
-    setUploading(true)
-    try {
-      const r = await uploadToCloudinary(file, "formAssets")
-      onChange(r.secureUrl)
-    } catch {
-      showToast("Couldn't upload that image. Please try again.", { type: "error" })
-    } finally {
-      setUploading(false)
-      if (inputRef.current) inputRef.current.value = ""
-    }
-  }
-
-  return (
-    <SettingRow
-      title={label}
-      description={description}
-      control={
-        value ? (
-          <button
-            type="button"
-            onClick={() => onChange(null)}
-            className="text-sm font-medium text-destructive hover:underline"
-          >
-            Remove
-          </button>
-        ) : null
-      }
-    >
-      <div className="flex items-center gap-3">
-        {value ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={value}
-            alt=""
-            className={cn(
-              "rounded-md border border-border bg-background",
-              variant === "banner" ? "h-16 w-32 object-cover" : "size-12 object-contain p-1",
-            )}
-          />
-        ) : null}
-        <label
-          className={cn(
-            "inline-flex h-9 cursor-pointer items-center rounded-md border border-border px-3 text-sm font-medium text-foreground transition-colors hover:bg-muted",
-            uploading && "pointer-events-none opacity-70",
-          )}
-        >
-          {uploading ? "Uploading…" : value ? "Replace" : "Upload"}
-          <input
-            ref={inputRef}
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={(e) => void pick(e.target.files?.[0])}
-          />
-        </label>
-      </div>
-    </SettingRow>
-  )
-}
-
 function toLocalInput(iso: string | null): string {
   if (!iso) return ""
   const d = new Date(iso)
@@ -156,7 +66,7 @@ function diffPatch(base: FormSettingsData, next: FormSettingsData): FormSettings
     p.oneResponsePerPerson = next.oneResponsePerPerson
   if (next.showProgressBar !== base.showProgressBar) p.showProgressBar = next.showProgressBar
   if (next.submitButtonLabel !== base.submitButtonLabel) p.submitButtonLabel = next.submitButtonLabel
-  if (next.thankYouMessage !== base.thankYouMessage) p.thankYouMessage = next.thankYouMessage
+  // thankYouMessage + success page are edited on the canvas (SuccessPageEditor).
   if (next.renderMode !== base.renderMode) p.renderMode = next.renderMode
   if (next.persona !== base.persona) p.persona = next.persona
   if (next.followUpsEnabled !== base.followUpsEnabled) p.followUpsEnabled = next.followUpsEnabled
@@ -166,8 +76,7 @@ function diffPatch(base: FormSettingsData, next: FormSettingsData): FormSettings
   if (next.screeningEnabled !== base.screeningEnabled) p.screeningEnabled = next.screeningEnabled
   if (next.screeningCriteria !== base.screeningCriteria)
     p.screeningCriteria = next.screeningCriteria
-  if (next.logoUrl !== base.logoUrl) p.logoUrl = next.logoUrl
-  if (next.coverImageUrl !== base.coverImageUrl) p.coverImageUrl = next.coverImageUrl
+  // Branding (logo/banner) is edited on the canvas now, not here.
   return p
 }
 
@@ -342,24 +251,6 @@ export const FormSettings = forwardRef<
         </SettingRow>
       </div>
 
-      <h2 className="mb-1 mt-8 text-sm font-semibold text-foreground">Branding</h2>
-      <div className="rounded-lg border border-border px-4">
-        <ImageUpload
-          label="Logo"
-          description="A small logo shown above the form title."
-          value={state.logoUrl}
-          onChange={(url) => setState((s) => ({ ...s, logoUrl: url }))}
-          variant="logo"
-        />
-        <ImageUpload
-          label="Banner"
-          description="A wide cover image shown at the very top of the form."
-          value={state.coverImageUrl}
-          onChange={(url) => setState((s) => ({ ...s, coverImageUrl: url }))}
-          variant="banner"
-        />
-      </div>
-
       <h2 className="mb-1 mt-8 text-sm font-semibold text-foreground">Access</h2>
       <div className="rounded-lg border border-border px-4">
         <SettingRow
@@ -498,24 +389,8 @@ export const FormSettings = forwardRef<
             className="h-9 w-60"
           />
         </SettingRow>
-
-        <SettingRow
-          title="Success message"
-          description={
-            state.redirectUrl
-              ? "Shown after submitting, unless the redirect URL above is set, which takes precedence."
-              : "Shown to respondents after they submit the form."
-          }
-          control={null}
-        >
-          <textarea
-            rows={2}
-            placeholder="Thanks! Your response has been recorded."
-            value={state.thankYouMessage}
-            onChange={(e) => setState((s) => ({ ...s, thankYouMessage: e.target.value }))}
-            className="scrollbar-thin w-full resize-none rounded-md border border-input bg-input/30 px-3 py-2 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:border-foreground/40"
-          />
-        </SettingRow>
+        {/* The post-submit success page (title, message, media) is edited on the
+            form canvas now — see SuccessPageEditor. */}
       </div>
 
       {/* Standalone save bar — the embedded (dialog) variant lets the footer drive saving. */}

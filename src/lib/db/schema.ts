@@ -154,7 +154,9 @@ export type FormTheme = {
 export type FormSettings = {
   showProgressBar?: boolean
   submitButtonLabel?: string
-  thankYouMessage?: string
+  thankYouMessage?: string // success-page title (heading shown after submit)
+  successBody?: string // success-page body, markdown (links, bold, headings, images)
+  successVideoUrl?: string // optional uploaded video shown on the success page
   captchaEnabled?: boolean
 }
 

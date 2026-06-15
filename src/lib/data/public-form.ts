@@ -44,6 +44,9 @@ export type PublicForm = {
   title: string
   submitLabel: string
   thankYou: string
+  /** Success-page body (markdown) + optional uploaded video, shown after submit. */
+  successBody: string | null
+  successVideoUrl: string | null
   redirectUrl: string | null
   showProgressBar: boolean
   /** How the form is presented to respondents. */
@@ -86,6 +89,8 @@ function mapForm(row: FormRow, fields: PublicField[]): PublicForm {
     title: row.title,
     submitLabel: row.settings?.submitButtonLabel || "Submit",
     thankYou: row.settings?.thankYouMessage || "Thanks! Your response has been recorded.",
+    successBody: row.settings?.successBody || null,
+    successVideoUrl: row.settings?.successVideoUrl || null,
     redirectUrl: row.redirectUrl ?? null,
     showProgressBar: row.settings?.showProgressBar ?? false,
     renderMode: row.renderMode,

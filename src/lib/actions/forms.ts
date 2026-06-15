@@ -342,9 +342,9 @@ export async function deleteForm(
   const workspace = await getDefaultWorkspace()
   if (!workspace) return { success: false, error: "No workspace" }
 
-  // Confirm ownership and grab the form's branding assets (stored as URLs).
+  // Confirm ownership and grab the form's branding + success-page assets (URLs).
   const [form] = await db
-    .select({ id: forms.id, theme: forms.theme })
+    .select({ id: forms.id, theme: forms.theme, settings: forms.settings })
     .from(forms)
     .where(and(eq(forms.id, formId), eq(forms.workspaceId, workspace.id)))
     .limit(1)
@@ -372,6 +372,15 @@ export async function deleteForm(
       .map((f) => assetFromUrl((f.config as FieldConfig | null)?.imageUrl))
       .filter((a): a is CloudinaryAsset => a !== null),
     ...[form.theme?.logoUrl, form.theme?.coverImageUrl]
+      .map((url) => assetFromUrl(url))
+      .filter((a): a is CloudinaryAsset => a !== null),
+    // Success-page media: the uploaded video + any Cloudinary images in the body.
+    ...[
+      form.settings?.successVideoUrl,
+      ...((form.settings?.successBody ?? "").match(
+        /https:\/\/res\.cloudinary\.com\/[^\s)"']+/g,
+      ) ?? []),
+    ]
       .map((url) => assetFromUrl(url))
       .filter((a): a is CloudinaryAsset => a !== null),
   ]
@@ -407,6 +416,8 @@ export type FormSettingsPatch = {
   showProgressBar?: boolean
   submitButtonLabel?: string | null
   thankYouMessage?: string | null
+  successBody?: string | null
+  successVideoUrl?: string | null
   // Response experience (classic vs conversational chat).
   renderMode?: "classic" | "conversational"
   persona?: string | null
@@ -468,7 +479,9 @@ export async function updateFormSettings(
   if (
     patch.showProgressBar !== undefined ||
     patch.submitButtonLabel !== undefined ||
-    patch.thankYouMessage !== undefined
+    patch.thankYouMessage !== undefined ||
+    patch.successBody !== undefined ||
+    patch.successVideoUrl !== undefined
   ) {
     const settings: FormSettings = { ...(row.settings ?? {}) }
     if (patch.showProgressBar !== undefined) settings.showProgressBar = patch.showProgressBar
@@ -476,6 +489,10 @@ export async function updateFormSettings(
       settings.submitButtonLabel = patch.submitButtonLabel?.trim() || undefined
     if (patch.thankYouMessage !== undefined)
       settings.thankYouMessage = patch.thankYouMessage?.trim() || undefined
+    if (patch.successBody !== undefined)
+      settings.successBody = patch.successBody?.trim() || undefined
+    if (patch.successVideoUrl !== undefined)
+      settings.successVideoUrl = patch.successVideoUrl?.trim() || undefined
     set.settings = settings
   }
 

@@ -8,6 +8,7 @@ import type { AnswerValue } from "@/lib/db/schema"
 import { isFieldVisible, NON_ANSWER_TYPES, isEmpty } from "@/lib/builder/logic"
 import { collectClientMeta, track } from "@/lib/forms/client-meta"
 import { Control, Check, FormBranding } from "@/components/forms/field-control"
+import { SuccessContent } from "@/components/forms/success-content"
 import { SVGIcon } from "@/components/ui/svg-icon"
 import { FormRuntime } from "@/components/forms/form-runtime"
 import type { Expect, TurnMeta, TurnPrev, TurnRequest } from "@/lib/forms/conversation-types"
@@ -384,6 +385,11 @@ export function ConversationalRuntime({ form }: { form: PublicForm }) {
         <h2 className="mt-4 font-sebenta text-2xl font-bold tracking-tight text-foreground">
           {form.thankYou}
         </h2>
+        <SuccessContent
+          body={form.successBody}
+          videoUrl={form.successVideoUrl}
+          className="mt-6 w-full"
+        />
       </div>
     )
   }

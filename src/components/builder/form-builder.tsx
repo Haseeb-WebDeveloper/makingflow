@@ -9,6 +9,7 @@ import {
   publishForm,
   unpublishForm,
   deleteForm,
+  updateFormSettings,
 } from "@/lib/actions/forms";
 import { setFormDomain } from "@/lib/actions/domains";
 import { buildShareUrl } from "@/lib/forms/share";
@@ -27,7 +28,8 @@ import {
   FormPreview,
   type PartialForm,
 } from "@/components/builder/form-preview";
-import { FormEditor } from "@/components/builder/form-editor";
+import { FormEditor, type BuilderTheme } from "@/components/builder/form-editor";
+import type { SuccessPage } from "@/components/builder/success-page-editor";
 import { FormRuntime } from "@/components/forms/form-runtime";
 import { MemoizedMarkdown } from "@/components/forms/memoized-markdown";
 import { Thinking } from "@/components/forms/thinking";
@@ -145,6 +147,21 @@ export function FormBuilder({
   // True while an operation-based edit (aiEditForm) is in flight. Combined with
   // useObject's `isLoading` (the create stream) into `busy` below.
   const [editing, setEditing] = useState(false);
+  // Branding (logo/banner) edited inline on the canvas. Lives in `forms.theme`,
+  // saved on its own debounced lane (updateFormSettings) — separate from the
+  // field autosave (saveAiForm).
+  const [theme, setTheme] = useState<BuilderTheme>({
+    logoUrl: initialSettings?.logoUrl ?? undefined,
+    coverImageUrl: initialSettings?.coverImageUrl ?? undefined,
+  });
+  const themeSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Post-submit success page — same debounced settings lane as branding.
+  const [successPage, setSuccessPage] = useState<SuccessPage>({
+    title: initialSettings?.thankYouMessage ?? "",
+    body: initialSettings?.successBody ?? "",
+    videoUrl: initialSettings?.successVideoUrl ?? null,
+  });
+  const successSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const formIdRef = useRef<string | null>(initialFormId ?? null);
   const currentFormRef = useRef<EditorForm | null>(initialForm ?? null);
@@ -222,7 +239,10 @@ export function FormBuilder({
         publicId: publicId ?? "preview",
         title: currentForm.title || "Untitled form",
         submitLabel: initialSettings?.submitButtonLabel || "Submit",
-        thankYou: "Looks good. This was a test, so no response was recorded.",
+        thankYou:
+          successPage.title || "Looks good. This was a test, so no response was recorded.",
+        successBody: successPage.body || null,
+        successVideoUrl: successPage.videoUrl,
         redirectUrl: null, // never redirect in the builder preview
         showProgressBar: initialSettings?.showProgressBar ?? false,
         // The preview always renders classic — conversational needs a published,
@@ -231,11 +251,10 @@ export function FormBuilder({
         baseLanguage: "en",
         ai: null,
         theme:
-          initialSettings &&
-          (initialSettings.logoUrl || initialSettings.coverImageUrl)
+          theme.logoUrl || theme.coverImageUrl
             ? {
-                logoUrl: initialSettings.logoUrl ?? undefined,
-                coverImageUrl: initialSettings.coverImageUrl ?? undefined,
+                logoUrl: theme.logoUrl,
+                coverImageUrl: theme.coverImageUrl,
               }
             : null,
         fields: currentForm.fields.map((f) => ({
@@ -258,6 +277,38 @@ export function FormBuilder({
     scheduleAutosave(next);
   }
 
+  // Inline branding edits: update the preview immediately, persist (debounced)
+  // to forms.theme via updateFormSettings. Best-effort — a save failure toasts
+  // but doesn't block editing.
+  function onThemeChange(next: BuilderTheme) {
+    setTheme(next);
+    if (!formId) return;
+    if (themeSaveTimer.current) clearTimeout(themeSaveTimer.current);
+    themeSaveTimer.current = setTimeout(() => {
+      void updateFormSettings(formId, {
+        logoUrl: next.logoUrl ?? null,
+        coverImageUrl: next.coverImageUrl ?? null,
+      }).then((res) => {
+        if (!res.success) showToast(res.error ?? "Couldn't save branding", { type: "error" });
+      });
+    }, 600);
+  }
+
+  function onSuccessPageChange(next: SuccessPage) {
+    setSuccessPage(next);
+    if (!formId) return;
+    if (successSaveTimer.current) clearTimeout(successSaveTimer.current);
+    successSaveTimer.current = setTimeout(() => {
+      void updateFormSettings(formId, {
+        thankYouMessage: next.title || null,
+        successBody: next.body || null,
+        successVideoUrl: next.videoUrl ?? null,
+      }).then((res) => {
+        if (!res.success) showToast(res.error ?? "Couldn't save the success page", { type: "error" });
+      });
+    }, 600);
+  }
+
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [chat, busy]);
@@ -268,6 +319,8 @@ export function FormBuilder({
     setOrigin(window.location.origin);
     return () => {
       if (saveTimer.current) clearTimeout(saveTimer.current);
+      if (themeSaveTimer.current) clearTimeout(themeSaveTimer.current);
+      if (successSaveTimer.current) clearTimeout(successSaveTimer.current);
     };
   }, []);
 
@@ -805,7 +858,14 @@ export function FormBuilder({
                   "pointer-events-none select-none opacity-50 transition-opacity"
               )}
             >
-              <FormEditor form={currentForm} onChange={updateForm} />
+              <FormEditor
+                form={currentForm}
+                onChange={updateForm}
+                theme={theme}
+                onThemeChange={onThemeChange}
+                successPage={successPage}
+                onSuccessPageChange={onSuccessPageChange}
+              />
             </div>
           )}
         </div>
