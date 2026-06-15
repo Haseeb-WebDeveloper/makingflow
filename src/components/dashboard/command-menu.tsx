@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useCreateForm } from "@/lib/forms/use-create-form";
 import {
   CommandDialog,
   CommandEmpty,
@@ -43,6 +44,7 @@ export function CommandMenu({
   forms: FormSummary[];
 }) {
   const router = useRouter();
+  const { createForm } = useCreateForm();
   const [query, setQuery] = useState("");
   const recent = useRecentForms();
 
@@ -106,7 +108,10 @@ export function CommandMenu({
         <CommandGroup heading="Quick actions">
           <CommandItem
             value="New form create build"
-            onSelect={() => go("/forms/new")}
+            onSelect={() => {
+              handleOpenChange(false);
+              createForm();
+            }}
           >
             <span className="grid size-5 shrink-0 place-items-center rounded bg-primary/10 text-primary">
               <SVGIcon src="/icons/plus.svg" className="size-3.5" />

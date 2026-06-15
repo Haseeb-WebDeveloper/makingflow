@@ -25,7 +25,7 @@ export function isDashboardNavActive(pathname: string, href: string): boolean {
   // Home (/forms) stays active across the whole forms area EXCEPT a specific
   // form's detail/edit pages (those light up the form in the Forms list).
   if (href === "/forms") {
-    return pathname === "/forms" || pathname === "/forms/new"
+    return pathname === "/forms"
   }
   return pathname === href || pathname.startsWith(`${href}/`)
 }

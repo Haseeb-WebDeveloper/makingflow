@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { experimental_useObject as useObject } from "@ai-sdk/react";
 import { aiFormSchema, type AiForm } from "@/lib/ai/form-schema";
 import {
@@ -18,7 +18,9 @@ import {
   editorToAi,
   mergeAiIntoEditor,
   newField,
+  isBlankForm,
 } from "@/lib/builder/form-model";
+import { useCreateForm } from "@/lib/forms/use-create-form";
 import {
   FormPreview,
   type PartialForm,
@@ -91,9 +93,13 @@ export function FormBuilder({
   initialSettings?: FormSettingsData | null;
 } = {}) {
   const router = useRouter();
+  const pathname = usePathname();
+  const { createForm } = useCreateForm();
 
   const [chat, setChat] = useState<ChatMessage[]>(() =>
-    initialForm
+    // A fresh blank draft (entered via "New form") starts with an empty chat so
+    // the "Describe your form" prompt UI shows; an existing form greets instead.
+    initialForm && !isBlankForm(initialForm)
       ? [
           {
             id: rid(),
@@ -143,8 +149,13 @@ export function FormBuilder({
   // Gate chat persistence until the saved thread is restored, so the empty
   // initial state can't overwrite a stored conversation on first render.
   const chatHydratedRef = useRef(false);
+  // Delete-on-leave: when "New form" created this draft and the user leaves it
+  // still empty, discard it. `enteredBlank` is captured at mount; `discarded`
+  // makes the delete fire at most once.
+  const enteredBlankRef = useRef(initialForm ? isBlankForm(initialForm) : false);
+  const draftDiscardedRef = useRef(false);
 
-  const { object, submit, isLoading, error, stop, clear } = useObject({
+  const { object, submit, isLoading, error, stop } = useObject({
     api: "/api/ai/form",
     schema: aiFormSchema,
     onFinish: ({ object }) => {
@@ -174,8 +185,17 @@ export function FormBuilder({
   // The streaming partial (AI building) vs the committed editable form.
   const streaming = object as unknown as PartialForm | undefined;
   const headerTitle = currentForm?.title || streaming?.title || "New form";
+  // A blank draft (no fields, default title) shows the prompt UI even though it
+  // already has an id/currentForm — only "real" content counts as started.
   const started =
-    chat.length > 0 || isLoading || Boolean(object) || Boolean(currentForm);
+    chat.length > 0 ||
+    isLoading ||
+    Boolean(object) ||
+    (currentForm !== null && !isBlankForm(currentForm));
+  // First build = no real form on the canvas yet (null, or a fresh blank draft).
+  // In this state the AI is CREATING, not updating, so stream the form in as it
+  // generates rather than showing the editor + an "Updating…" badge.
+  const firstBuild = currentForm === null || isBlankForm(currentForm);
   // A custom domain (if attached) wins over the default link everywhere.
   const shareUrl = publicId
     ? buildShareUrl({ origin, publicId, domain: domainHost, slug })
@@ -269,39 +289,38 @@ export function FormBuilder({
     }
   }, [chat, formId]);
 
-  // When the AI first creates a form from the /forms/new flow, move to its real
-  // /forms/[id]/edit URL. This effect is declared AFTER the persist effect, so
-  // by the time it runs the chat is already saved under the new id and is
-  // restored on the edit page (the conversation isn't lost). Why the move:
-  //  - the address bar becomes the form's own URL, and
-  //  - the publish dialog there is the full one (settings, branding, banner,
-  //    domains) the edit route loads, not the bare publish-only dialog.
-  //
-  // Then blank THIS builder. Under cacheComponents the /forms/new route instance
-  // is preserved (hidden), not unmounted — so without this, clicking the header
-  // "New form" later would restore this built form instead of a fresh prompt
-  // screen. Clear formId FIRST (the persist effect then skips, keeping the saved
-  // thread) and cancel any queued autosave so it can't create a duplicate form.
-  // `replace` (not push) so Back doesn't return to the now-blank /forms/new.
+  // Discard an abandoned blank draft. If "New form" created this form empty and
+  // the user leaves it still empty — navigating away (the route instance is kept
+  // alive by cacheComponents, so `usePathname` keeps updating) or closing the
+  // tab (`pagehide`, keepalive) — ask the server to delete it. The server only
+  // removes genuinely-empty drafts, so a form that gained any content is safe,
+  // and `draftDiscardedRef` keeps it to a single request.
+  function discardIfBlankDraft(keepalive: boolean) {
+    const id = formIdRef.current;
+    if (!id || draftDiscardedRef.current || !enteredBlankRef.current) return;
+    const blankNow =
+      currentFormRef.current === null || isBlankForm(currentFormRef.current);
+    if (!blankNow) return;
+    draftDiscardedRef.current = true;
+    void fetch("/api/forms/draft", {
+      method: "DELETE",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ formId: id }),
+      keepalive,
+    }).catch(() => {});
+  }
+
+  const editPath = initialFormId ? `/forms/${initialFormId}/edit` : null;
   useEffect(() => {
-    if (initialFormId || !formId) return;
-    router.replace(`/forms/${formId}/edit`);
-    if (saveTimer.current) clearTimeout(saveTimer.current);
-    pendingSaveRef.current = null;
-    // Intentional reset of the preserved instance (see note above) — the
-    // cascading re-render is the point, and it re-runs guarded by `!formId`.
-    /* eslint-disable react-hooks/set-state-in-effect */
-    setFormId(null);
-    formIdRef.current = null;
-    setChat([]);
-    setCurrentForm(null);
-    currentFormRef.current = null;
-    setPublished(false);
-    setPublicId(null);
-    setSaveState("idle");
-    clear();
-    /* eslint-enable react-hooks/set-state-in-effect */
-  }, [formId, initialFormId, router, clear]);
+    if (!editPath || pathname === editPath) return;
+    discardIfBlankDraft(false);
+  }, [pathname, editPath]);
+
+  useEffect(() => {
+    const onHide = () => discardIfBlankDraft(true);
+    window.addEventListener("pagehide", onHide);
+    return () => window.removeEventListener("pagehide", onHide);
+  }, []);
 
   // Keep the ref in sync so AI edits merge onto the latest form (incl. manual edits).
   useEffect(() => {
@@ -460,28 +479,12 @@ export function FormBuilder({
     setImage(null);
   }
 
+  // "Start over" = a brand-new form. Create a fresh draft and go to its editor;
+  // the current form is left as-is (a still-blank draft is cleaned up by the
+  // delete-on-leave effect when the route changes).
   function startOver() {
     stop();
-    clear();
-    if (saveTimer.current) clearTimeout(saveTimer.current);
-    if (formIdRef.current) {
-      try {
-        localStorage.removeItem(`mf:chat:${formIdRef.current}`);
-      } catch {
-        /* ignore */
-      }
-    }
-    setChat([]);
-    setDraft("");
-    setImage(null);
-    setCurrentForm(null);
-    setFormId(null);
-    formIdRef.current = null;
-    setSaveState("idle");
-    setPublished(false);
-    setPublicId(null);
-    setMode("edit");
-    router.replace("/forms/new");
+    createForm();
   }
 
   async function pickFile(file: File) {
@@ -716,8 +719,8 @@ export function FormBuilder({
         </header>
 
         <div className="thin-scroll flex-1 overflow-x-hidden overflow-y-auto bg-canvas px-6 py-10 sm:px-10">
-          {!currentForm ? (
-            // First generation only — there's nothing to show yet, so stream the
+          {firstBuild ? (
+            // First generation — there's nothing real to show yet, so stream the
             // form in as it builds.
             <FormPreview form={streaming} building={isLoading} />
           ) : mode === "preview" && previewForm ? (
@@ -739,7 +742,7 @@ export function FormBuilder({
         {/* Panel-level so it stays centered and visible no matter where the
             canvas is scrolled. */}
       </main>
-      {isLoading && currentForm ? (
+      {isLoading && !firstBuild ? (
         <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center">
           <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-background/95 px-3.5 py-1.5 text-xs font-medium text-muted-foreground shadow-md backdrop-blur">
             <Loading fill className="size-4 shrink-0" />

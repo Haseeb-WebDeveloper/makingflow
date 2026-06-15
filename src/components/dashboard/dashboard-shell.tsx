@@ -32,6 +32,7 @@ import {
 import { UserMenu } from "@/components/dashboard/user-menu";
 import { WorkspaceChip } from "@/components/dashboard/workspace-chip";
 import { FormRowMenu } from "@/components/dashboard/form-row-menu";
+import { NewFormButton } from "@/components/dashboard/new-form-button";
 import { SVGIcon } from "../ui/svg-icon";
 
 const FORMS_IN_SIDEBAR = 10;
@@ -219,14 +220,10 @@ export function DashboardShell({
           <header className="flex h-14 shrink-0 items-center gap-2 border-b border-border bg-background px-4">
             <SidebarTrigger />
             <div className="ml-auto flex items-center gap-2">
-              <Link
-                href="/forms/new"
-                prefetch
+              <NewFormButton
                 className="gradient-border inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium text-foreground"
-              >
-                <SVGIcon src="/icons/plus.svg" className="size-4 text-foreground" />
-                New form
-              </Link>
+                iconClassName="size-4 text-foreground"
+              />
               <UserMenu user={user} />
             </div>
           </header>

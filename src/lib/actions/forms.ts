@@ -5,7 +5,7 @@ import { revalidatePath, updateTag } from "next/cache"
 import { db } from "@/lib/db"
 import { forms, formFields, type FormSettings, type FormAiConfig, type FormTheme, type FieldLogic } from "@/lib/db/schema"
 import { getRequiredUser, getDefaultWorkspace } from "@/lib/auth/session"
-import type { EditorForm } from "@/lib/builder/form-model"
+import { type EditorForm, DEFAULT_FORM_TITLE } from "@/lib/builder/form-model"
 
 type SaveResult = { success: true; id: string } | { success: false; error: string }
 
@@ -30,6 +30,30 @@ function newPublicId(): string {
 }
 
 /**
+ * Create an empty draft form and return its id, so "New form" can navigate
+ * straight to /forms/[id]/edit (create-then-edit) instead of building first and
+ * redirecting after. Deliberately does NOT invalidate `workspace-forms` — a
+ * blank draft stays out of the dashboard/sidebar list until it gets real content
+ * (`saveAiForm` invalidates then). Abandoned empties are removed by the
+ * delete-draft endpoint when the user leaves the editor.
+ */
+export async function createDraftForm(): Promise<{ id: string }> {
+  const user = await getRequiredUser()
+  const workspace = await getDefaultWorkspace()
+  if (!workspace) throw new Error("No workspace")
+  const [created] = await db
+    .insert(forms)
+    .values({
+      workspaceId: workspace.id,
+      createdById: user.id,
+      title: DEFAULT_FORM_TITLE,
+      publicId: newPublicId(),
+    })
+    .returning({ id: forms.id })
+  return { id: created.id }
+}
+
+/**
  * Persist an AI-built form to `forms` + `form_fields`, scoped to the caller's
  * workspace. Creates on first save (no formId), updates thereafter. Powers both
  * the manual Save button and debounced draft autosave in the builder.
@@ -42,7 +66,7 @@ export async function saveAiForm(input: {
   const workspace = await getDefaultWorkspace()
   if (!workspace) return { success: false, error: "No workspace" }
 
-  const title = input.form.title?.trim() || "Untitled form"
+  const title = input.form.title?.trim() || DEFAULT_FORM_TITLE
   const fields = input.form.fields ?? []
 
   // Verify ownership before updating an existing form.

@@ -28,6 +28,19 @@ export type EditorForm = {
 
 export const genId = () => crypto.randomUUID()
 
+/** The title a form starts with until the user or the AI names it. */
+export const DEFAULT_FORM_TITLE = "Untitled form"
+
+/**
+ * A form with no real content yet: a fresh draft that should render the
+ * "Describe your form" prompt UI (not the editor) and is safe to discard if
+ * abandoned. "Blank" = no fields and a still-default (or empty) title.
+ */
+export function isBlankForm(form: { title: string; fields: readonly unknown[] }): boolean {
+  const title = form.title.trim()
+  return form.fields.length === 0 && (title === "" || title === DEFAULT_FORM_TITLE)
+}
+
 export const CHOICE_TYPES = new Set<AiFieldType>([
   "multiple_choice",
   "checkboxes",
@@ -171,17 +184,33 @@ export function mergeAiIntoEditor(ai: AiForm, prev: EditorForm | null): EditorFo
     const match =
       take((p) => p.type === af.type && p.label === (af.label ?? "")) ??
       take((p) => p.type === af.type)
+    // Preserve-on-omission. On edits the model must re-emit the COMPLETE form,
+    // but it routinely drops UNCHANGED properties — most damagingly a choice
+    // field's long "options" list. Treat an omitted property as "unchanged" and
+    // fall back to the matched field's value, so an AI edit can only CHANGE what
+    // the model explicitly sends and can never silently wipe options, help text,
+    // or required-ness off a field it wasn't asked to touch. (To actually clear
+    // a value the model sends an empty string / empty array, which is not
+    // nullish and so wins over the fallback.)
     const field: EditorField = {
       id: match?.id ?? genId(),
       type: af.type,
       label: af.label ?? "",
-      description: af.description,
-      placeholder: af.placeholder,
-      required: af.required ?? false,
-      options: af.options?.map((label) => ({
-        id: match?.options?.find((o) => o.label === label)?.id ?? genId(),
-        label,
-      })),
+      description: af.description ?? match?.description,
+      placeholder: af.placeholder ?? match?.placeholder,
+      required: af.required ?? match?.required ?? false,
+      options:
+        af.options !== undefined
+          ? af.options.map((label) => ({
+              id: match?.options?.find((o) => o.label === label)?.id ?? genId(),
+              label,
+            }))
+          : // Omitted: keep the existing options, but only if the (possibly
+            // changed) type still uses them — a type change away from choice
+            // correctly drops them.
+            CHOICE_TYPES.has(af.type)
+            ? match?.options
+            : undefined,
       // The AI spec carries no config — keep the matched field's (heading level, …).
       config: match?.config,
     }

@@ -8,6 +8,7 @@ import {
   CONVERSATION_REPLY_PHRASES,
 } from "@/components/forms/conversational-runtime"
 import { Thinking } from "@/components/forms/thinking"
+import { NewFormButton } from "@/components/dashboard/new-form-button"
 import { SVGIcon } from "@/components/ui/svg-icon"
 import type { PublicField } from "@/lib/data/public-form"
 
@@ -41,6 +42,29 @@ export default function SandboxPage() {
       </header>
 
       <div className="space-y-8">
+        <Section
+          title="New form button"
+          desc="The header CTA. The plus swaps to a spinner while the draft is created (idle is live, so clicking it makes a real form)."
+        >
+          <div className="flex flex-wrap items-end gap-6">
+            <div className="flex flex-col items-center gap-1.5">
+              <NewFormButton
+                className="gradient-border inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium text-foreground"
+                iconClassName="size-4 text-foreground"
+              />
+              <span className="text-xs text-muted-foreground">idle</span>
+            </div>
+            <div className="flex flex-col items-center gap-1.5">
+              <NewFormButton
+                loading
+                className="gradient-border inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium text-foreground"
+                iconClassName="size-4 text-foreground"
+              />
+              <span className="text-xs text-muted-foreground">creating</span>
+            </div>
+          </div>
+        </Section>
+
         <Section
           title="Thinking: after a reply"
           desc="Rotates: Reading your answer → Thinking → Lining up the next question."

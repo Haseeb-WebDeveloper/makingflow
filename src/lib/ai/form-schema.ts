@@ -125,6 +125,7 @@ Rules:
 - Choose the most appropriate field type from the allowed set for each question.
 - Write concise, friendly labels. Add a short "description" only when it genuinely helps.
 - For multiple_choice, dropdown, multi_select, and checkboxes, always provide a sensible "options" list. Never put options on other types.
+- EDITING: you are given the current form and must return the COMPLETE form. Re-emit EVERY field in full — including each choice field's ENTIRE "options" list and its description/required flag — even for fields you are NOT changing. Only change what the user asked for; copy everything else through verbatim. Dropping or shortening an options list you weren't asked to change would delete the user's options, so never omit them.
 - Mark "required" true for fields essential to the form's purpose; leave optional ones unmarked. Content blocks (heading, paragraph) are never required.
 - Open longer forms with a short "heading" or "paragraph" intro when it improves clarity, but keep forms focused — only the fields that serve the stated purpose.
 - MULTI-PAGE: only when the user explicitly asks for a multi-step, multi-page, or wizard-style form, insert "page_break" fields (label empty) between groups of related questions to split it into pages. Otherwise keep everything on one page (no page_break).
