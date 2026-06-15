@@ -67,14 +67,17 @@ export function WorkspaceIntegrationsPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const { configured, connection, forms, email, webhook, discord, notion } = data;
+  const { configured, connection, forms, email, webhook, discord, notion } =
+    data;
   const connected = Boolean(connection);
   const syncingCount = forms.filter((f) => f.status === "syncing").length;
   const emailActive = email.forms.some((f) => f.status === "on");
   const webhookActive = webhook.forms.reduce((n, f) => n + f.active, 0);
   const discordActive = discord.forms.some((f) => f.status === "on");
   const notionConnected = Boolean(notion.connection);
-  const notionSyncingCount = notion.forms.filter((f) => f.status === "syncing").length;
+  const notionSyncingCount = notion.forms.filter(
+    (f) => f.status === "syncing"
+  ).length;
 
   function run(
     action: () => Promise<{ success: boolean; error?: string }>,
@@ -139,7 +142,11 @@ export function WorkspaceIntegrationsPanel({
             ) : (
               <Button asChild size="sm" variant="outline">
                 <a href="/api/integrations/google/connect">
-                  <Icon name="login" />
+                  <SVGIcon
+                    src="/icons/connect.svg"
+                    preserveColors
+                    className="size-4 text-foreground"
+                  />
                   Connect
                 </a>
               </Button>
@@ -175,8 +182,8 @@ export function WorkspaceIntegrationsPanel({
             Email notifications
           </h3>
           <p className="mt-1 flex-1 text-sm text-muted-foreground">
-            Get an email the moment a form gets a response. Set up per form, with
-            the answers included.
+            Get an email the moment a form gets a response. Set up per form,
+            with the answers included.
           </p>
 
           <div className="mt-4 flex items-center justify-between gap-3 border-t border-border pt-3">
@@ -203,7 +210,11 @@ export function WorkspaceIntegrationsPanel({
         {/* ── Webhooks (per-form; managed from each form) ── */}
         <CardShell>
           <div className="flex items-start justify-between gap-3">
-            <SVGIcon src="/logo/webhook.svg" preserveColors className="size-9" />
+            <SVGIcon
+              src="/logo/webhook.svg"
+              preserveColors
+              className="size-9"
+            />
             {webhookActive > 0 ? (
               <span className="inline-flex items-center gap-1 rounded-full bg-success-bg px-2 py-0.5 text-[11px] font-medium text-success-foreground">
                 <span className="size-1.5 rounded-full bg-success" />
@@ -212,10 +223,12 @@ export function WorkspaceIntegrationsPanel({
             ) : null}
           </div>
 
-          <h3 className="mt-3 text-sm font-semibold text-foreground">Webhooks</h3>
+          <h3 className="mt-3 text-sm font-semibold text-foreground">
+            Webhooks
+          </h3>
           <p className="mt-1 flex-1 text-sm text-muted-foreground">
-            POST each new submission to your own endpoint, optionally signed. Set
-            up per form.
+            POST each new submission to your own endpoint, optionally signed.
+            Set up per form.
           </p>
 
           <div className="mt-4 flex items-center justify-between gap-3 border-t border-border pt-3">
@@ -239,7 +252,11 @@ export function WorkspaceIntegrationsPanel({
         {/* ── Discord (per-form; managed from each form) ── */}
         <CardShell>
           <div className="flex items-start justify-between gap-3">
-            <SVGIcon src="/logo/discord.svg" preserveColors className="size-9" />
+            <SVGIcon
+              src="/logo/discord.svg"
+              preserveColors
+              className="size-9"
+            />
             {discordActive ? (
               <span className="inline-flex items-center gap-1 rounded-full bg-success-bg px-2 py-0.5 text-[11px] font-medium text-success-foreground">
                 <span className="size-1.5 rounded-full bg-success" />
@@ -248,7 +265,9 @@ export function WorkspaceIntegrationsPanel({
             ) : null}
           </div>
 
-          <h3 className="mt-3 text-sm font-semibold text-foreground">Discord</h3>
+          <h3 className="mt-3 text-sm font-semibold text-foreground">
+            Discord
+          </h3>
           <p className="mt-1 flex-1 text-sm text-muted-foreground">
             Post each new response to a Discord channel via an incoming webhook.
             Set up per form.
@@ -295,7 +314,9 @@ export function WorkspaceIntegrationsPanel({
 
           <div className="mt-4 flex items-center justify-between gap-3 border-t border-border pt-3">
             {!notion.configured ? (
-              <span className="text-xs text-muted-foreground">Not available</span>
+              <span className="text-xs text-muted-foreground">
+                Not available
+              </span>
             ) : notionConnected ? (
               <Button
                 variant="outline"
@@ -307,7 +328,11 @@ export function WorkspaceIntegrationsPanel({
             ) : (
               <Button asChild size="sm" variant="outline">
                 <a href="/api/integrations/notion/connect">
-                  <Icon name="login" />
+                  <SVGIcon
+                    src="/icons/connect.svg"
+                    preserveColors
+                    className="size-4 text-foreground"
+                  />
                   Connect
                 </a>
               </Button>
@@ -352,8 +377,8 @@ export function WorkspaceIntegrationsPanel({
           <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4">
             <p className="text-sm text-muted-foreground">
               Every form sends new submissions to its own spreadsheet. A
-              form&apos;s sheet is created on its first response, and new forms are
-              added automatically.
+              form&apos;s sheet is created on its first response, and new forms
+              are added automatically.
             </p>
 
             <div className="mt-4 flex items-center justify-between">
@@ -442,7 +467,11 @@ export function WorkspaceIntegrationsPanel({
         <SheetContent side="right" className="w-full sm:max-w-md">
           <SheetHeader>
             <div className="flex items-center gap-3">
-              <SVGIcon src="/logo/email.svg" preserveColors className="size-9" />
+              <SVGIcon
+                src="/logo/email.svg"
+                preserveColors
+                className="size-9"
+              />
               <div>
                 <SheetTitle>Email notifications</SheetTitle>
                 <SheetDescription>
@@ -574,8 +603,8 @@ export function WorkspaceIntegrationsPanel({
           <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4">
             {discord.forms.length === 0 ? (
               <p className="text-sm text-muted-foreground">
-                No form posts to Discord yet. Open a form&apos;s Integrations tab
-                to set one up.
+                No form posts to Discord yet. Open a form&apos;s Integrations
+                tab to set one up.
               </p>
             ) : (
               <ul className="divide-y divide-border">
@@ -618,7 +647,11 @@ export function WorkspaceIntegrationsPanel({
         <SheetContent side="right" className="w-full sm:max-w-md">
           <SheetHeader>
             <div className="flex items-center gap-3">
-              <SVGIcon src="/logo/notion.svg" preserveColors className="size-9" />
+              <SVGIcon
+                src="/logo/notion.svg"
+                preserveColors
+                className="size-9"
+              />
               <div>
                 <SheetTitle>Notion</SheetTitle>
                 <SheetDescription>
@@ -633,8 +666,8 @@ export function WorkspaceIntegrationsPanel({
           <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4">
             <p className="text-sm text-muted-foreground">
               Every form sends new submissions to its own Notion database. A
-              form&apos;s database is created on its first response, and new forms
-              are added automatically.
+              form&apos;s database is created on its first response, and new
+              forms are added automatically.
             </p>
 
             <div className="mt-4 flex items-center justify-between">
