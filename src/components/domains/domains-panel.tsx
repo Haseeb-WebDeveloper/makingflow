@@ -182,8 +182,8 @@ function DomainRow({
         <div className="border-t border-border bg-muted/20 p-4">
           <div className="flex items-center justify-between gap-3">
             <p className="text-xs text-muted-foreground">
-              Add this record at your DNS provider. We check automatically, and SSL
-              is issued once it resolves.
+              Add this record at your DNS provider. We check automatically, and
+              SSL is issued once it resolves.
             </p>
             <Button
               variant="outline"
@@ -380,10 +380,10 @@ export function DomainsPanel({ data }: { data: WorkspaceDomains }) {
           <Button
             onClick={onAdd}
             disabled={busy || !value.trim()}
-            className="sm:shrink-0 h-10"
+            className="sm:shrink-0 h-10 font-normal"
           >
             {adding ? (
-              <Loading className="size-4" />
+              <Loading fill className="size-4 shrink-0" />
             ) : (
               <SVGIcon src="/icons/plus.svg" className="size-4" />
             )}
