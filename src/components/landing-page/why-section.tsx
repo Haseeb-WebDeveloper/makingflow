@@ -18,7 +18,7 @@ export function WhySection() {
             <Reveal delay={140}>
               <p className="mt-5 max-w-[58ch] text-base leading-relaxed text-muted-foreground">
                 For years you had to pick a side. A form that looks calm but treats
-                a thoughtful reply and a one-word shrug exactly the same — or a
+                a thoughtful reply and a one-word shrug exactly the same, or a
                 clever tool buried in so many settings that one question turns into
                 an afternoon.
               </p>

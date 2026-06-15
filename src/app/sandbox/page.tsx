@@ -37,7 +37,7 @@ export default function SandboxPage() {
 
       <div className="space-y-8">
         <Section
-          title="Thinking — after a reply"
+          title="Thinking: after a reply"
           desc="Rotates: Reading your answer → Thinking → Lining up the next question."
           action={
             <ReplayButton onClick={() => setThinkKey((k) => k + 1)} />
@@ -49,7 +49,7 @@ export default function SandboxPage() {
         </Section>
 
         <Section
-          title="Thinking — opening turn"
+          title="Thinking: opening turn"
           desc="Rotates: Getting things ready → One moment."
           action={<ReplayButton onClick={() => setOpenKey((k) => k + 1)} />}
         >

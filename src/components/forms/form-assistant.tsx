@@ -124,7 +124,7 @@ export function FormAssistant({ formId, formTitle }: { formId: string; formTitle
                 <AssistantMark className="size-6 object-contain" />
               </span>
               <p className="max-w-xs text-sm text-muted-foreground">
-                Ask the AI to summarize responses, count answers, or spot trends — instead of
+                Ask the AI to summarize responses, count answers, or spot trends, instead of
                 crunching it by hand.
               </p>
               <div className="flex flex-col items-stretch gap-1.5">

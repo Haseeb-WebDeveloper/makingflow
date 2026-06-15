@@ -147,7 +147,7 @@ export async function getValidAccessToken(conn: WorkspaceConnection): Promise<st
   if (stillValid) return decrypt(conn.accessToken)
 
   if (!conn.refreshToken) {
-    throw new Error("Connection has no refresh token — reconnect required")
+    throw new Error("Connection has no refresh token, reconnect required")
   }
   const refreshed = await refreshAccessToken(decrypt(conn.refreshToken))
   await db

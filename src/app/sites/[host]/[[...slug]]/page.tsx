@@ -21,7 +21,7 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
   if (res.state !== "ok") return { title: "Form", robots }
 
   const title = res.form.title || "Untitled form"
-  const description = `Fill out “${title}” — it only takes a minute.`
+  const description = `Fill out “${title}”. It only takes a minute.`
   // Absolute URL on the custom domain (metadataBase points at the main site).
   const url = `https://${host}/${formSlug}`
   return {

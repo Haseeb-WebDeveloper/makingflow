@@ -8,7 +8,7 @@ const FEATURES: { key: Key; title: string; body: string }[] = [
   {
     key: "builder",
     title: "AI-powered builder",
-    body: "Describe a form in plain language and watch it assemble — then refine it just by asking.",
+    body: "Describe a form in plain language and watch it assemble, then refine it just by asking.",
   },
   {
     key: "analytics",
@@ -23,7 +23,7 @@ const FEATURES: { key: Key; title: string; body: string }[] = [
   {
     key: "integrations",
     title: "Focused integrations",
-    body: "Google Sheets, webhooks, and email — the three places your answers actually need to be.",
+    body: "Google Sheets, webhooks, and email: the three places your answers actually need to be.",
   },
   {
     key: "domain",
@@ -33,7 +33,7 @@ const FEATURES: { key: Key; title: string; body: string }[] = [
   {
     key: "submissions",
     title: "Smart submissions",
-    body: "Filter, search, tag, and export — with an AI summary waiting at the top of every response.",
+    body: "Filter, search, tag, and export, with an AI summary waiting at the top of every response.",
   },
 ]
 
@@ -47,7 +47,7 @@ export function FeaturesGrid() {
             Features that set us apart.
           </h2>
           <p className="mx-auto mt-4 max-w-[52ch] text-base leading-relaxed text-muted-foreground">
-            MakingFlow goes beyond basic forms — AI that adapts, analytics that explain, and a
+            MakingFlow goes beyond basic forms with AI that adapts, analytics that explain, and a
             calm builder that makes the whole thing feel effortless.
           </p>
         </Reveal>

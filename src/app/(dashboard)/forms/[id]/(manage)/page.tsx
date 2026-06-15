@@ -77,7 +77,7 @@ export default async function InsightsPage({
         <h2 className="mb-1 text-sm font-semibold text-foreground">Question breakdown</h2>
         {!hasResponses ? (
           <p className="mb-3 text-sm text-muted-foreground">
-            No responses yet — share your form to start collecting.
+            No responses yet. Share your form to start collecting.
           </p>
         ) : null}
         {fields.length === 0 ? (

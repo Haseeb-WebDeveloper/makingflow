@@ -25,7 +25,7 @@ export function AboutPlatform() {
             </Reveal>
             <Reveal delay={140}>
               <p className="mt-4 max-w-[52ch] text-base leading-relaxed text-muted-foreground">
-                Startup, agency, or enterprise — describe what you need in plain words and
+                Startup, agency, or enterprise: describe what you need in plain words and
                 MakingFlow drafts the form, adapts it to each respondent, and summarizes every
                 answer. Less busywork, better data.
               </p>

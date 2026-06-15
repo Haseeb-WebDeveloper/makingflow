@@ -264,7 +264,7 @@ export function ConversationalRuntime({ form }: { form: PublicForm }) {
         // Defensive: ensure there's a closing line even if the model returned none.
         messagesRef.current = [
           ...messagesRef.current.slice(0, -1),
-          { role: "assistant", text: "Thanks — recording your response." },
+          { role: "assistant", text: "Thanks, recording your response." },
         ]
         setMessages(messagesRef.current)
       }

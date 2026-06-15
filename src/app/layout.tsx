@@ -11,7 +11,7 @@ import { Suspense } from "react";
 // in production (it's localhost in dev).
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://makingflow.com";
 
-const TITLE = "MakingFlow — AI form builder";
+const TITLE = "MakingFlow: AI form builder";
 const DESCRIPTION =
   "Describe a form in plain language. MakingFlow builds it, adapts it to every respondent, and hands you clean, summarized answers.";
 
@@ -26,7 +26,7 @@ export const metadata: Metadata = {
     title: TITLE,
     description: DESCRIPTION,
     images: [
-      { url: "/og.png", width: 1080, height: 607, alt: "MakingFlow — build forms that think." },
+      { url: "/og.png", width: 1080, height: 607, alt: "MakingFlow: build forms that think." },
     ],
   },
   twitter: {

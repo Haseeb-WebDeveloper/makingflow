@@ -159,9 +159,9 @@ export function FormBuilder({
           ? summary
           : isFirst
           ? full.title
-            ? `Here's your form — “${full.title}”. Ask for any changes.`
+            ? `Here's your form: “${full.title}”. Ask for any changes.`
             : "Here's your form. Ask for any changes."
-          : "Done — updated the form.";
+          : "Done. Updated the form.";
         return [...prev, { id: rid(), role: "assistant", text }];
       });
       scheduleAutosave(full);
@@ -184,7 +184,7 @@ export function FormBuilder({
         publicId: publicId ?? "preview",
         title: currentForm.title || "Untitled form",
         submitLabel: initialSettings?.submitButtonLabel || "Submit",
-        thankYou: "Looks good — this was a test, no response was recorded.",
+        thankYou: "Looks good. This was a test, so no response was recorded.",
         redirectUrl: null, // never redirect in the builder preview
         showProgressBar: initialSettings?.showProgressBar ?? false,
         // The preview always renders classic — conversational needs a published,
@@ -484,7 +484,7 @@ export function FormBuilder({
               Describe your form
             </h1>
             <p className="mt-3 max-w-md text-muted-foreground">
-              Tell MakingFlow what you need in plain language — it builds the
+              Tell MakingFlow what you need in plain language and it builds the
               form live, then refines it as you ask for changes.
             </p>
           </div>
@@ -493,7 +493,7 @@ export function FormBuilder({
             value={draft}
             onChange={setDraft}
             onSubmit={send}
-            placeholder="Describe your form, or attach a screenshot to recreate — e.g. a job application with a portfolio link and availability…"
+            placeholder="Describe your form, or attach a screenshot to recreate (e.g. a job application with a portfolio link and availability)…"
             image={image}
             onRemoveImage={() => setImage(null)}
             onPickFile={pickFile}
@@ -548,7 +548,7 @@ export function FormBuilder({
             value={draft}
             onChange={setDraft}
             onSubmit={send}
-            placeholder="Ask for changes — e.g. add a phone number, make email required…"
+            placeholder="Ask for changes (e.g. add a phone number, make email required)…"
             image={image}
             onRemoveImage={() => setImage(null)}
             onPickFile={pickFile}

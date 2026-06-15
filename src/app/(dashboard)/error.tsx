@@ -30,7 +30,7 @@ export default function DashboardError({
         Something went wrong
       </h1>
       <p className="mt-1.5 max-w-md text-sm text-muted-foreground">
-        We couldn&apos;t load this page. This is usually temporary — try again in a
+        We couldn&apos;t load this page. This is usually temporary, so try again in a
         moment.
       </p>
       <div className="mt-6 flex items-center gap-2">

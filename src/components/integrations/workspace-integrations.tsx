@@ -44,7 +44,7 @@ export function WorkspaceIntegrationsPanel({
     const status = searchParams.get("google");
     if (!status) return;
     if (status === "connected") {
-      showToast("Google connected — all forms now sync to Sheets", {
+      showToast("Google connected, all forms now sync to Sheets", {
         type: "success",
       });
     } else if (status === "error") {
@@ -109,7 +109,7 @@ export function WorkspaceIntegrationsPanel({
               ? `Every form syncs new submissions to its own spreadsheet automatically.${
                   syncingCount > 0 ? ` ${syncingCount} active.` : ""
                 }`
-              : "Connect once for the whole workspace — every form, current and future, syncs to Sheets automatically."}
+              : "Connect once for the whole workspace, and every form, current and future, syncs to Sheets automatically."}
           </p>
 
           <div className="mt-4 flex items-center justify-between gap-3 border-t border-border pt-3">
@@ -253,7 +253,7 @@ export function WorkspaceIntegrationsPanel({
           <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4">
             <p className="text-sm text-muted-foreground">
               Every form sends new submissions to its own spreadsheet. A
-              form&apos;s sheet is created on its first response — new forms are
+              form&apos;s sheet is created on its first response, and new forms are
               added automatically.
             </p>
 

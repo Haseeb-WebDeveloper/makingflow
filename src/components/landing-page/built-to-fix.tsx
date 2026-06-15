@@ -6,7 +6,7 @@ type IconName = "clock" | "wand" | "plug" | "shield"
 const CARDS: { label?: string; title: string; body: string; icon: IconName; chip: string }[] = [
   {
     title: "Save hours every week",
-    body: "Describe a form and it's built in a minute — not an afternoon of dragging fields around.",
+    body: "Describe a form and it's built in a minute, not an afternoon of dragging fields around.",
     icon: "clock",
     chip: "bg-primary/10 text-primary",
   },
@@ -26,7 +26,7 @@ const CARDS: { label?: string; title: string; body: string; icon: IconName; chip
   {
     label: "GDPR-minded security",
     title: "EU data, encrypted by default",
-    body: "Export, deletion, and clear ownership are built in — not an afterthought.",
+    body: "Export, deletion, and clear ownership are built in, never an afterthought.",
     icon: "shield",
     chip: "bg-success/10 text-success",
   },
@@ -48,7 +48,7 @@ export function BuiltToFix() {
 
         <div className="mt-12 grid gap-5 lg:grid-cols-[0.9fr_1.1fr]">
           {/* A living conversational form — it listens and adapts, on a loop. */}
-          <Reveal>
+          <Reveal className="h-full">
             <ConversationLoop />
           </Reveal>
 

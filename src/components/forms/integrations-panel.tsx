@@ -53,7 +53,7 @@ export function IntegrationsPanel({
     const status = searchParams.get("google");
     if (!status) return;
     if (status === "connected") {
-      showToast("Google connected — all forms now sync to Sheets", {
+      showToast("Google connected, all forms now sync to Sheets", {
         type: "success",
       });
     } else if (status === "error") {
@@ -118,7 +118,7 @@ export function IntegrationsPanel({
           <p className="mt-1 flex-1 text-sm text-muted-foreground">
             {connected
               ? "New submissions are added to this form's spreadsheet as rows, in real time."
-              : "Connect Google once for the whole workspace — every form syncs automatically."}
+              : "Connect Google once for the whole workspace, and every form syncs automatically."}
           </p>
 
           <div className="mt-4 flex items-center justify-between gap-3 border-t border-border pt-3">

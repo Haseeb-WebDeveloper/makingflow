@@ -3,7 +3,7 @@ import type { MetadataRoute } from "next"
 /** Lightweight web manifest (name, theme, icon) for install/tab affordances. */
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "MakingFlow — AI form builder",
+    name: "MakingFlow: AI form builder",
     short_name: "MakingFlow",
     description:
       "Describe a form in plain language. MakingFlow builds it, adapts it to every respondent, and hands you clean answers.",

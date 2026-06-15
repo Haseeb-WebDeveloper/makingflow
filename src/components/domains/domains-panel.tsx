@@ -182,7 +182,7 @@ function DomainRow({
         <div className="border-t border-border bg-muted/20 p-4">
           <div className="flex items-center justify-between gap-3">
             <p className="text-xs text-muted-foreground">
-              Add this record at your DNS provider. We check automatically — SSL
+              Add this record at your DNS provider. We check automatically, and SSL
               is issued once it resolves.
             </p>
             <Button
@@ -206,7 +206,7 @@ function DomainRow({
           {domain.verification.length > 0 ? (
             <div className="mt-2 space-y-2 rounded-lg border border-border bg-card p-3">
               <p className="text-[11px] font-medium text-muted-foreground">
-                Ownership check — also add:
+                Ownership check, also add:
               </p>
               {domain.verification.map((v, i) => (
                 <div key={i} className="space-y-2">
@@ -293,7 +293,7 @@ export function DomainsPanel({ data }: { data: WorkspaceDomains }) {
       const res = await addCustomDomain(domain);
       setAdding(false);
       if (res.success) {
-        showToast("Domain added — set up DNS to finish", { type: "success" });
+        showToast("Domain added. Set up DNS to finish", { type: "success" });
         setValue("");
         router.refresh();
       } else {

@@ -25,7 +25,7 @@ export default async function FormIntegrationsPage({
     <div className="max-w-4xl">
       <p className="text-sm text-muted-foreground">
         Integrations are connected once per workspace and apply to every form. Sync runs
-        automatically and never blocks a response — if an integration is down, the submission is
+        automatically and never blocks a response. If an integration is down, the submission is
         still saved.
       </p>
 

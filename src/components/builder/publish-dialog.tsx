@@ -95,7 +95,7 @@ export function PublishDialog({
               <DialogTitle>Publish your form</DialogTitle>
               <DialogDescription>
                 Publishing makes your form live at a public link. Anyone with
-                the link can respond — you can unpublish any time.
+                the link can respond, and you can unpublish any time.
               </DialogDescription>
             </>
           )}
@@ -123,7 +123,7 @@ export function PublishDialog({
               Custom domain
             </h3>
             <p className="mt-0.5 mb-3 text-sm text-muted-foreground">
-              Serve this form from one of your connected domains — change or
+              Serve this form from one of your connected domains, and change or
               remove it anytime.
             </p>
             <FormDomainPicker

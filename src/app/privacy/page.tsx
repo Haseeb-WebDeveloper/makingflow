@@ -3,7 +3,7 @@ import { getOptionalUser } from "@/lib/auth/session"
 import { LegalShell } from "@/components/landing-page/legal-shell"
 
 export const metadata: Metadata = {
-  title: "Privacy Policy — MakingFlow",
+  title: "Privacy Policy | MakingFlow",
   description: "How MakingFlow collects, uses, and protects personal data.",
 }
 
@@ -23,28 +23,28 @@ export default async function PrivacyPage() {
         For data about <strong>account holders</strong> (the people who sign up and build forms),
         we are the <strong>data controller</strong>. For data submitted by{" "}
         <strong>respondents</strong> through a creator’s forms, the <strong>form creator is the
-        controller</strong> and MakingFlow acts as a <strong>processor</strong> on their behalf —
-        we process that data only to provide the service and on the creator’s instructions.
+        controller</strong> and MakingFlow acts as a <strong>processor</strong> on their behalf.
+        We process that data only to provide the service and on the creator’s instructions.
       </p>
 
       <h2>2. Data we collect</h2>
       <ul>
         <li>
-          <strong>Account data</strong> — your name, email address, and authentication details when
+          <strong>Account data:</strong> your name, email address, and authentication details when
           you sign up (including via Google sign-in).
         </li>
         <li>
-          <strong>Form and response data</strong> — the forms you build and the answers, files, and
+          <strong>Form and response data:</strong> the forms you build and the answers, files, and
           metadata respondents submit. This may include personal data you choose to collect (for
           example, names, contact details, or CVs).
         </li>
         <li>
-          <strong>Usage data</strong> — limited technical and analytics data such as device type,
+          <strong>Usage data:</strong> limited technical and analytics data such as device type,
           approximate country, referrer, and event counts used to power your dashboards and to keep
           the service secure and reliable.
         </li>
         <li>
-          <strong>Billing data</strong> — if you subscribe to a paid plan, billing details are
+          <strong>Billing data:</strong> if you subscribe to a paid plan, billing details are
           handled by our payment provider; we do not store full card numbers.
         </li>
       </ul>
@@ -64,7 +64,7 @@ export default async function PrivacyPage() {
         MakingFlow uses third-party AI models (currently Google’s Gemini models) to power form
         generation, conditional logic, multi-language support, and response summaries. Form
         definitions and, where you enable it, response content may be sent to the AI provider to
-        produce these results. Build-time AI features operate on the form definition only — not on
+        produce these results. Build-time AI features operate on the form definition only, not on
         respondent answers. We do not use your content to train our own models, and we rely on the
         AI provider’s commitments regarding the handling of submitted data.
       </p>
@@ -72,13 +72,13 @@ export default async function PrivacyPage() {
       <h2>5. Legal bases (GDPR)</h2>
       <p>We process personal data under one or more of the following legal bases:</p>
       <ul>
-        <li><strong>Contract</strong> — to provide the service you signed up for;</li>
+        <li><strong>Contract:</strong> to provide the service you signed up for;</li>
         <li>
-          <strong>Legitimate interests</strong> — to secure, maintain, and improve the service, where
+          <strong>Legitimate interests:</strong> to secure, maintain, and improve the service, where
           not overridden by your rights;
         </li>
-        <li><strong>Consent</strong> — where required, for example for certain communications;</li>
-        <li><strong>Legal obligation</strong> — to comply with applicable law.</li>
+        <li><strong>Consent:</strong> where required, for example for certain communications;</li>
+        <li><strong>Legal obligation:</strong> to comply with applicable law.</li>
       </ul>
       <p>
         For respondent data, the lawful basis is determined by the form creator (the controller).
@@ -91,11 +91,11 @@ export default async function PrivacyPage() {
         it. These currently include:
       </p>
       <ul>
-        <li><strong>Supabase</strong> — authentication and database hosting;</li>
-        <li><strong>Vercel</strong> — application hosting and content delivery;</li>
-        <li><strong>Google</strong> — AI processing (Gemini) and, if you connect it, Google Sheets;</li>
-        <li><strong>Cloudinary</strong> — storage of uploaded files and images;</li>
-        <li><strong>Resend</strong> — sending email notifications.</li>
+        <li><strong>Supabase:</strong> authentication and database hosting;</li>
+        <li><strong>Vercel:</strong> application hosting and content delivery;</li>
+        <li><strong>Google:</strong> AI processing (Gemini) and, if you connect it, Google Sheets;</li>
+        <li><strong>Cloudinary:</strong> storage of uploaded files and images;</li>
+        <li><strong>Resend:</strong> sending email notifications.</li>
       </ul>
       <p>We may also disclose data where required by law or to protect our rights and users.</p>
 

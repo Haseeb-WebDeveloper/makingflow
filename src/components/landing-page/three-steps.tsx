@@ -16,7 +16,7 @@ const STEPS = [
   {
     n: "Step 3",
     title: "Read clean answers",
-    body: "Each response lands organized with a short summary — in your inbox, a sheet, or your own tools.",
+    body: "Each response lands organized with a short summary, ready in your inbox, a sheet, or your own tools.",
   },
 ]
 
@@ -37,7 +37,7 @@ export function ThreeSteps() {
             <Reveal delay={140}>
               <p className="mt-4 max-w-[48ch] text-base leading-relaxed text-muted-foreground">
                 MakingFlow makes building forms effortless. You describe what you need in plain
-                words, it drafts the whole thing, and it keeps working while people fill it out —
+                words, it drafts the whole thing, and it keeps working while people fill it out,
                 asking natural follow-ups, translating on the fly, and summarizing every answer.
                 From a single sentence to a live, intelligent form, here is how it works.
               </p>

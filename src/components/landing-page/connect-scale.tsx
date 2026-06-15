@@ -50,8 +50,8 @@ export function ConnectScale() {
         <Reveal delay={180}>
           <figure className="mx-auto mt-14 max-w-xl">
             <blockquote className="font-sebenta text-xl font-medium leading-relaxed text-foreground sm:text-2xl">
-              “MakingFlow changed how we collect answers. It connects everything
-              — responses just show up where we already work.”
+              “MakingFlow changed how we collect answers. It connects everything,
+              so responses just show up where we already work.”
             </blockquote>
             <figcaption className="mt-5 flex items-center justify-center gap-3">
               <span className="grid size-9 place-items-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">

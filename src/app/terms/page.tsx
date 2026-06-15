@@ -3,7 +3,7 @@ import { getOptionalUser } from "@/lib/auth/session"
 import { LegalShell } from "@/components/landing-page/legal-shell"
 
 export const metadata: Metadata = {
-  title: "Terms of Service — MakingFlow",
+  title: "Terms of Service | MakingFlow",
   description: "The terms that govern your use of MakingFlow.",
 }
 
@@ -80,7 +80,7 @@ export default async function TermsPage() {
       <h2>5. AI features</h2>
       <p>
         MakingFlow uses third-party AI models to help generate and adapt forms, translate content,
-        and summarize responses. AI output can be inaccurate, incomplete, or unexpected — you are
+        and summarize responses. AI output can be inaccurate, incomplete, or unexpected, so you are
         responsible for reviewing it before relying on it. AI features are provided on a best-effort
         basis and may be unavailable at times; a form will still render, accept, and store
         responses as a standard form if the AI layer is unavailable.

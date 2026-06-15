@@ -20,7 +20,7 @@ export function Hero() {
           style={{ animationDelay: "80ms" }}
         >
           MakingFlow turns a sentence into a form, adapts it to every
-          respondent, and hands back clean, summarized answers — so you collect
+          respondent, and hands back clean, summarized answers, so you collect
           better data in less time.
         </p>
 

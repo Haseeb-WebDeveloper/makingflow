@@ -13,7 +13,7 @@ export default function TemplatesPage() {
       <EmptyState
         icon="category"
         title="Templates are coming"
-        description="Job applications, surveys, intake briefs, and more — ready to customize."
+        description="Job applications, surveys, intake briefs, and more, all ready to customize."
       />
     </PageContainer>
   )

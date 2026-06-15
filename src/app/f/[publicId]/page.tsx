@@ -15,7 +15,7 @@ export async function generateMetadata({
   if (res.state !== "ok") return { title: "Form · MakingFlow", robots };
 
   const title = res.form.title || "Untitled form";
-  const description = `Fill out “${title}” — it only takes a minute.`;
+  const description = `Fill out “${title}”. It only takes a minute.`;
   const url = `/f/${publicId}`;
   return {
     title,

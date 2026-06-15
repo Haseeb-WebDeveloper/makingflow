@@ -266,7 +266,7 @@ export const FormSettings = forwardRef<
           <>
             <SettingRow
               title="Persona & tone"
-              description="How the AI should sound while asking questions — e.g. “friendly and casual” or “concise and formal”."
+              description="How the AI should sound while asking questions (e.g. “friendly and casual” or “concise and formal”)."
               control={null}
             >
               <textarea
@@ -464,7 +464,7 @@ export const FormSettings = forwardRef<
           title="Success message"
           description={
             state.redirectUrl
-              ? "Shown after submitting — unless the redirect URL above is set, which takes precedence."
+              ? "Shown after submitting, unless the redirect URL above is set, which takes precedence."
               : "Shown to respondents after they submit the form."
           }
           control={null}

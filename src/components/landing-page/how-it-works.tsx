@@ -14,7 +14,7 @@ const STEPS: {
   {
     n: "01",
     title: "Describe it in a sentence.",
-    body: "Write what you need the way you'd say it out loud — “a job application for a motion designer, ask for a showreel.” The form assembles as you type, and you can edit any block by hand.",
+    body: "Write what you need the way you'd say it out loud: “a job application for a motion designer, ask for a showreel.” The form assembles as you type, and you can edit any block by hand.",
     icon: "describe",
     chip: "bg-primary/10 text-primary",
     num: "text-primary/20",
