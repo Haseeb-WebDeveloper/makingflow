@@ -2,7 +2,12 @@
 
 import { useState } from "react"
 import dynamic from "next/dynamic"
-import { Thinking, Pills } from "@/components/forms/conversational-runtime"
+import {
+  Pills,
+  CONVERSATION_OPENING_PHRASES,
+  CONVERSATION_REPLY_PHRASES,
+} from "@/components/forms/conversational-runtime"
+import { Thinking } from "@/components/forms/thinking"
 import { SVGIcon } from "@/components/ui/svg-icon"
 import type { PublicField } from "@/lib/data/public-form"
 
@@ -44,7 +49,7 @@ export default function SandboxPage() {
           }
         >
           <AssistantBubble>
-            <Thinking key={thinkKey} />
+            <Thinking key={thinkKey} phrases={CONVERSATION_REPLY_PHRASES} />
           </AssistantBubble>
         </Section>
 
@@ -54,7 +59,7 @@ export default function SandboxPage() {
           action={<ReplayButton onClick={() => setOpenKey((k) => k + 1)} />}
         >
           <AssistantBubble>
-            <Thinking key={`o${openKey}`} opening />
+            <Thinking key={`o${openKey}`} phrases={CONVERSATION_OPENING_PHRASES} />
           </AssistantBubble>
         </Section>
 

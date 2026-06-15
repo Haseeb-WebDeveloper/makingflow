@@ -11,6 +11,9 @@ import {
 } from "@/components/ui/sheet"
 import { Composer } from "@/components/builder/composer"
 import { MemoizedMarkdown } from "@/components/forms/memoized-markdown"
+import { Thinking } from "@/components/forms/thinking"
+
+const INSIGHTS_PHRASES = ["Reading your responses…", "Crunching the numbers…", "Writing it up…"]
 
 type Msg = { role: "user" | "assistant"; text: string }
 
@@ -154,7 +157,7 @@ export function FormAssistant({ formId, formTitle }: { formId: string; formTitle
                     {m.text ? (
                       <MemoizedMarkdown content={m.text} id={`msg-${i}`} />
                     ) : (
-                      <Dots />
+                      <Thinking phrases={INSIGHTS_PHRASES} />
                     )}
                   </div>
                 </div>
@@ -179,12 +182,3 @@ export function FormAssistant({ formId, formTitle }: { formId: string; formTitle
   )
 }
 
-function Dots() {
-  return (
-    <span className="inline-flex gap-1 py-1">
-      <span className="size-1.5 animate-bounce rounded-full bg-muted-foreground [animation-delay:-0.2s]" />
-      <span className="size-1.5 animate-bounce rounded-full bg-muted-foreground [animation-delay:-0.1s]" />
-      <span className="size-1.5 animate-bounce rounded-full bg-muted-foreground" />
-    </span>
-  )
-}

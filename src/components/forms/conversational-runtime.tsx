@@ -12,12 +12,22 @@ import { SVGIcon } from "@/components/ui/svg-icon"
 import { FormRuntime } from "@/components/forms/form-runtime"
 import type { Expect, TurnMeta, TurnPrev, TurnRequest } from "@/lib/forms/conversation-types"
 import { cn } from "@/lib/utils"
+import { Thinking } from "@/components/forms/thinking"
 
 // Same animated success check the classic runtime uses, so both submit screens
 // match. Code-split so the Lottie/WASM player never loads during the chat.
 const Lottie = dynamic(() => import("../builder/lottie").then((m) => m.Lottie), {
   ssr: false,
 })
+
+// Status lines for the "AI is composing this turn" indicator. Exported so the
+// /sandbox preview shows the real copy.
+export const CONVERSATION_OPENING_PHRASES = ["Getting things ready…", "One moment…"]
+export const CONVERSATION_REPLY_PHRASES = [
+  "Reading your answer…",
+  "Thinking…",
+  "Lining up the next question…",
+]
 
 type ChatMessage = { role: "assistant" | "user"; text: string }
 
@@ -414,7 +424,17 @@ export function ConversationalRuntime({ form }: { form: PublicForm }) {
           ) : (
             <div key={i} className="flex justify-start">
               <div className="max-w-[90%] whitespace-pre-wrap rounded-2xl rounded-bl-md bg-muted px-3.5 py-2.5 text-sm text-foreground">
-                {m.text ? m.text : <Thinking opening={messages[i - 1]?.role !== "user"} />}
+                {m.text ? (
+                  m.text
+                ) : (
+                  <Thinking
+                    phrases={
+                      messages[i - 1]?.role !== "user"
+                        ? CONVERSATION_OPENING_PHRASES
+                        : CONVERSATION_REPLY_PHRASES
+                    }
+                  />
+                )}
               </div>
             </div>
           ),
@@ -600,28 +620,3 @@ export function Pills({
   return null
 }
 
-// While the AI is composing a turn, rotate through a couple of short status
-// lines instead of a static spinner — the visible progress makes the (real)
-// wait feel shorter, and the text is the same size/weight as the answer it
-// becomes, so the bubble doesn't jump or feel heavier when the reply lands.
-const OPENING_PHRASES = ["Getting things ready…", "One moment…"]
-const REPLY_PHRASES = ["Reading your answer…", "Thinking…", "Lining up the next question…"]
-
-export function Thinking({ opening = false }: { opening?: boolean }) {
-  const phrases = opening ? OPENING_PHRASES : REPLY_PHRASES
-  const [i, setI] = useState(0)
-
-  useEffect(() => {
-    if (i >= phrases.length - 1) return // hold on the last line until the reply streams in
-    // First line lingers ~1.5s, the next ~2.6s — matches how long turns take.
-    const delay = i === 0 ? 1500 : 2600
-    const t = setTimeout(() => setI((n) => n + 1), delay)
-    return () => clearTimeout(t)
-  }, [i, phrases.length])
-
-  return (
-    <span key={i} className="mf-think-in inline-block text-sm text-muted-foreground">
-      {phrases[i]}
-    </span>
-  )
-}

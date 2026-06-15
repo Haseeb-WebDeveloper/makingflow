@@ -26,6 +26,7 @@ import {
 import { FormEditor } from "@/components/builder/form-editor";
 import { FormRuntime } from "@/components/forms/form-runtime";
 import { MemoizedMarkdown } from "@/components/forms/memoized-markdown";
+import { Thinking } from "@/components/forms/thinking";
 import type { PublicForm } from "@/lib/data/public-form";
 import { Lottie } from "@/components/builder/lottie";
 import { Composer, type ComposerImage } from "@/components/builder/composer";
@@ -65,6 +66,8 @@ type SaveState = "idle" | "saving" | "saved" | "error";
 
 let _seq = 0;
 const rid = () => `m${++_seq}`;
+
+const BUILDER_PHRASES = ["Reading your request…", "Designing the form…", "Adding the fields…"];
 
 export function FormBuilder({
   initialForm,
@@ -265,6 +268,40 @@ export function FormBuilder({
       /* ignore quota/blocked storage */
     }
   }, [chat, formId]);
+
+  // When the AI first creates a form from the /forms/new flow, move to its real
+  // /forms/[id]/edit URL. This effect is declared AFTER the persist effect, so
+  // by the time it runs the chat is already saved under the new id and is
+  // restored on the edit page (the conversation isn't lost). Why the move:
+  //  - the address bar becomes the form's own URL, and
+  //  - the publish dialog there is the full one (settings, branding, banner,
+  //    domains) the edit route loads, not the bare publish-only dialog.
+  //
+  // Then blank THIS builder. Under cacheComponents the /forms/new route instance
+  // is preserved (hidden), not unmounted — so without this, clicking the header
+  // "New form" later would restore this built form instead of a fresh prompt
+  // screen. Clear formId FIRST (the persist effect then skips, keeping the saved
+  // thread) and cancel any queued autosave so it can't create a duplicate form.
+  // `replace` (not push) so Back doesn't return to the now-blank /forms/new.
+  useEffect(() => {
+    if (initialFormId || !formId) return;
+    router.replace(`/forms/${formId}/edit`);
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    pendingSaveRef.current = null;
+    // Intentional reset of the preserved instance (see note above) — the
+    // cascading re-render is the point, and it re-runs guarded by `!formId`.
+    /* eslint-disable react-hooks/set-state-in-effect */
+    setFormId(null);
+    formIdRef.current = null;
+    setChat([]);
+    setCurrentForm(null);
+    currentFormRef.current = null;
+    setPublished(false);
+    setPublicId(null);
+    setSaveState("idle");
+    clear();
+    /* eslint-enable react-hooks/set-state-in-effect */
+  }, [formId, initialFormId, router, clear]);
 
   // Keep the ref in sync so AI edits merge onto the latest form (incl. manual edits).
   useEffect(() => {
@@ -845,10 +882,7 @@ function AssistantRow({
         className="mt-1 size-6 shrink-0 rounded-md object-contain"
       />
       {building ? (
-        <span className="flex items-center gap-1.5 pt-1 text-sm text-muted-foreground">
-          Building your form
-          <Dots />
-        </span>
+        <Thinking phrases={BUILDER_PHRASES} className="pt-1" />
       ) : (
         // Render markdown so emphasis (**bold**, *italic*, lists) in the AI's
         // summary shows as formatted text instead of raw asterisks/quotes.
@@ -860,15 +894,6 @@ function AssistantRow({
   );
 }
 
-function Dots() {
-  return (
-    <span className="inline-flex gap-0.5">
-      <span className="size-1 animate-bounce rounded-full bg-muted-foreground [animation-delay:-0.2s]" />
-      <span className="size-1 animate-bounce rounded-full bg-muted-foreground [animation-delay:-0.1s]" />
-      <span className="size-1 animate-bounce rounded-full bg-muted-foreground" />
-    </span>
-  );
-}
 
 /**
  * Read an image File into a data URL, downscaling its long edge so the payload
