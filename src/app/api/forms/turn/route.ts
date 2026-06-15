@@ -1,8 +1,7 @@
 import { after } from "next/server"
-import { and, eq, isNull } from "drizzle-orm"
 import { generateObject, streamText, type ModelMessage } from "ai"
-import { db } from "@/lib/db"
-import { forms, formFields, type AnswerValue, type FormField } from "@/lib/db/schema"
+import { type AnswerValue } from "@/lib/db/schema"
+import { loadFormDef, type PublicField } from "@/lib/data/public-form"
 import { geminiFastModel } from "@/lib/ai/provider"
 import { nextAnswerableField, isEmpty } from "@/lib/builder/logic"
 import {
@@ -23,26 +22,22 @@ export const maxDuration = 30
 /** Load + validate a published, AI-enabled conversational form. Null = not
  *  serveable in conversational mode (client falls back to classic). */
 async function loadConversationalForm(publicId: string) {
-  const [form] = await db
-    .select()
-    .from(forms)
-    .where(and(eq(forms.publicId, publicId), isNull(forms.deletedAt)))
-    .limit(1)
-  if (!form || form.status !== "published") return null
+  // Cached form definition (row + fields), shared with the public form page and
+  // invalidated on edit/publish via the `form-${id}` tag. The definition never
+  // changes mid-session, so back-to-back turns read it from cache instead of
+  // making two round-trips to the (distant) DB on every answer.
+  const def = await loadFormDef(publicId)
+  if (!def) return null
+  const { row: form, fields } = def
+  if (form.status !== "published") return null
   const now = new Date()
   if (form.opensAt && form.opensAt > now) return null
   if (form.closesAt && form.closesAt < now) return null
   if (form.renderMode !== "conversational" || !form.aiEnabled) return null
-
-  const fields = await db
-    .select()
-    .from(formFields)
-    .where(and(eq(formFields.formId, form.id), isNull(formFields.deletedAt)))
-    .orderBy(formFields.position)
   return { form, fields }
 }
 
-function toPromptField(f: FormField): PromptField {
+function toPromptField(f: PublicField): PromptField {
   return {
     type: f.type,
     label: f.label,

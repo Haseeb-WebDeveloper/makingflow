@@ -64,7 +64,7 @@ export type PublicFormResult =
 
 type FormRow = typeof forms.$inferSelect
 type FormFieldRow = typeof formFields.$inferSelect
-type FormDef = { row: FormRow; fields: PublicField[] }
+export type FormDef = { row: FormRow; fields: PublicField[] }
 
 function mapFields(raw: FormFieldRow[]): PublicField[] {
   return raw.map((f) => ({
@@ -142,7 +142,7 @@ async function loadFields(formId: string): Promise<PublicField[]> {
  * the form actions. The time-window / submission-limit gating stays OUT of the
  * cache (see `gate`).
  */
-async function loadFormDef(publicId: string): Promise<FormDef | null> {
+export async function loadFormDef(publicId: string): Promise<FormDef | null> {
   "use cache"
   cacheLife("minutes")
   cacheTag(`form-public-${publicId}`)
