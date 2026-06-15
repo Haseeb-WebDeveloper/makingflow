@@ -1,4 +1,4 @@
-import type { AiForm, AiField, AiFieldType } from "@/lib/ai/form-schema"
+import type { AiForm, AiField, AiFieldType, AiOperation } from "@/lib/ai/form-schema"
 import type { FieldLogic, FieldCondition, FieldOption, FieldConfig } from "@/lib/db/schema"
 
 /**
@@ -260,4 +260,214 @@ export function editorToAi(form: EditorForm): AiForm {
         : undefined,
     })),
   }
+}
+
+// ── Operation-based editing ───────────────────────────────────────────────
+
+/**
+ * The current form annotated with a stable `ref` per field, sent to the model so
+ * an edit can target fields unambiguously (by ref, not by re-matching labels).
+ */
+export function toEditContext(form: EditorForm) {
+  const idToLabel = new Map(form.fields.map((f) => [f.id, f.label]))
+  return {
+    title: form.title,
+    fields: form.fields.map((f) => ({
+      ref: f.id,
+      type: f.type,
+      label: f.label,
+      ...(f.description ? { description: f.description } : {}),
+      required: f.required,
+      // Each option carries its own ref so the model can target it exactly,
+      // instead of us re-matching a paraphrased label string.
+      ...(f.options
+        ? { options: f.options.map((o) => ({ ref: o.id, label: o.label })) }
+        : {}),
+      ...(f.logic
+        ? {
+            logic: {
+              action: f.logic.action,
+              match: f.logic.match,
+              conditions: f.logic.conditions
+                .map((c) => ({
+                  fieldLabel: idToLabel.get(c.fieldId) ?? "",
+                  operator: c.operator,
+                  value:
+                    c.value == null
+                      ? undefined
+                      : Array.isArray(c.value)
+                        ? c.value.join(", ")
+                        : String(c.value),
+                }))
+                .filter((c) => c.fieldLabel),
+            },
+          }
+        : {}),
+    })),
+  }
+}
+
+/**
+ * Resolve which option a model reference points at, tolerantly: exact ref (id),
+ * then exact label, then a UNIQUE case-insensitive substring match (so "discord"
+ * resolves "Discord message"). Ambiguous → -1 (skip rather than guess wrong).
+ */
+function resolveOptionIndex(options: FieldOption[], query?: string): number {
+  if (query == null) return -1
+  let i = options.findIndex((o) => o.id === query)
+  if (i >= 0) return i
+  const q = query.trim().toLowerCase()
+  if (!q) return -1
+  i = options.findIndex((o) => o.label.trim().toLowerCase() === q)
+  if (i >= 0) return i
+  const hits = options
+    .map((o, idx) => ({ idx, l: o.label.trim().toLowerCase() }))
+    .filter(({ l }) => l.includes(q) || q.includes(l))
+  return hits.length === 1 ? hits[0].idx : -1
+}
+
+/**
+ * Apply a list of AI edit operations to a form, deterministically. Ops target
+ * fields by their stable id (the `ref` the model was given); anything an op
+ * doesn't touch is left exactly as-is, so an edit can never silently drop or
+ * garble unrelated fields/options. Unknown refs are skipped, not fatal.
+ */
+export function applyOperations(form: EditorForm, ops: AiOperation[]): EditorForm {
+  let title = form.title
+  // Deep-copy the parts we mutate (fields + their option arrays).
+  let fields: EditorField[] = form.fields.map((f) => ({
+    ...f,
+    options: f.options?.map((o) => ({ ...o })),
+  }))
+
+  const byId = (ref?: string) => fields.find((f) => f.id === ref)
+  const indexOf = (ref?: string) => fields.findIndex((f) => f.id === ref)
+  // Insert position relative to `after`: first ("start"), after that field, or
+  // appended (omitted / unknown ref).
+  const insertIndex = (after?: string): number => {
+    if (after === "start") return 0
+    const i = indexOf(after)
+    return i < 0 ? fields.length : i + 1
+  }
+
+  for (const op of ops) {
+    switch (op.op) {
+      case "rename_form": {
+        if (op.title != null) title = op.title
+        break
+      }
+      case "replace_form": {
+        const merged = mergeAiIntoEditor(
+          { title: op.title ?? title, fields: op.fields ?? [] },
+          { title, fields },
+        )
+        title = merged.title
+        fields = merged.fields
+        break
+      }
+      case "add_field": {
+        if (!op.field) break
+        const ef: EditorField = {
+          id: genId(),
+          type: op.field.type,
+          label: op.field.label ?? "",
+          description: op.field.description,
+          placeholder: op.field.placeholder,
+          required: op.field.required ?? false,
+          options: op.field.options?.map((label) => ({ id: genId(), label })),
+        }
+        fields.splice(insertIndex(op.after), 0, ef)
+        if (op.field.logic) ef.logic = compileAiLogic(op.field.logic, labelIdMap(fields))
+        break
+      }
+      case "remove_field": {
+        const i = indexOf(op.target)
+        if (i >= 0) fields.splice(i, 1)
+        break
+      }
+      case "move_field": {
+        const i = indexOf(op.target)
+        if (i < 0) break
+        const [f] = fields.splice(i, 1)
+        fields.splice(insertIndex(op.after), 0, f)
+        break
+      }
+      case "update_field": {
+        const f = byId(op.target)
+        if (!f || !op.set) break
+        if (op.set.label != null) f.label = op.set.label
+        if (op.set.description != null) f.description = op.set.description
+        if (op.set.placeholder != null) f.placeholder = op.set.placeholder
+        if (op.set.required != null) f.required = op.set.required
+        if (op.set.type != null && op.set.type !== f.type) {
+          f.type = op.set.type
+          // Keep options only if the new type still uses them.
+          if (!isChoice(f.type)) f.options = undefined
+          else if (!f.options) f.options = []
+        }
+        break
+      }
+      case "add_option": {
+        const f = byId(op.target)
+        // The model is inconsistent about WHICH string field it fills (it often
+        // dumps the value into `to`), so accept the new option text from any of
+        // them — it gets the value right even when it picks the wrong field.
+        const text = op.label ?? op.to ?? op.from
+        if (!f || text == null || !isChoice(f.type)) break
+        f.options = f.options ?? []
+        const afterIdx = op.after === "start" ? -1 : resolveOptionIndex(f.options, op.after)
+        const at = op.after === "start" ? 0 : afterIdx >= 0 ? afterIdx + 1 : f.options.length
+        f.options.splice(at, 0, { id: genId(), label: text })
+        break
+      }
+      case "remove_option": {
+        const f = byId(op.target)
+        if (!f || !f.options) break
+        const i = resolveOptionIndex(f.options, op.label ?? op.from ?? op.to)
+        if (i >= 0) f.options.splice(i, 1)
+        break
+      }
+      case "rename_option": {
+        const f = byId(op.target)
+        const text = op.to ?? op.label
+        if (!f || text == null || !f.options) break
+        const i = resolveOptionIndex(f.options, op.from ?? op.label)
+        if (i >= 0) f.options[i].label = text
+        break
+      }
+      case "move_option": {
+        const f = byId(op.target)
+        if (!f || op.toIndex == null || !f.options) break
+        const i = resolveOptionIndex(f.options, op.label ?? op.from ?? op.to)
+        if (i < 0) break
+        const [o] = f.options.splice(i, 1)
+        const dest = Math.max(0, Math.min(op.toIndex, f.options.length))
+        f.options.splice(dest, 0, o)
+        break
+      }
+      case "set_options": {
+        const f = byId(op.target)
+        if (!f || op.options == null || !isChoice(f.type)) break
+        const prev = f.options ?? []
+        f.options = op.options.map((label) => ({
+          id: prev.find((o) => o.label === label)?.id ?? genId(),
+          label,
+        }))
+        break
+      }
+      case "set_logic": {
+        const f = byId(op.target)
+        if (!f || !op.logic) break
+        f.logic = compileAiLogic(op.logic, labelIdMap(fields))
+        break
+      }
+      case "remove_logic": {
+        const f = byId(op.target)
+        if (f) f.logic = undefined
+        break
+      }
+    }
+  }
+
+  return { title, fields }
 }

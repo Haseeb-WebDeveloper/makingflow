@@ -43,6 +43,38 @@ export const AI_FIELD_TYPES = [
 export const fieldTypeSchema = z.enum(AI_FIELD_TYPES)
 export type AiFieldType = z.infer<typeof fieldTypeSchema>
 
+/** A conditional show/hide rule, referencing the trigger field by its label. */
+export const aiLogicSchema = z.object({
+  action: z.enum(["show", "hide"]).describe("Show or hide THIS field when the conditions match."),
+  match: z
+    .enum(["all", "any"])
+    .optional()
+    .describe("Match all conditions or any of them. Defaults to all."),
+  conditions: z
+    .array(
+      z.object({
+        fieldLabel: z
+          .string()
+          .describe("The EXACT label of the OTHER field whose answer this depends on."),
+        operator: z.enum([
+          "equals",
+          "not_equals",
+          "contains",
+          "not_contains",
+          "greater_than",
+          "less_than",
+          "is_empty",
+          "is_not_empty",
+        ]),
+        value: z
+          .string()
+          .optional()
+          .describe("Value to compare against. Omit for is_empty / is_not_empty."),
+      }),
+    )
+    .min(1),
+})
+
 export const aiFieldSchema = z.object({
   type: fieldTypeSchema.describe("The field/block type. Pick the most appropriate for the question."),
   label: z
@@ -60,39 +92,7 @@ export const aiFieldSchema = z.object({
     .describe(
       "Choices for multiple_choice, dropdown, multi_select, and checkboxes. Omit for all other types.",
     ),
-  logic: z
-    .object({
-      action: z
-        .enum(["show", "hide"])
-        .describe("Show or hide THIS field when the conditions match."),
-      match: z
-        .enum(["all", "any"])
-        .optional()
-        .describe("Match all conditions or any of them. Defaults to all."),
-      conditions: z
-        .array(
-          z.object({
-            fieldLabel: z
-              .string()
-              .describe("The EXACT label of the OTHER field whose answer this depends on."),
-            operator: z.enum([
-              "equals",
-              "not_equals",
-              "contains",
-              "not_contains",
-              "greater_than",
-              "less_than",
-              "is_empty",
-              "is_not_empty",
-            ]),
-            value: z
-              .string()
-              .optional()
-              .describe("Value to compare against. Omit for is_empty / is_not_empty."),
-          }),
-        )
-        .min(1),
-    })
+  logic: aiLogicSchema
     .optional()
     .describe(
       "Conditional visibility for THIS field, based on another field's answer. Only set when the user explicitly asks to show/hide a field based on another answer.",
@@ -118,6 +118,94 @@ export const aiFormSchema = z.object({
 })
 export type AiForm = z.infer<typeof aiFormSchema>
 
+// ── Edit operations ──────────────────────────────────────────────────────────
+// Edits are expressed as a small list of explicit operations applied
+// deterministically in code (see applyOperations), instead of re-emitting the
+// whole form — which the model does unreliably (dropping/garbling options).
+// The schema is one FLAT object (op + all-optional fields) rather than a
+// discriminated union, which Gemini's structured output handles far more
+// reliably; the discrimination happens in applyOperations.
+
+export const AI_OP_NAMES = [
+  "rename_form",
+  "add_field",
+  "remove_field",
+  "move_field",
+  "update_field",
+  "add_option",
+  "remove_option",
+  "rename_option",
+  "move_option",
+  "set_options",
+  "set_logic",
+  "remove_logic",
+  "replace_form",
+] as const
+
+export const aiOperationSchema = z.object({
+  op: z.enum(AI_OP_NAMES).describe("The kind of change to make."),
+  target: z
+    .string()
+    .optional()
+    .describe(
+      'The "ref" of the field to change, taken from the current form you were given. Required for every field, option, and logic op.',
+    ),
+  field: aiFieldSchema
+    .optional()
+    .describe("The new field to add (add_field only). Include its options/logic if relevant."),
+  set: z
+    .object({
+      label: z.string().optional(),
+      description: z.string().optional(),
+      placeholder: z.string().optional(),
+      required: z.boolean().optional(),
+      type: fieldTypeSchema.optional(),
+    })
+    .optional()
+    .describe("Field properties to change (update_field only). Include ONLY the ones that change."),
+  label: z
+    .string()
+    .optional()
+    .describe(
+      "For add_option: the new option's text. For remove_option / move_option: the EXISTING option to act on — give its `ref` from the form context (preferred), or its exact text.",
+    ),
+  from: z
+    .string()
+    .optional()
+    .describe("The existing option to rename — its `ref` (preferred) or exact text (rename_option)."),
+  to: z.string().optional().describe("New option text (rename_option)."),
+  options: z
+    .array(z.string())
+    .optional()
+    .describe("The COMPLETE replacement options list (set_options only)."),
+  after: z
+    .string()
+    .optional()
+    .describe(
+      'Placement. For add_field/move_field: the ref of the field to place this AFTER. For add_option: the option text to place after. Omit to append; use "start" to place first.',
+    ),
+  toIndex: z.number().optional().describe("Zero-based position to move an option to (move_option)."),
+  logic: aiLogicSchema.optional().describe("The show/hide rule to set on the target field (set_logic)."),
+  title: z.string().optional().describe("New form title (rename_form, or with replace_form)."),
+  fields: z
+    .array(aiFieldSchema)
+    .optional()
+    .describe("The COMPLETE new field list (replace_form only)."),
+})
+export type AiOperation = z.infer<typeof aiOperationSchema>
+
+export const aiEditSchema = z.object({
+  operations: z
+    .array(aiOperationSchema)
+    .describe("The ordered list of changes to apply to the current form."),
+  summary: z
+    .string()
+    .describe(
+      "A short, first-person note (1-2 sentences) of what you changed this turn — only the specific fields/options you touched, never the whole form. Use Markdown: wrap field/option names in **bold**, and a short bullet list if you changed several things. Never generic like 'Done' or 'Updated the form.'",
+    ),
+})
+export type AiEditResult = z.infer<typeof aiEditSchema>
+
 /** System instruction that shapes every generation + edit. */
 export const FORM_BUILDER_SYSTEM = `You are MakingFlow, an expert form designer. You turn a plain-language description into a clean, well-structured form.
 
@@ -137,3 +225,29 @@ Rules:
   { "action": "show", "conditions": [{ "fieldLabel": "Do you have a pet?", "operator": "equals", "value": "Yes" }] }
   The trigger field ("Do you have a pet?") gets NO logic — only the target does. For choice/yes_no fields, "value" must be the option's exact text. Operators: equals, not_equals, contains, not_contains, greater_than, less_than, is_empty, is_not_empty. When editing an existing form, keep any existing logic unless the user asks to change it.
 - ALWAYS fill "summary" with a brief, first-person, conversational note of what you did this turn — on an edit, describe ONLY what changed (the specific fields you added/removed/edited), not the whole form. Keep it to 1-2 sentences. Use Markdown: wrap any field name/label you mention in **bold** (never plain quotes), and use a short bullet list when you changed several things. Never write generic filler like "Done" or "I've updated your form."`
+
+/** System instruction for EDITING an existing form via explicit operations. */
+export const FORM_EDIT_SYSTEM = `You edit an existing form by returning a precise list of CHANGE OPERATIONS — never the whole form. You are given the current form as JSON: each field has a stable "ref", and each option also has its own "ref" (e.g. { "ref": "abc", "label": "Discord message" }). ALWAYS target an existing field or option by its "ref" — copy the ref exactly from the context. Do not rely on retyping the field/option text; refs are how the change is matched.
+
+Return ONLY the operations needed to satisfy the user's request, and NOTHING for anything they didn't ask to change. Do not touch other fields or options. Apply the smallest set of operations that does the job.
+
+Operations (set "op" + only the fields that op needs):
+- rename_form { title } — change the form's title.
+- add_field { field, after? } — add a new field. "field" is a full field spec (type, label, options for choice types, etc.). "after" = the ref to place it after; omit to append; "start" to place first.
+- remove_field { target } — delete the field with this ref.
+- move_field { target, after? } — reorder: place this field after the given ref ("start" = first).
+- update_field { target, set } — change field properties. "set" includes ONLY the changed ones: label, description, placeholder, required, type.
+- add_option { target, label, after? } — add one option to a choice field. "label" = the new option's text. "after" = the ref of the option to place it after.
+- remove_option { target, label } — remove ONE existing option. Put its ref in "label" (e.g. the ref of "Discord message"). The rest stay.
+- rename_option { target, from, to } — rename one option. "from" = the existing option's ref; "to" = the new text.
+- move_option { target, label, toIndex } — reorder one option (its ref in "label") to a zero-based index.
+- set_options { target, options } — replace a choice field's ENTIRE options list with this exact array.
+- set_logic { target, logic } — set/replace this field's show/hide rule. Name the trigger field by its EXACT label; for choice/yes_no triggers, "value" is the option's exact text.
+- remove_logic { target } — clear this field's conditional logic.
+- replace_form { title, fields } — replace the WHOLE form. Use this ONLY for sweeping rewrites (e.g. translate everything, or completely restructure). Never use it for a small, targeted change — use the granular ops above so unrelated fields and options are left exactly as they are.
+
+To CHANGE an option, use the option ops (remove_option / rename_option / set_options) — do NOT re-list a field's options unless you are intentionally replacing them.
+
+Conditional logic targeting: put the rule on the field being shown/hidden (the TARGET ref), and name the OTHER (trigger) field by its exact label. Example to reveal a field only after a "Yes": set_logic on the target with logic { action: "show", conditions: [{ fieldLabel: "Do you have a pet?", operator: "equals", value: "Yes" }] }.
+
+ALWAYS fill "summary": a brief, first-person, 1-2 sentence note of ONLY what you changed, with field/option names in **bold** and a short bullet list if several things changed. Never generic like "Done".`

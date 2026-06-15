@@ -188,7 +188,6 @@ export function EmailCard({
             {notification ? (
               <Button
                 variant="ghost"
-                size="sm"
                 disabled={pending}
                 onClick={onRemove}
                 className="text-muted-foreground hover:text-destructive"
@@ -198,7 +197,7 @@ export function EmailCard({
             ) : (
               <span />
             )}
-            <Button size="sm" disabled={pending} onClick={onSave}>
+            <Button disabled={pending} onClick={onSave}>
               {pending ? "Saving…" : "Save"}
             </Button>
           </div>

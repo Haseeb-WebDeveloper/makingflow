@@ -17,9 +17,11 @@ import {
   type EditorForm,
   editorToAi,
   mergeAiIntoEditor,
+  applyOperations,
   newField,
   isBlankForm,
 } from "@/lib/builder/form-model";
+import { aiEditForm } from "@/lib/actions/ai-edit";
 import { useCreateForm } from "@/lib/forms/use-create-form";
 import {
   FormPreview,
@@ -66,8 +68,9 @@ type ChatMessage = {
 
 type SaveState = "idle" | "saving" | "saved" | "error";
 
-let _seq = 0;
-const rid = () => `m${++_seq}`;
+// Globally-unique chat message ids. A counter would restart at page load and
+// collide with ids restored from localStorage (the "duplicate key" warning).
+const rid = () => crypto.randomUUID();
 
 const BUILDER_PHRASES = [
   "Reading your request…",
@@ -139,6 +142,9 @@ export function FormBuilder({
   const [deleting, setDeleting] = useState(false);
   const [origin, setOrigin] = useState("");
   const [mode, setMode] = useState<"edit" | "preview">("edit");
+  // True while an operation-based edit (aiEditForm) is in flight. Combined with
+  // useObject's `isLoading` (the create stream) into `busy` below.
+  const [editing, setEditing] = useState(false);
 
   const formIdRef = useRef<string | null>(initialFormId ?? null);
   const currentFormRef = useRef<EditorForm | null>(initialForm ?? null);
@@ -191,11 +197,14 @@ export function FormBuilder({
   // The streaming partial (AI building) vs the committed editable form.
   const streaming = object as unknown as PartialForm | undefined;
   const headerTitle = currentForm?.title || streaming?.title || "New form";
+  // "AI is working": the create stream (isLoading) OR an in-flight operation
+  // edit (editing). The UI treats both the same way.
+  const busy = isLoading || editing;
   // A blank draft (no fields, default title) shows the prompt UI even though it
   // already has an id/currentForm — only "real" content counts as started.
   const started =
     chat.length > 0 ||
-    isLoading ||
+    busy ||
     Boolean(object) ||
     (currentForm !== null && !isBlankForm(currentForm));
   // First build = no real form on the canvas yet (null, or a fresh blank draft).
@@ -251,7 +260,7 @@ export function FormBuilder({
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [chat, isLoading]);
+  }, [chat, busy]);
 
   useEffect(() => {
     // Origin is only known on the client (used to build share links).
@@ -272,8 +281,12 @@ export function FormBuilder({
         if (raw) {
           const parsed = JSON.parse(raw) as ChatMessage[];
           // One-time restore from localStorage after mount (SSR can't read it).
-          // eslint-disable-next-line react-hooks/set-state-in-effect
-          if (Array.isArray(parsed) && parsed.length > 0) setChat(parsed);
+          // Reassign ids so a thread saved under the old counter-based scheme
+          // (which could contain duplicates) can't bring key collisions back.
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            // eslint-disable-next-line react-hooks/set-state-in-effect
+            setChat(parsed.map((m) => ({ ...m, id: rid() })));
+          }
         }
       } catch {
         /* ignore corrupt/blocked storage */
@@ -374,14 +387,14 @@ export function FormBuilder({
   }
 
   function saveNow() {
-    if (!currentForm || isLoading) return;
+    if (!currentForm || busy) return;
     if (saveTimer.current) clearTimeout(saveTimer.current);
     pendingSaveRef.current = currentForm;
     void flushSave();
   }
 
   async function publish() {
-    if (!currentForm || isLoading || publishing) return;
+    if (!currentForm || busy || publishing) return;
     setPublishing(true);
     // Flush the latest edits (and create the form if needed) before publishing —
     // shares the single-flight saver so it can't race an in-flight autosave.
@@ -459,7 +472,7 @@ export function FormBuilder({
 
   // ── Conversation ──────────────────────────────────────────────────
   function send() {
-    if (isLoading) return;
+    if (busy) return;
     const text = draft.trim();
     if (!text && !image) return;
 
@@ -473,16 +486,68 @@ export function FormBuilder({
         image: image?.url,
       },
     ]);
+    setDraft("");
+    setImage(null);
 
+    // Editing an existing form = operation-based edit (deterministic, can't drop
+    // unrelated fields/options). A first build or an image (re)build still uses
+    // the streaming full-form generation so the canvas builds in live.
+    if (!firstBuild && !image && text) {
+      void runEdit(text, transcript);
+      return;
+    }
     submit({
       instruction: text,
       image: image?.url,
-      current: currentForm ? editorToAi(currentForm) : undefined, // edits build on the committed form
-      transcript, // model gets the conversation so far
+      current: currentForm ? editorToAi(currentForm) : undefined,
+      transcript,
     });
+  }
 
-    setDraft("");
-    setImage(null);
+  // Operation-based edit: ask the model for a list of changes, apply them in
+  // code, then commit + autosave. The form is already on screen, so there's no
+  // streaming preview — the "Updating…" state covers the wait.
+  async function runEdit(
+    instruction: string,
+    transcript: { role: "user" | "assistant"; text: string }[],
+  ) {
+    const base = currentFormRef.current;
+    if (!base) return;
+    setEditing(true);
+    try {
+      const result = await aiEditForm({ instruction, current: base, transcript });
+      if ("error" in result) {
+        setChat((prev) => [
+          ...prev,
+          {
+            id: rid(),
+            role: "assistant",
+            text: "Sorry, I couldn't apply that change. Please try rephrasing it.",
+          },
+        ]);
+        return;
+      }
+      if (process.env.NODE_ENV === "development") {
+        console.debug("[ai-edit] operations:", result.operations);
+      }
+      const updated = applyOperations(currentFormRef.current ?? base, result.operations);
+      currentFormRef.current = updated;
+      setCurrentForm(updated);
+      const summary = result.summary?.trim();
+      setChat((prev) => [
+        ...prev,
+        { id: rid(), role: "assistant", text: summary || "Done. Updated the form." },
+      ]);
+      scheduleAutosave(updated);
+    } catch (err) {
+      console.error("[form-builder] edit failed", err);
+      setChat((prev) => [
+        ...prev,
+        { id: rid(), role: "assistant", text: "Sorry, something went wrong. Please try again." },
+      ]);
+    } finally {
+      setEditing(false);
+    }
   }
 
   // "Start over" = a brand-new form. Create a fresh draft and go to its editor;
@@ -543,7 +608,7 @@ export function FormBuilder({
             image={image}
             onRemoveImage={() => setImage(null)}
             onPickFile={pickFile}
-            busy={isLoading}
+            busy={busy}
             submitLabel="Generate form"
             rows={3}
             maxRows={10}
@@ -580,7 +645,7 @@ export function FormBuilder({
               <AssistantRow key={m.id} id={m.id} text={m.text} />
             )
           )}
-          {isLoading ? <AssistantRow building /> : null}
+          {busy ? <AssistantRow building /> : null}
           {error ? (
             <div className="ml-8 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
               Something went wrong. Check your Gemini key and try again.
@@ -598,7 +663,7 @@ export function FormBuilder({
             image={image}
             onRemoveImage={() => setImage(null)}
             onPickFile={pickFile}
-            busy={isLoading}
+            busy={busy}
             submitLabel=""
             rows={2}
             maxRows={5}
@@ -654,12 +719,12 @@ export function FormBuilder({
             <ModeToggle
               mode={mode}
               onChange={setMode}
-              disabled={isLoading || !currentForm}
+              disabled={busy || !currentForm}
             />
             <Button
               variant="outline"
               onClick={saveNow}
-              disabled={!currentForm || isLoading || saveState === "saving"}
+              disabled={!currentForm || busy || saveState === "saving"}
               className="h-8 px-3"
             >
               {saveState === "saving"
@@ -670,7 +735,7 @@ export function FormBuilder({
             </Button>
             <Button
               onClick={() => setPublishOpen(true)}
-              disabled={!currentForm || isLoading}
+              disabled={!currentForm || busy}
               className="h-8 px-3"
             >
               {published ? "Share" : "Publish"}
@@ -736,7 +801,7 @@ export function FormBuilder({
             // the AI applies changes — never blank it back to a building skeleton.
             <div
               className={cn(
-                isLoading &&
+                busy &&
                   "pointer-events-none select-none opacity-50 transition-opacity"
               )}
             >
@@ -748,7 +813,7 @@ export function FormBuilder({
         {/* Panel-level so it stays centered and visible no matter where the
             canvas is scrolled. */}
       </main>
-      {isLoading && !firstBuild ? (
+      {busy && !firstBuild ? (
         <div className="pointer-events-none absolute inset-0 pl-[380px] z-20 flex items-center justify-center">
           <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-background/95 px-3.5 py-1.5 text-xs font-medium text-muted-foreground shadow-md backdrop-blur">
             <Loading fill className="size-4 shrink-0" />
