@@ -41,7 +41,6 @@ export function StatusBadge({ status }: { status: FormSyncStatus }) {
 const COMING_SOON = [
   { name: "Discord", domain: "Post submissions to a channel", icon: "discord" },
   { name: "Notion", domain: "Append responses to a database", icon: "notion" },
-  { name: "Zapier", domain: "Connect to 5,000+ apps", icon: "zapier" },
 ] as const;
 
 /** The "coming soon" placeholder cards shared by both integration surfaces. */
@@ -52,7 +51,7 @@ export function ComingSoonCards() {
         <CardShell key={it.name}>
           <div className="flex items-start justify-between gap-3">
             <SVGIcon
-              src="/logo/webhook.svg"
+              src={`/logo/${it.icon}.svg`}
               preserveColors
               className="size-9"
             />

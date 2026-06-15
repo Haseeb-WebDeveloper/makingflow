@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from "react"
+import dynamic from "next/dynamic"
 import { submitForm } from "@/lib/actions/submissions"
 import type { PublicForm, PublicField } from "@/lib/data/public-form"
 import type { AnswerValue } from "@/lib/db/schema"
@@ -11,6 +12,12 @@ import { SVGIcon } from "@/components/ui/svg-icon"
 import { FormRuntime } from "@/components/forms/form-runtime"
 import type { Expect, TurnMeta, TurnPrev, TurnRequest } from "@/lib/forms/conversation-types"
 import { cn } from "@/lib/utils"
+
+// Same animated success check the classic runtime uses, so both submit screens
+// match. Code-split so the Lottie/WASM player never loads during the chat.
+const Lottie = dynamic(() => import("../builder/lottie").then((m) => m.Lottie), {
+  ssr: false,
+})
 
 type ChatMessage = { role: "assistant" | "user"; text: string }
 
@@ -292,6 +299,10 @@ export function ConversationalRuntime({ form }: { form: PublicForm }) {
   function sendTyped() {
     const text = input.trim()
     if (!text) return
+    // Clear the box the instant the message is sent — it already shows as a
+    // chat bubble, so leaving the (often long) text sitting in the input reads
+    // as "not sent". The next-question reset still runs later via applyMeta.
+    setInput("")
     send({ reply: text, display: text })
   }
 
@@ -358,9 +369,9 @@ export function ConversationalRuntime({ form }: { form: PublicForm }) {
     return (
       <div className="mx-auto flex min-h-[70dvh] w-full max-w-2xl flex-col items-center justify-center text-center">
         <div className="mx-auto mb-4 flex size-14 items-center justify-center rounded-full bg-success/10 text-success">
-          <Check className="size-7" />
+          <Lottie name="success" className="size-52" />
         </div>
-        <h2 className="font-sebenta text-2xl font-bold tracking-tight text-foreground">
+        <h2 className="mt-4 font-sebenta text-2xl font-bold tracking-tight text-foreground">
           {form.thankYou}
         </h2>
       </div>
@@ -403,7 +414,7 @@ export function ConversationalRuntime({ form }: { form: PublicForm }) {
           ) : (
             <div key={i} className="flex justify-start">
               <div className="max-w-[90%] whitespace-pre-wrap rounded-2xl rounded-bl-md bg-muted px-3.5 py-2.5 text-sm text-foreground">
-                {m.text ? m.text : <Dots />}
+                {m.text ? m.text : <Thinking opening={messages[i - 1]?.role !== "user"} />}
               </div>
             </div>
           ),
@@ -480,7 +491,7 @@ export function ConversationalRuntime({ form }: { form: PublicForm }) {
 
 /** Tappable option pills for choice/numeric fields. Free typing stays available
  *  via the composer; tapping a pill sends the exact value (no AI parse). */
-function Pills({
+export function Pills({
   field,
   multi,
   setMulti,
@@ -589,12 +600,28 @@ function Pills({
   return null
 }
 
-function Dots() {
+// While the AI is composing a turn, rotate through a couple of short status
+// lines instead of a static spinner — the visible progress makes the (real)
+// wait feel shorter, and the text is the same size/weight as the answer it
+// becomes, so the bubble doesn't jump or feel heavier when the reply lands.
+const OPENING_PHRASES = ["Getting things ready…", "One moment…"]
+const REPLY_PHRASES = ["Reading your answer…", "Thinking…", "Lining up the next question…"]
+
+export function Thinking({ opening = false }: { opening?: boolean }) {
+  const phrases = opening ? OPENING_PHRASES : REPLY_PHRASES
+  const [i, setI] = useState(0)
+
+  useEffect(() => {
+    if (i >= phrases.length - 1) return // hold on the last line until the reply streams in
+    // First line lingers ~1.5s, the next ~2.6s — matches how long turns take.
+    const delay = i === 0 ? 1500 : 2600
+    const t = setTimeout(() => setI((n) => n + 1), delay)
+    return () => clearTimeout(t)
+  }, [i, phrases.length])
+
   return (
-    <span className="inline-flex gap-1 py-1">
-      <span className="size-1.5 animate-bounce rounded-full bg-muted-foreground [animation-delay:-0.2s]" />
-      <span className="size-1.5 animate-bounce rounded-full bg-muted-foreground [animation-delay:-0.1s]" />
-      <span className="size-1.5 animate-bounce rounded-full bg-muted-foreground" />
+    <span key={i} className="mf-think-in inline-block text-sm text-muted-foreground">
+      {phrases[i]}
     </span>
   )
 }

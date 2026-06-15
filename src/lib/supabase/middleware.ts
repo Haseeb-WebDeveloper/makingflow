@@ -12,6 +12,7 @@ const PUBLIC_PATHS = [
   '/', // marketing home (exact match only — see isPublicPath)
   '/terms', // legal: terms of service (marketing, no protected route here)
   '/privacy', // legal: privacy policy (marketing, no protected route here)
+  '/sandbox', // dev-only state gallery (no protected route at this URL)
   '/f', // public form-fill runtime: /f/[formId]
   '/auth', // login, signup, callback, magic-link, password reset
   '/api/forms', // public submission + conversational turn endpoint (/api/forms/turn)

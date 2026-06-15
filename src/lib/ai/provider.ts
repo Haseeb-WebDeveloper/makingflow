@@ -17,6 +17,21 @@ const google = createGoogleGenerativeAI({
 // model list — the Gemini lineup moves.
 export const GEMINI_MODEL_ID = process.env.GEMINI_MODEL ?? "gemini-2.5-flash"
 
+// Latency-critical, low-reasoning tasks (parsing a reply, phrasing one chat
+// line). flash-lite returns a first token in ~0.8s vs ~4.3s for 2.5-flash with
+// its default "thinking" pass — measured against the live API. flash-lite has
+// no thinking step, so nothing to disable.
+export const GEMINI_FAST_MODEL_ID =
+  process.env.GEMINI_FAST_MODEL ?? "gemini-2.5-flash-lite"
+
 export const geminiModel = google(GEMINI_MODEL_ID)
+export const geminiFastModel = google(GEMINI_FAST_MODEL_ID)
+
+// Turn OFF Gemini 2.5 "thinking" for calls that don't need chain-of-thought.
+// Default thinking adds ~3s before the first token (measured). Use on 2.5-flash
+// calls where the data is already supplied and the task is summarize/extract.
+export const NO_THINKING = {
+  google: { thinkingConfig: { thinkingBudget: 0 } },
+} as const
 
 export { google }

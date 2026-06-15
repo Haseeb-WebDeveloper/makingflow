@@ -3,7 +3,7 @@ import { and, eq, isNull } from "drizzle-orm"
 import { generateObject, streamText, type ModelMessage } from "ai"
 import { db } from "@/lib/db"
 import { forms, formFields, type AnswerValue, type FormField } from "@/lib/db/schema"
-import { geminiModel } from "@/lib/ai/provider"
+import { geminiFastModel } from "@/lib/ai/provider"
 import { nextAnswerableField, isEmpty } from "@/lib/builder/logic"
 import {
   parseSchema,
@@ -67,7 +67,7 @@ function turnResponse(
   messages.push({ role: "user", content: buildTurnDirective(situation) })
 
   const result = streamText({
-    model: geminiModel,
+    model: geminiFastModel,
     system: buildTurnSystem(persona, baseLanguage),
     messages,
   })
@@ -125,7 +125,7 @@ export async function POST(request: Request) {
           parsedValue = prev.pillValue
         } else if (typeof prev.reply === "string" && prev.reply.trim()) {
           const r = await generateObject({
-            model: geminiModel,
+            model: geminiFastModel,
             schema: parseSchema,
             system: buildParseSystem(baseLanguage),
             prompt: buildParsePrompt(toPromptField(field), prev.reply),
@@ -235,7 +235,7 @@ export async function POST(request: Request) {
       }
     }
 
-    await incrementAiCalls(form.workspaceId, calls)
+    after(() => incrementAiCalls(form.workspaceId, calls))
     return turnResponse(persona, baseLanguage, situation, body.transcript, meta)
   } catch (err) {
     console.error("[forms/turn] failed", err)

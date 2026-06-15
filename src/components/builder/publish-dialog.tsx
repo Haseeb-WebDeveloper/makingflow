@@ -160,6 +160,7 @@ export function PublishDialog({
               <Button
                 variant="destructive"
                 onClick={() => setConfirmUnpublish(true)}
+                className="h-9 px-4"
               >
                 Unpublish
               </Button>
@@ -168,11 +169,16 @@ export function PublishDialog({
                   <Button
                     onClick={() => void settingsRef.current?.save()}
                     disabled={settingsSaving}
+                    className="h-9 px-4"
                   >
                     {settingsSaving ? "Saving…" : "Save changes"}
                   </Button>
                 ) : null}
-                <Button variant="outline" onClick={() => onOpenChange(false)}>
+                <Button
+                  variant="outline"
+                  onClick={() => onOpenChange(false)}
+                  className="h-9 px-4"
+                >
                   Done
                 </Button>
               </div>
@@ -184,7 +190,7 @@ export function PublishDialog({
                   variant="outline"
                   onClick={() => void settingsRef.current?.save()}
                   disabled={settingsSaving}
-                  className="shrink-0"
+                  className="shrink-0 h-9 px-4"
                 >
                   {settingsSaving ? "Saving…" : "Save changes"}
                 </Button>
@@ -192,7 +198,7 @@ export function PublishDialog({
               <Button
                 onClick={onPublish}
                 disabled={publishing}
-                className="flex-1"
+                className="flex-1 h-10 px-4"
               >
                 {publishing ? "Publishing…" : "Publish form"}
               </Button>
@@ -206,9 +212,9 @@ export function PublishDialog({
           <AlertDialogHeader>
             <AlertDialogTitle>Unpublish this form?</AlertDialogTitle>
             <AlertDialogDescription>
-              The public link will stop working immediately and visitors won&apos;t
-              be able to respond. Existing submissions are kept, and you can
-              republish at any time.
+              The public link will stop working immediately and visitors
+              won&apos;t be able to respond. Existing submissions are kept, and
+              you can republish at any time.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

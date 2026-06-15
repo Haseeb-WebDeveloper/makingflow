@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   Sheet,
@@ -36,6 +37,8 @@ export function WorkspaceIntegrationsPanel({
   const searchParams = useSearchParams();
   const [pending, startTransition] = React.useTransition();
   const [detailsOpen, setDetailsOpen] = React.useState(false);
+  const [emailOpen, setEmailOpen] = React.useState(false);
+  const [webhookOpen, setWebhookOpen] = React.useState(false);
 
   React.useEffect(() => {
     const status = searchParams.get("google");
@@ -56,9 +59,11 @@ export function WorkspaceIntegrationsPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const { configured, connection, forms } = data;
+  const { configured, connection, forms, email, webhook } = data;
   const connected = Boolean(connection);
   const syncingCount = forms.filter((f) => f.status === "syncing").length;
+  const emailActive = email.forms.some((f) => f.status === "on");
+  const webhookActive = webhook.forms.reduce((n, f) => n + f.active, 0);
 
   function run(
     action: () => Promise<{ success: boolean; error?: string }>,
@@ -140,6 +145,83 @@ export function WorkspaceIntegrationsPanel({
             ) : (
               <Switch checked={false} disabled />
             )}
+          </div>
+        </CardShell>
+
+        {/* ── Email notifications (per-form; managed from each form) ── */}
+        <CardShell>
+          <div className="flex items-start justify-between gap-3">
+            <SVGIcon src="/logo/email.svg" preserveColors className="size-9" />
+            {emailActive ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-success-bg px-2 py-0.5 text-[11px] font-medium text-success-foreground">
+                <span className="size-1.5 rounded-full bg-success" />
+                On
+              </span>
+            ) : null}
+          </div>
+
+          <h3 className="mt-3 text-sm font-semibold text-foreground">
+            Email notifications
+          </h3>
+          <p className="mt-1 flex-1 text-sm text-muted-foreground">
+            Get an email the moment a form gets a response. Set up per form, with
+            the answers included.
+          </p>
+
+          <div className="mt-4 flex items-center justify-between gap-3 border-t border-border pt-3">
+            <span className="text-xs text-muted-foreground">
+              {!email.configured
+                ? "Not available"
+                : email.forms.length === 0
+                ? "Not set up on any form"
+                : `${email.forms.length} form${
+                    email.forms.length === 1 ? "" : "s"
+                  } configured`}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!email.configured}
+              onClick={() => setEmailOpen(true)}
+            >
+              Manage
+            </Button>
+          </div>
+        </CardShell>
+
+        {/* ── Webhooks (per-form; managed from each form) ── */}
+        <CardShell>
+          <div className="flex items-start justify-between gap-3">
+            <SVGIcon src="/logo/webhook.svg" preserveColors className="size-9" />
+            {webhookActive > 0 ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-success-bg px-2 py-0.5 text-[11px] font-medium text-success-foreground">
+                <span className="size-1.5 rounded-full bg-success" />
+                {webhookActive} active
+              </span>
+            ) : null}
+          </div>
+
+          <h3 className="mt-3 text-sm font-semibold text-foreground">Webhooks</h3>
+          <p className="mt-1 flex-1 text-sm text-muted-foreground">
+            POST each new submission to your own endpoint, optionally signed. Set
+            up per form.
+          </p>
+
+          <div className="mt-4 flex items-center justify-between gap-3 border-t border-border pt-3">
+            <span className="text-xs text-muted-foreground">
+              {webhook.forms.length === 0
+                ? "Not set up on any form"
+                : `${webhook.forms.length} form${
+                    webhook.forms.length === 1 ? "" : "s"
+                  } configured`}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setWebhookOpen(true)}
+            >
+              Manage
+            </Button>
           </div>
         </CardShell>
 
@@ -252,6 +334,120 @@ export function WorkspaceIntegrationsPanel({
               <Icon name="logout" />
               Disconnect Google
             </Button>
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      {/* ── Email: per-form management list ── */}
+      <Sheet open={emailOpen} onOpenChange={setEmailOpen}>
+        <SheetContent side="right" className="w-full sm:max-w-md">
+          <SheetHeader>
+            <div className="flex items-center gap-3">
+              <SVGIcon src="/logo/email.svg" preserveColors className="size-9" />
+              <div>
+                <SheetTitle>Email notifications</SheetTitle>
+                <SheetDescription>
+                  Email notifications are set up per form. Open a form to manage
+                  its recipients.
+                </SheetDescription>
+              </div>
+            </div>
+          </SheetHeader>
+
+          <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4">
+            {email.forms.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                No form sends email notifications yet. Open a form&apos;s
+                Integrations tab to set one up.
+              </p>
+            ) : (
+              <ul className="divide-y divide-border">
+                {email.forms.map((f) => (
+                  <li key={f.id}>
+                    <Link
+                      href={`/forms/${f.id}/integrations`}
+                      onClick={() => setEmailOpen(false)}
+                      className="group flex items-center gap-3 py-3"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium text-foreground group-hover:underline">
+                          {f.title}
+                        </p>
+                        <span
+                          className={
+                            f.status === "on"
+                              ? "mt-1 inline-flex items-center gap-1 rounded-full bg-success-bg px-2 py-0.5 text-[11px] font-medium text-success-foreground"
+                              : "mt-1 inline-flex rounded-full border border-border px-2 py-0.5 text-[11px] font-medium text-muted-foreground"
+                          }
+                        >
+                          {f.status === "on" ? "On" : "Paused"}
+                        </span>
+                      </div>
+                      <Icon
+                        name="discovery"
+                        className="size-4 shrink-0 text-muted-foreground group-hover:text-foreground"
+                      />
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      {/* ── Webhooks: per-form management list ── */}
+      <Sheet open={webhookOpen} onOpenChange={setWebhookOpen}>
+        <SheetContent side="right" className="w-full sm:max-w-md">
+          <SheetHeader>
+            <div className="flex items-center gap-3">
+              <SVGIcon
+                src="/logo/webhook.svg"
+                preserveColors
+                className="size-9"
+              />
+              <div>
+                <SheetTitle>Webhooks</SheetTitle>
+                <SheetDescription>
+                  Webhooks are set up per form. Open a form to manage its
+                  endpoints.
+                </SheetDescription>
+              </div>
+            </div>
+          </SheetHeader>
+
+          <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4">
+            {webhook.forms.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                No form has webhook endpoints yet. Open a form&apos;s
+                Integrations tab to add one.
+              </p>
+            ) : (
+              <ul className="divide-y divide-border">
+                {webhook.forms.map((f) => (
+                  <li key={f.id}>
+                    <Link
+                      href={`/forms/${f.id}/integrations`}
+                      onClick={() => setWebhookOpen(false)}
+                      className="group flex items-center gap-3 py-3"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium text-foreground group-hover:underline">
+                          {f.title}
+                        </p>
+                        <span className="mt-1 inline-flex rounded-full border border-border px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+                          {f.active} of {f.total} active
+                        </span>
+                      </div>
+                      <Icon
+                        name="discovery"
+                        className="size-4 shrink-0 text-muted-foreground group-hover:text-foreground"
+                      />
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         </SheetContent>
       </Sheet>

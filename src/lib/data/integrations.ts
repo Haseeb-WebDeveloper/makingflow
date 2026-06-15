@@ -152,6 +152,9 @@ export async function getFormEmail(formId: string): Promise<FormEmailState> {
   }
 }
 
+export type WorkspaceEmailForm = { id: string; title: string; status: "on" | "paused" }
+export type WorkspaceWebhookForm = { id: string; title: string; total: number; active: number }
+
 export type WorkspaceIntegrations = {
   configured: boolean
   connection: { accountEmail: string } | null
@@ -161,6 +164,8 @@ export type WorkspaceIntegrations = {
     status: FormSyncStatus
     spreadsheetUrl: string | null
   }[]
+  email: { configured: boolean; forms: WorkspaceEmailForm[] }
+  webhook: { forms: WorkspaceWebhookForm[] }
 }
 
 export async function getWorkspaceIntegrations(): Promise<WorkspaceIntegrations | null> {
@@ -185,20 +190,34 @@ export async function getWorkspaceIntegrations(): Promise<WorkspaceIntegrations 
     .where(and(eq(forms.workspaceId, workspace.id), isNull(forms.deletedAt)))
     .orderBy(desc(forms.updatedAt))
 
+  // Every integration row for the workspace, split by type. Sheets is one row
+  // per form; webhooks are many; email is one. Group them up for the cards.
   const integrationRows = await db
     .select({
       formId: formIntegrations.formId,
+      type: formIntegrations.type,
       enabled: formIntegrations.enabled,
       config: formIntegrations.config,
     })
     .from(formIntegrations)
-    .where(
-      and(
-        eq(formIntegrations.workspaceId, workspace.id),
-        eq(formIntegrations.type, "google_sheets"),
-      ),
-    )
-  const byForm = new Map(integrationRows.map((r) => [r.formId, r]))
+    .where(eq(formIntegrations.workspaceId, workspace.id))
+
+  const byForm = new Map(
+    integrationRows.filter((r) => r.type === "google_sheets").map((r) => [r.formId, r]),
+  )
+  const emailByForm = new Map(
+    integrationRows.filter((r) => r.type === "email").map((r) => [r.formId, r]),
+  )
+  const webhookByForm = new Map<string, { total: number; active: number }>()
+  for (const r of integrationRows) {
+    if (r.type !== "webhook") continue
+    const agg = webhookByForm.get(r.formId) ?? { total: 0, active: 0 }
+    agg.total += 1
+    if (r.enabled) agg.active += 1
+    webhookByForm.set(r.formId, agg)
+  }
+
+  const title = (t: string) => t || "Untitled form"
 
   return {
     configured: isGoogleConfigured(),
@@ -208,10 +227,28 @@ export async function getWorkspaceIntegrations(): Promise<WorkspaceIntegrations 
       const cfg = row?.config as GoogleSheetsIntegrationConfig | undefined
       return {
         id: f.id,
-        title: f.title || "Untitled form",
+        title: title(f.title),
         status: statusOf(connected, row),
         spreadsheetUrl: cfg?.spreadsheetUrl ?? null,
       }
     }),
+    email: {
+      configured: isEmailConfigured(),
+      forms: formRows
+        .filter((f) => emailByForm.has(f.id))
+        .map((f) => ({
+          id: f.id,
+          title: title(f.title),
+          status: emailByForm.get(f.id)!.enabled ? ("on" as const) : ("paused" as const),
+        })),
+    },
+    webhook: {
+      forms: formRows
+        .filter((f) => (webhookByForm.get(f.id)?.total ?? 0) > 0)
+        .map((f) => {
+          const w = webhookByForm.get(f.id)!
+          return { id: f.id, title: title(f.title), total: w.total, active: w.active }
+        }),
+    },
   }
 }

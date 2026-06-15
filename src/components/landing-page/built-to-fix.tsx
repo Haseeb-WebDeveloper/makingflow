@@ -1,4 +1,5 @@
 import { Reveal } from "./reveal"
+import { ConversationLoop } from "./conversation-loop"
 
 type IconName = "clock" | "wand" | "plug" | "shield"
 
@@ -46,47 +47,9 @@ export function BuiltToFix() {
         </Reveal>
 
         <div className="mt-12 grid gap-5 lg:grid-cols-[0.9fr_1.1fr]">
-          {/* Built visual: describe → generated form. */}
+          {/* A living conversational form — it listens and adapts, on a loop. */}
           <Reveal>
-            <div className="flex h-full min-h-64 flex-col justify-center gap-3 overflow-hidden rounded-xl border border-border bg-[linear-gradient(160deg,color-mix(in_oklab,var(--primary)_8%,var(--background)),color-mix(in_oklab,var(--secondary)_14%,var(--background)))] p-5 sm:p-6">
-              <div className="flex justify-end">
-                <span className="max-w-[80%] rounded-md rounded-br-sm bg-foreground px-3 py-1.5 text-xs text-background">
-                  Create an employee feedback form
-                </span>
-              </div>
-              <div className="flex items-start gap-2">
-                <span className="grid size-5 shrink-0 place-items-center rounded bg-primary text-primary-foreground">
-                  <svg viewBox="0 0 24 24" className="size-3" fill="currentColor" aria-hidden>
-                    <path d="M12 2l1.6 4.8L18 8l-4.4 1.2L12 14l-1.6-4.8L6 8l4.4-1.2L12 2z" />
-                  </svg>
-                </span>
-                <span className="text-xs leading-relaxed text-muted-foreground">
-                  Done — built a 4-question form. Ask for any changes.
-                </span>
-              </div>
-              <div className="mt-1 rounded-lg border border-border bg-background p-4">
-                <p className="text-xs font-semibold text-foreground">Employee feedback</p>
-                <div className="mt-3 space-y-2.5">
-                  <div className="h-1.5 w-24 rounded bg-foreground/15" />
-                  <div className="h-8 rounded-md border border-input" />
-                  <div className="flex gap-1">
-                    {[1, 2, 3, 4, 5].map((n) => (
-                      <span
-                        key={n}
-                        className={
-                          "grid size-6 place-items-center rounded border text-[10px] " +
-                          (n === 4
-                            ? "border-foreground bg-foreground text-background"
-                            : "border-input text-muted-foreground")
-                        }
-                      >
-                        {n}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
+            <ConversationLoop />
           </Reveal>
 
           {/* 2×2 feature cards */}

@@ -1,5 +1,5 @@
 import { streamText, type ModelMessage } from "ai"
-import { geminiModel } from "@/lib/ai/provider"
+import { geminiModel, NO_THINKING } from "@/lib/ai/provider"
 import { getOptionalUser, getDefaultWorkspace } from "@/lib/auth/session"
 import { getFormShell, getFormSubmissions } from "@/lib/data/forms"
 import type { AnswerValue } from "@/lib/db/schema"
@@ -39,10 +39,13 @@ export async function POST(request: Request) {
   const workspace = await getDefaultWorkspace()
   if (!workspace) return new Response("No workspace", { status: 403 })
 
-  const shell = await getFormShell(formId, workspace.id)
+  // Independent reads — run them together rather than back-to-back (the DB is
+  // far from the function, so each serial await is a full round-trip).
+  const [shell, data] = await Promise.all([
+    getFormShell(formId, workspace.id),
+    getFormSubmissions(formId, 200),
+  ])
   if (!shell) return new Response("Form not found", { status: 404 })
-
-  const data = await getFormSubmissions(formId, 200)
   const columns = data?.columns ?? []
   const rows = data?.rows ?? []
   const sample = rows.slice(0, MAX_ROWS).map((r) => {
@@ -78,6 +81,11 @@ export async function POST(request: Request) {
     content: `${question.trim()}\n\nFORM + SUBMISSIONS DATA (JSON):\n${JSON.stringify(context)}`,
   })
 
-  const result = streamText({ model: geminiModel, system, messages })
+  const result = streamText({
+    model: geminiModel,
+    system,
+    messages,
+    providerOptions: NO_THINKING,
+  })
   return result.toTextStreamResponse()
 }

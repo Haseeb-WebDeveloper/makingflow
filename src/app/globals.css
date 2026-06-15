@@ -418,3 +418,24 @@
     animation: none;
   }
 }
+
+/* Conversational form: the AI "thinking" status text softly fades in each time
+   it rotates to the next phrase, so the wait reads as steady progress. */
+@keyframes mf-think-in {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.mf-think-in {
+  animation: mf-think-in 0.28s ease-out both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .mf-think-in {
+    animation: none;
+  }
+}
