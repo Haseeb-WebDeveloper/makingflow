@@ -29,13 +29,9 @@ import {
   CommandMenu,
   type FormSummary,
 } from "@/components/dashboard/command-menu";
-import { UserMenu } from "@/components/dashboard/user-menu";
 import { FormRowMenu } from "@/components/dashboard/form-row-menu";
 import { NewFormButton } from "@/components/dashboard/new-form-button";
-import {
-  WorkspaceSwitcher,
-  type SwitcherWorkspace,
-} from "@/components/dashboard/workspace-switcher";
+import { UserNav, type NavWorkspace } from "@/components/dashboard/user-nav";
 import { SVGIcon } from "../ui/svg-icon";
 
 const FORMS_IN_SIDEBAR = 10;
@@ -44,7 +40,7 @@ export type DashboardShellProps = {
   navItems: DashboardNavItem[];
   forms: FormSummary[];
   user: { email: string; name: string; avatarUrl: string | null };
-  workspaces: SwitcherWorkspace[];
+  workspaces: NavWorkspace[];
   activeWorkspaceId: string | null;
   children: React.ReactNode;
 };
@@ -73,8 +69,6 @@ export function DashboardShell({
   }, []);
 
   const shownForms = forms.slice(0, FORMS_IN_SIDEBAR);
-  const activeWorkspace =
-    workspaces.find((w) => w.id === activeWorkspaceId) ?? workspaces[0] ?? null;
 
   return (
     <TooltipProvider delayDuration={300}>
@@ -88,11 +82,6 @@ export function DashboardShell({
           </SidebarHeader>
 
           <SidebarContent>
-            {workspaces.length > 0 ? (
-              <SidebarGroup className="pb-0">
-                <WorkspaceSwitcher workspaces={workspaces} activeId={activeWorkspaceId} />
-              </SidebarGroup>
-            ) : null}
             <SidebarGroup>
               <SidebarGroupContent>
                 <SidebarMenu>
@@ -203,24 +192,13 @@ export function DashboardShell({
             </SidebarGroup>
           </SidebarContent>
 
-          {/* {activeWorkspace?.plan === "free" ? (
-            <SidebarFooter className="px-2 pb-3 group-data-[collapsible=icon]:hidden">
-              <div className="rounded-md border border-sidebar-border p-3 bg-background">
-                <p className="text-sm font-medium text-sidebar-foreground">
-                  You&apos;re on Free
-                </p>
-                <p className="mt-0.5 text-xs text-muted-foreground">
-                  Unlock more forms, AI, and submissions.
-                </p>
-                <Link
-                  href="/settings/billing"
-                  className="mt-2.5 inline-flex h-8 w-full items-center justify-center rounded-md bg-foreground px-3 text-xs font-medium text-background transition-colors hover:bg-foreground/90"
-                >
-                  Upgrade
-                </Link>
-              </div>
-            </SidebarFooter>
-          ) : null} */}
+          <SidebarFooter className="border-t border-border p-2">
+            <UserNav
+              user={user}
+              workspaces={workspaces}
+              activeWorkspaceId={activeWorkspaceId}
+            />
+          </SidebarFooter>
 
           <SidebarRail />
         </Sidebar>
@@ -233,7 +211,6 @@ export function DashboardShell({
                 className="gradient-border inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium text-foreground"
                 iconClassName="size-4 text-foreground"
               />
-              <UserMenu user={user} />
             </div>
           </header>
 

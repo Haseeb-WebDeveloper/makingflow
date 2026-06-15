@@ -111,7 +111,7 @@ export async function inviteMember(emailRaw: string, roleRaw: string): Promise<I
     if (!res.ok) console.error("[inviteMember] email failed", res.error)
   }
 
-  revalidatePath("/settings/team")
+  revalidatePath("/settings/workspace")
   return { success: true, inviteLink, emailed }
 }
 
@@ -158,7 +158,7 @@ export async function revokeInvitation(id: string): Promise<Result> {
     .update(workspaceInvitations)
     .set({ status: "revoked" })
     .where(and(eq(workspaceInvitations.id, id), eq(workspaceInvitations.workspaceId, ws.id)))
-  revalidatePath("/settings/team")
+  revalidatePath("/settings/workspace")
   return { success: true }
 }
 
@@ -191,7 +191,7 @@ export async function removeMember(userId: string): Promise<Result> {
   await db
     .delete(workspaceMembers)
     .where(and(eq(workspaceMembers.workspaceId, ws.id), eq(workspaceMembers.userId, userId)))
-  revalidatePath("/settings/team")
+  revalidatePath("/settings/workspace")
   return { success: true }
 }
 
@@ -218,7 +218,7 @@ export async function changeMemberRole(userId: string, roleRaw: string): Promise
     .update(workspaceMembers)
     .set({ role })
     .where(and(eq(workspaceMembers.workspaceId, ws.id), eq(workspaceMembers.userId, userId)))
-  revalidatePath("/settings/team")
+  revalidatePath("/settings/workspace")
   return { success: true }
 }
 
