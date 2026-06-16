@@ -170,12 +170,12 @@ function TextSamples({ field, formId }: { field: FieldInsight; formId: string })
           {field.responses} {field.responses === 1 ? "response" : "responses"}
         </p>
       )}
-      <Link
+      {/* <Link
         href={`/forms/${formId}/submissions`}
         className="inline-block text-xs font-medium text-primary hover:underline"
       >
         View all responses →
-      </Link>
+      </Link> */}
     </div>
   )
 }

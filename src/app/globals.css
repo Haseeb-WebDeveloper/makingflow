@@ -214,7 +214,7 @@
 
   /* ── Semantic: Success ── */
   --success: #4ade80;
-  --success-foreground: #021a0a;
+  --success-foreground: #22c55e;
   --success-bg: #0a2414;
 
   /* ── Semantic: Info ── */
@@ -439,4 +439,60 @@
   .mf-think-in {
     animation: none;
   }
+}
+
+/* Tiptap WYSIWYG (builder success-page editor). Block styling for the editable
+   surface + the empty-state placeholder. Content is stored as markdown; this only
+   styles what the author sees while editing. */
+.tiptap-editor .ProseMirror {
+  outline: none;
+  min-height: 120px;
+}
+.tiptap-editor .ProseMirror > * + * {
+  margin-top: 0.5rem;
+}
+.tiptap-editor .ProseMirror h1 {
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+}
+.tiptap-editor .ProseMirror h2 {
+  font-size: 1.125rem;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+}
+.tiptap-editor .ProseMirror h3 {
+  font-size: 1rem;
+  font-weight: 600;
+}
+.tiptap-editor .ProseMirror ul {
+  list-style: disc;
+  padding-left: 1.25rem;
+}
+.tiptap-editor .ProseMirror ol {
+  list-style: decimal;
+  padding-left: 1.25rem;
+}
+.tiptap-editor .ProseMirror blockquote {
+  border-left: 2px solid var(--color-border);
+  padding-left: 0.75rem;
+  color: var(--color-muted-foreground);
+}
+.tiptap-editor .ProseMirror a {
+  color: var(--color-primary);
+  text-decoration: underline;
+}
+.tiptap-editor .ProseMirror img {
+  margin: 0.75rem auto;
+  max-height: 20rem;
+  width: auto;
+  border-radius: 0.5rem;
+}
+/* Placeholder text shown when the editor is empty. */
+.tiptap-editor .ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: var(--color-muted-foreground);
+  pointer-events: none;
+  height: 0;
+  float: left;
 }

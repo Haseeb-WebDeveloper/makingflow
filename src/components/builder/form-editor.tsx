@@ -123,7 +123,7 @@ export function FormEditor({
         value={form.title}
         onChange={(e) => setTitle(e.target.value)}
         placeholder="Form title"
-        className="field-sizing-content mb-8 w-full resize-none border-0 bg-transparent py-0 pl-9 pr-0 font-sebenta text-3xl font-bold tracking-tight text-foreground outline-none placeholder:text-muted-foreground/40"
+        className="field-sizing-content mb-8 w-full resize-none border-0 bg-transparent py-0 pr-0 font-sebenta text-3xl font-bold tracking-tight text-foreground outline-none placeholder:text-muted-foreground/40"
       />
 
       <DndContext id="form-editor-dnd" sensors={sensors} collisionDetection={closestCenter} modifiers={[restrictToVerticalAxis]} onDragEnd={onDragEnd}>
@@ -150,13 +150,13 @@ export function FormEditor({
       <button
         type="button"
         onClick={() => openPalette(null)}
-        className="mt-2 flex w-full items-center gap-2 rounded-lg py-3 pl-9 pr-2 text-sm text-muted-foreground transition-colors hover:bg-muted/60"
+        className="mt-2 flex w-full items-center gap-2 rounded-lg py-3 border px-3 text-sm text-muted-foreground transition-colors hover:bg-muted/60"
       >
         <Plus className="size-4" />
         Add a block
       </button>
 
-      <div className="mt-8 pl-9">
+      <div className="mt-8">
         <span className="inline-flex h-11 items-center rounded-md bg-foreground px-6 text-sm font-medium text-background">
           Submit
         </span>
@@ -374,17 +374,6 @@ function Block({
         >
           <Grip className="size-4" />
         </button>
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation()
-            onInsertAfter()
-          }}
-          aria-label="Insert block below"
-          className="grid size-6 place-items-center rounded text-muted-foreground hover:bg-muted"
-        >
-          <Plus className="size-4" />
-        </button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
@@ -397,6 +386,16 @@ function Block({
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" side="right" className="w-52">
+            <DropdownMenuItem
+              onClick={(e) => {
+                e.stopPropagation()
+                onInsertAfter()
+              }}
+            >
+              <Plus className="size-4" />
+              Insert block below
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
             {!isContentBlock ? (
               <DropdownMenuCheckboxItem
                 checked={field.required}
