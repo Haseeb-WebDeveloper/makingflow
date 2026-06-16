@@ -4,6 +4,7 @@ import Link from "next/link"
 import { getDefaultWorkspace } from "@/lib/auth/session"
 import { getFormShell, getFormSettings } from "@/lib/data/forms"
 import { getActiveDomains } from "@/lib/data/domains"
+import { getWorkspaceFolders } from "@/lib/data/folders"
 import { FormDetailTabs } from "@/components/forms/form-detail-tabs"
 import { FormAssistant } from "@/components/forms/form-assistant"
 import { FormPublishButton } from "@/components/forms/form-publish-button"
@@ -28,10 +29,11 @@ export default async function FormManageLayout({
   const { id } = await params
   const workspace = await getDefaultWorkspace()
   if (!workspace) notFound()
-  const [shell, domains, settings] = await Promise.all([
+  const [shell, domains, settings, folders] = await Promise.all([
     getFormShell(id, workspace.id),
     getActiveDomains(workspace.id),
     getFormSettings(id, workspace.id),
+    getWorkspaceFolders(workspace.id),
   ])
   if (!shell) notFound()
 
@@ -75,6 +77,7 @@ export default async function FormManageLayout({
                 initialDomainId={shell.customDomainId}
                 initialSlug={shell.slug}
                 initialDomainHost={shell.domain}
+                folders={folders}
                 settings={settings}
               />
             </div>

@@ -169,6 +169,8 @@ export type FormSettingsData = {
   // Branding (logo + banner).
   logoUrl: string | null
   coverImageUrl: string | null
+  // Organizing folder (sidebar grouping); null = Uncategorized.
+  folderId: string | null
 }
 
 /** Current response-collection settings for the Settings tab. Cached per form
@@ -189,6 +191,7 @@ export async function getFormSettings(id: string, workspaceId: string): Promise<
       aiEnabled: forms.aiEnabled,
       aiConfig: forms.aiConfig,
       theme: forms.theme,
+      folderId: forms.folderId,
     })
     .from(forms)
     .where(and(eq(forms.id, id), eq(forms.workspaceId, workspaceId), isNull(forms.deletedAt)))
@@ -215,6 +218,7 @@ export async function getFormSettings(id: string, workspaceId: string): Promise<
     screeningCriteria: row.aiConfig?.screeningCriteria ?? "",
     logoUrl: row.theme?.logoUrl ?? null,
     coverImageUrl: row.theme?.coverImageUrl ?? null,
+    folderId: row.folderId,
   }
 }
 

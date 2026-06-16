@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useTransition } from "react"
+import { Fragment, useState, useTransition } from "react"
 import Link from "next/link"
 import { useRouter, usePathname } from "next/navigation"
 import {
@@ -149,8 +149,12 @@ export function SidebarForms({
   return (
     <SidebarGroup className="group-data-[collapsible=icon]:hidden">
       <SidebarGroupLabel>Forms</SidebarGroupLabel>
-      <SidebarGroupAction title="New folder" onClick={() => setNewOpen(true)}>
-        <Icon name="plus" className="size-4" />
+      <SidebarGroupAction
+        title="New folder"
+        onClick={() => setNewOpen(true)}
+        className="[&>svg]:size-3.5"
+      >
+        <Icon name="plus" className="size-3.5" />
         <span className="sr-only">New folder</span>
       </SidebarGroupAction>
 
@@ -164,37 +168,45 @@ export function SidebarForms({
             const folderForms = byFolder.get(folder.id) ?? []
             const open = expanded.has(folder.id)
             return (
-              <SidebarMenuItem key={folder.id}>
-                <SidebarMenuButton
-                  onClick={() => toggle(folder.id)}
-                  aria-expanded={open}
-                  className={ROW_CLS}
-                >
-                  <Chevron open={open} />
-                  <Icon name="folder" className="size-4 shrink-0 text-muted-foreground" />
-                  <span className="min-w-0 flex-1 truncate">{folder.name}</span>
-                  <span className="shrink-0 text-xs text-muted-foreground">
-                    {folderForms.length}
-                  </span>
-                </SidebarMenuButton>
-                <FolderRowMenu folderId={folder.id} name={folder.name} />
+              <Fragment key={folder.id}>
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    onClick={() => toggle(folder.id)}
+                    aria-expanded={open}
+                    className={ROW_CLS}
+                  >
+                    <Chevron open={open} />
+                    <Icon name="folder" className="size-4 shrink-0 text-muted-foreground" />
+                    <span className="min-w-0 flex-1 truncate">{folder.name}</span>
+                    <span className="shrink-0 text-xs text-muted-foreground">
+                      {folderForms.length}
+                    </span>
+                  </SidebarMenuButton>
+                  <FolderRowMenu folderId={folder.id} name={folder.name} />
+                </SidebarMenuItem>
+                {/* Children live OUTSIDE the folder's menu-item: a folder and its
+                    forms both carry `group/menu-item`, and a hovered ancestor of
+                    that group reveals EVERY descendant row's action — so nesting
+                    them made one hover light up all the ⋯ menus at once. */}
                 {open ? (
-                  <SidebarMenuSub>
-                    {folderForms.length === 0 ? (
-                      <p className="px-2 py-1 text-xs text-muted-foreground">Empty</p>
-                    ) : (
-                      folderForms.map((form) => (
-                        <FormRow
-                          key={form.id}
-                          form={form}
-                          folders={menuFolders}
-                          active={pathname.startsWith(`/forms/${form.id}`)}
-                        />
-                      ))
-                    )}
-                  </SidebarMenuSub>
+                  <li>
+                    <SidebarMenuSub>
+                      {folderForms.length === 0 ? (
+                        <p className="px-2 py-1 text-xs text-muted-foreground">Empty</p>
+                      ) : (
+                        folderForms.map((form) => (
+                          <FormRow
+                            key={form.id}
+                            form={form}
+                            folders={menuFolders}
+                            active={pathname.startsWith(`/forms/${form.id}`)}
+                          />
+                        ))
+                      )}
+                    </SidebarMenuSub>
+                  </li>
                 ) : null}
-              </SidebarMenuItem>
+              </Fragment>
             )
           })}
 

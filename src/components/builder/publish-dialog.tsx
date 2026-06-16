@@ -30,7 +30,9 @@ import {
   FormDomainPicker,
   type SetDomainResult,
 } from "@/components/forms/domain-picker";
+import { FormFolderPicker } from "@/components/forms/folder-picker";
 import type { FormSettingsData } from "@/lib/data/forms";
+import type { WorkspaceFolder } from "@/lib/data/folders";
 import { SVGIcon } from "../ui/svg-icon";
 
 export function PublishDialog({
@@ -46,6 +48,7 @@ export function PublishDialog({
   slug,
   domainHost,
   onSetDomain,
+  folders,
   settings,
   formStatus,
   onPublish,
@@ -66,6 +69,7 @@ export function PublishDialog({
     customDomainId: string | null,
     slug: string | null
   ) => Promise<SetDomainResult>;
+  folders?: WorkspaceFolder[];
   settings?: FormSettingsData | null;
   formStatus?: string;
   onPublish: () => void;
@@ -78,7 +82,7 @@ export function PublishDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[95vh] overflow-y-auto w-fit">
+      <DialogContent className="max-h-[95vh] overflow-y-auto w-fit thin-scroll ">
         <DialogHeader>
           {published ? (
             <>
@@ -116,6 +120,20 @@ export function PublishDialog({
             <InfoRow icon="edit">Edits you make go live automatically</InfoRow>
           </ul>
         )}
+
+        {formId && folders ? (
+          <section className="border-t border-border pt-4">
+            <h3 className="text-sm font-semibold text-foreground">Folder</h3>
+            <p className="mt-0.5 mb-3 text-sm text-muted-foreground">
+              Organize this form into a folder, or leave it uncategorized.
+            </p>
+            <FormFolderPicker
+              formId={formId}
+              folders={folders}
+              currentFolderId={settings?.folderId ?? null}
+            />
+          </section>
+        ) : null}
 
         {domains && domains.length > 0 && onSetDomain ? (
           <section className="border-t border-border pt-4">

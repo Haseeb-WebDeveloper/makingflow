@@ -99,5 +99,7 @@ export async function moveFormToFolder(
     .returning({ id: forms.id })
   if (result.length === 0) return { success: false, error: "Form not found" }
   invalidate(workspace.id)
+  // The form's own cached reads (settings, shell) carry the folder now too.
+  updateTag(`form-${formId}`)
   return { success: true }
 }

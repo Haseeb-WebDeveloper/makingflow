@@ -5,6 +5,7 @@ import { publishForm, unpublishForm } from "@/lib/actions/forms"
 import { setFormDomain } from "@/lib/actions/domains"
 import { buildShareUrl } from "@/lib/forms/share"
 import type { FormSettingsData } from "@/lib/data/forms"
+import type { WorkspaceFolder } from "@/lib/data/folders"
 import type { SetDomainResult } from "@/components/forms/domain-picker"
 import { Button } from "@/components/ui/button"
 import { Icon } from "@/components/ui/icon"
@@ -28,6 +29,7 @@ export function FormPublishButton({
   initialDomainId,
   initialSlug,
   initialDomainHost,
+  folders,
   settings,
 }: {
   formId: string
@@ -39,6 +41,7 @@ export function FormPublishButton({
   initialDomainId: string | null
   initialSlug: string | null
   initialDomainHost: string | null
+  folders: WorkspaceFolder[]
   settings: FormSettingsData | null
 }) {
   const [open, setOpen] = useState(false)
@@ -102,6 +105,7 @@ export function FormPublishButton({
         slug={slug}
         domainHost={domainHost}
         onSetDomain={applyDomain}
+        folders={folders}
         settings={settings}
         formStatus={published ? "published" : initialStatus}
         onPublish={publish}

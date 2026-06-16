@@ -14,6 +14,7 @@ import {
 import { setFormDomain } from "@/lib/actions/domains";
 import { buildShareUrl } from "@/lib/forms/share";
 import type { FormSettingsData } from "@/lib/data/forms";
+import type { WorkspaceFolder } from "@/lib/data/folders";
 import {
   type EditorForm,
   editorToAi,
@@ -89,6 +90,7 @@ export function FormBuilder({
   initialSlug,
   initialDomainHost,
   domains,
+  folders,
   initialSettings,
 }: {
   initialForm?: EditorForm;
@@ -99,6 +101,7 @@ export function FormBuilder({
   initialSlug?: string | null;
   initialDomainHost?: string | null;
   domains?: { id: string; domain: string }[];
+  folders?: WorkspaceFolder[];
   initialSettings?: FormSettingsData | null;
 } = {}) {
   const router = useRouter();
@@ -895,6 +898,7 @@ export function FormBuilder({
         slug={slug}
         domainHost={domainHost}
         onSetDomain={applyDomain}
+        folders={folders}
         settings={initialSettings ?? null}
         formStatus={published ? "published" : initialStatus ?? "draft"}
         onPublish={publish}

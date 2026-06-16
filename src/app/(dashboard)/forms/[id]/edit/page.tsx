@@ -3,6 +3,7 @@ import { notFound } from "next/navigation"
 import { getDefaultWorkspace } from "@/lib/auth/session"
 import { getFormForEdit, getFormSettings } from "@/lib/data/forms"
 import { getActiveDomains } from "@/lib/data/domains"
+import { getWorkspaceFolders } from "@/lib/data/folders"
 import { FormBuilder } from "@/components/builder/form-builder"
 
 export const metadata: Metadata = { title: "Edit form · MakingFlow" }
@@ -15,10 +16,11 @@ export default async function EditFormPage({
   const { id } = await params
   const workspace = await getDefaultWorkspace()
   if (!workspace) notFound()
-  const [data, settings, domains] = await Promise.all([
+  const [data, settings, domains, folders] = await Promise.all([
     getFormForEdit(id),
     getFormSettings(id, workspace.id),
     getActiveDomains(workspace.id),
+    getWorkspaceFolders(workspace.id),
   ])
   if (!data) notFound()
 
@@ -36,6 +38,7 @@ export default async function EditFormPage({
       initialSlug={data.slug}
       initialDomainHost={data.domain}
       domains={domains}
+      folders={folders}
       initialSettings={settings}
     />
   )
