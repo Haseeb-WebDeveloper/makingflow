@@ -9,6 +9,9 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import {
@@ -39,6 +42,7 @@ import {
   unpublishForm,
   deleteForm,
 } from "@/lib/actions/forms"
+import { moveFormToFolder, createFolder } from "@/lib/actions/folders"
 
 /**
  * Per-form quick-actions menu in the sidebar — revealed on hover/focus. Keeps
@@ -50,19 +54,47 @@ export function FormRowMenu({
   title,
   status,
   publicId,
+  folders,
+  currentFolderId,
 }: {
   formId: string
   title: string
   status: string
   publicId?: string | null
+  /** When provided, a "Move to folder" submenu is shown. */
+  folders?: { id: string; name: string }[]
+  currentFolderId?: string | null
 }) {
   const router = useRouter()
   const pathname = usePathname() ?? ""
   const [pending, startTransition] = useTransition()
   const [renameOpen, setRenameOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
+  const [newFolderOpen, setNewFolderOpen] = useState(false)
   const [newName, setNewName] = useState(title)
+  const [newFolderName, setNewFolderName] = useState("")
   const published = status === "published"
+
+  function onCreateFolderAndMove() {
+    const name = newFolderName.trim()
+    if (!name) return
+    startTransition(async () => {
+      const res = await createFolder(name)
+      if (!res.success) {
+        showToast(res.error ?? "Couldn't create the folder", { type: "error" })
+        return
+      }
+      const move = await moveFormToFolder(formId, res.id)
+      if (move.success) {
+        showToast(`Moved to ${name}`, { type: "success" })
+        setNewFolderOpen(false)
+        setNewFolderName("")
+        router.refresh()
+      } else {
+        showToast(move.error ?? "Couldn't move the form", { type: "error" })
+      }
+    })
+  }
 
   function run(
     action: () => Promise<{ success: boolean; error?: string }>,
@@ -173,6 +205,52 @@ export function FormRowMenu({
               Publish
             </DropdownMenuItem>
           )}
+          {folders ? (
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger>
+                <Icon name="folder" className="size-4 text-muted-foreground" />
+                Move to folder
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent className="w-48">
+                {folders.map((f) => (
+                  <DropdownMenuItem
+                    key={f.id}
+                    onSelect={() =>
+                      run(() => moveFormToFolder(formId, f.id), `Moved to ${f.name}`)
+                    }
+                    disabled={pending || f.id === currentFolderId}
+                  >
+                    <Icon name="folder" className="size-4 text-muted-foreground" />
+                    <span className="min-w-0 flex-1 truncate">{f.name}</span>
+                    {f.id === currentFolderId ? (
+                      <Icon name="tick-square" className="size-4 text-foreground" />
+                    ) : null}
+                  </DropdownMenuItem>
+                ))}
+                {currentFolderId ? (
+                  <DropdownMenuItem
+                    onSelect={() =>
+                      run(() => moveFormToFolder(formId, null), "Removed from folder")
+                    }
+                    disabled={pending}
+                  >
+                    <Icon name="close-square" className="size-4 text-muted-foreground" />
+                    Remove from folder
+                  </DropdownMenuItem>
+                ) : null}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onSelect={() => {
+                    setNewFolderName("")
+                    setNewFolderOpen(true)
+                  }}
+                >
+                  <Icon name="plus" className="size-4 text-muted-foreground" />
+                  New folder…
+                </DropdownMenuItem>
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+          ) : null}
           <DropdownMenuSeparator />
           <DropdownMenuItem
             onSelect={() => setDeleteOpen(true)}
@@ -208,6 +286,35 @@ export function FormRowMenu({
             </Button>
             <Button onClick={onRename} disabled={pending || !newName.trim()}>
               {pending ? "Saving…" : "Save"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* New folder (then move this form into it) */}
+      <Dialog open={newFolderOpen} onOpenChange={setNewFolderOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>New folder</DialogTitle>
+          </DialogHeader>
+          <Input
+            value={newFolderName}
+            onChange={(e) => setNewFolderName(e.target.value)}
+            placeholder="Folder name"
+            autoFocus
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && newFolderName.trim()) {
+                e.preventDefault()
+                onCreateFolderAndMove()
+              }
+            }}
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setNewFolderOpen(false)} disabled={pending}>
+              Cancel
+            </Button>
+            <Button onClick={onCreateFolderAndMove} disabled={pending || !newFolderName.trim()}>
+              {pending ? "Creating…" : "Create & move"}
             </Button>
           </DialogFooter>
         </DialogContent>

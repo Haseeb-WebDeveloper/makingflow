@@ -7,6 +7,7 @@ export type FormOverviewRow = {
   id: string
   title: string
   status: string
+  folderId: string | null
   updatedAt: Date
   submissions: number
   views: number
@@ -101,6 +102,7 @@ export async function getFormsDashboard(): Promise<FormsDashboard | null> {
       id: forms.id,
       title: forms.title,
       status: forms.status,
+      folderId: forms.folderId,
       updatedAt: forms.updatedAt,
     })
     .from(forms)
@@ -248,6 +250,7 @@ export async function getFormsDashboard(): Promise<FormsDashboard | null> {
       id: f.id,
       title: f.title,
       status: f.status,
+      folderId: f.folderId,
       updatedAt: f.updatedAt,
       submissions: s?.count ?? 0,
       views: v,

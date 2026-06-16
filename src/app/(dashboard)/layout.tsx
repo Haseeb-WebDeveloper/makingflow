@@ -1,5 +1,6 @@
 import { getRequiredUser, getDefaultWorkspace, getMyWorkspaces } from "@/lib/auth/session"
 import { getWorkspaceForms } from "@/lib/data/forms"
+import { getWorkspaceFolders } from "@/lib/data/folders"
 import { DashboardShell } from "@/components/dashboard/dashboard-shell"
 import { MAKINGFLOW_NAV } from "@/components/dashboard/dashboard-nav"
 
@@ -20,7 +21,9 @@ export default async function DashboardLayout({
     getDefaultWorkspace(),
     getMyWorkspaces(),
   ])
-  const forms = workspace ? await getWorkspaceForms(workspace.id) : []
+  const [forms, folders] = workspace
+    ? await Promise.all([getWorkspaceForms(workspace.id), getWorkspaceFolders(workspace.id)])
+    : [[], []]
 
   return (
     <DashboardShell
@@ -30,7 +33,9 @@ export default async function DashboardLayout({
         title: f.title,
         status: f.status,
         publicId: f.publicId,
+        folderId: f.folderId,
       }))}
+      folders={folders}
       user={{ email: user.email, name: user.name ?? "", avatarUrl: user.avatarUrl }}
       workspaces={workspaces.map((w) => ({
         id: w.id,

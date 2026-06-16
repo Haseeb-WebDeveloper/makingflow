@@ -21,14 +21,15 @@ export function answerFiles(value: AnswerValue | undefined): AnswerFile[] | null
 }
 
 /**
- * Render any answer value as a single plain-text cell. Files become
- * "name (url)" so integrations never leak the raw JSON blob. Scalars/arrays
- * keep the same output the integrations produced before.
+ * Render any answer value as a single plain-text cell. Files become their raw
+ * URL (so a Sheets cell with valueInputOption=USER_ENTERED turns it into a
+ * clickable link, rather than an un-clickable "name (url)" blob); a file with no
+ * URL falls back to its name. Scalars/arrays keep the same output as before.
  */
 export function answerToCell(value: AnswerValue | undefined): string {
   if (value == null) return ""
   const files = answerFiles(value)
-  if (files) return files.map((f) => (f.url ? `${f.name} (${f.url})` : f.name)).join(", ")
+  if (files) return files.map((f) => f.url || f.name).join(", ")
   if (Array.isArray(value)) return value.map((v) => String(v)).join(", ")
   if (typeof value === "object") return JSON.stringify(value)
   return String(value)

@@ -1,9 +1,11 @@
 import "server-only"
 
-import { and, eq } from "drizzle-orm"
+import { and, eq, inArray } from "drizzle-orm"
 import { db } from "@/lib/db"
 import {
+  answers,
   formIntegrations,
+  submissions,
   workspaceConnections,
   type AnswerValue,
   type GoogleSheetsIntegrationConfig,
@@ -11,6 +13,7 @@ import {
 } from "@/lib/db/schema"
 import {
   appendRow,
+  appendRows,
   deleteRow,
   getColumnValues,
   getSheetId,
@@ -82,16 +85,21 @@ export async function syncSubmissionToSheets(
         enabled: true,
         config,
       })
-    } else {
-      // Grow columns for any new fields (and migrate old sheets to the id column).
-      const reconciled = await reconcileFormSheet(conn, config, form.id)
-      config = reconciled.config
-      if (reconciled.changed && row) {
-        await db
-          .update(formIntegrations)
-          .set({ config })
-          .where(eq(formIntegrations.id, row.id))
-      }
+      // The sheet is brand-new. Write EVERY completed response (this one
+      // included, as it's already committed) so connecting Sheets after
+      // responses exist backfills the history — not just rows from now on.
+      await backfillFormSheet(conn, config, form.id)
+      return
+    }
+
+    // Grow columns for any new fields (and migrate old sheets to the id column).
+    const reconciled = await reconcileFormSheet(conn, config, form.id)
+    config = reconciled.config
+    if (reconciled.changed && row) {
+      await db
+        .update(formIntegrations)
+        .set({ config })
+        .where(eq(formIntegrations.id, row.id))
     }
 
     const accessToken = await getValidAccessToken(conn)
@@ -107,6 +115,79 @@ export async function syncSubmissionToSheets(
     await appendRow(accessToken, config.spreadsheetId, config.sheetName ?? DEFAULT_SHEET_NAME, values)
   } catch (err) {
     console.error("[sync] google sheets delivery failed", err)
+  }
+}
+
+/**
+ * Bulk-deliver every completed submission a form already has into its sheet.
+ * Runs when Sheets is connected/enabled AFTER responses exist, so the sheet
+ * shows the full history rather than only rows that arrive from then on.
+ *
+ * Idempotent: rows whose Submission ID is already present (column A) are skipped,
+ * so it's safe to run again (e.g. re-enabling a form). Requires the id-column
+ * layout to dedup — a no-op on legacy sheets that lack it. Returns how many rows
+ * it wrote; never throws into the caller.
+ */
+export async function backfillFormSheet(
+  conn: WorkspaceConnection,
+  config: GoogleSheetsIntegrationConfig,
+  formId: string,
+): Promise<number> {
+  try {
+    if (!config.spreadsheetId || !config.hasIdColumn) return 0
+    const accessToken = await getValidAccessToken(conn)
+    const sheetName = config.sheetName ?? DEFAULT_SHEET_NAME
+
+    // Submission ids already in the sheet (skip the header at index 0) so a
+    // re-run never duplicates a row.
+    const present = new Set(
+      (await getColumnValues(accessToken, config.spreadsheetId, sheetName, "A")).slice(1),
+    )
+
+    const subs = await db
+      .select({
+        id: submissions.id,
+        completedAt: submissions.completedAt,
+        createdAt: submissions.createdAt,
+      })
+      .from(submissions)
+      .where(and(eq(submissions.formId, formId), eq(submissions.status, "completed")))
+      .orderBy(submissions.createdAt)
+
+    const pending = subs.filter((s) => !present.has(s.id))
+    if (pending.length === 0) return 0
+
+    // Load all answers for the pending submissions in one query, indexed by
+    // submission → field. AI follow-ups (null fieldId) have no column, so skip.
+    const answerRows = await db
+      .select({
+        submissionId: answers.submissionId,
+        fieldId: answers.fieldId,
+        value: answers.value,
+      })
+      .from(answers)
+      .where(inArray(answers.submissionId, pending.map((s) => s.id)))
+
+    const bySubmission = new Map<string, Map<string, AnswerValue>>()
+    for (const a of answerRows) {
+      if (!a.fieldId) continue
+      let fields = bySubmission.get(a.submissionId)
+      if (!fields) bySubmission.set(a.submissionId, (fields = new Map()))
+      fields.set(a.fieldId, a.value)
+    }
+
+    const columns = config.columns ?? []
+    const values = pending.map((s) => {
+      const byField = bySubmission.get(s.id) ?? new Map<string, AnswerValue>()
+      const submittedAt = (s.completedAt ?? s.createdAt).toISOString()
+      return [s.id, submittedAt, ...columns.map((c) => cell(byField.get(c.fieldId)))]
+    })
+
+    await appendRows(accessToken, config.spreadsheetId, sheetName, values)
+    return values.length
+  } catch (err) {
+    console.error("[sync] google sheets backfill failed", err)
+    return 0
   }
 }
 

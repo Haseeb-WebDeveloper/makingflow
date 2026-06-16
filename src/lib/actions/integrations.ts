@@ -12,6 +12,7 @@ import {
 } from "@/lib/db/schema"
 import { getDefaultWorkspace } from "@/lib/auth/session"
 import { createFormSheet, refreshFormSheetHeader } from "@/lib/integrations/sheets-provision"
+import { backfillFormSheet } from "@/lib/integrations/sync"
 import { createFormDatabase, TITLE_PROP } from "@/lib/integrations/notion-provision"
 
 type Result = { success: true } | { success: false; error: string }
@@ -59,9 +60,10 @@ export async function enableFormSheet(formId: string): Promise<Result> {
     .where(and(eq(formIntegrations.formId, formId), eq(formIntegrations.type, "google_sheets")))
     .limit(1)
 
+  let config: GoogleSheetsIntegrationConfig
   try {
     const prev = existing?.config as GoogleSheetsIntegrationConfig | undefined
-    const config = prev?.spreadsheetId
+    config = prev?.spreadsheetId
       ? await refreshFormSheetHeader(conn, prev, formId)
       : await createFormSheet(conn, formId, form.title)
 
@@ -83,6 +85,10 @@ export async function enableFormSheet(formId: string): Promise<Result> {
     console.error("[enableFormSheet] failed", err)
     return { success: false, error: "Couldn't set up the spreadsheet. Reconnect Google and try again." }
   }
+
+  // Pull any responses that predate this sync into the sheet (idempotent — skips
+  // rows already present). Best-effort: the sheet itself is already set up.
+  await backfillFormSheet(conn, config, formId)
 
   revalidatePath(`/forms/${formId}/integrations`)
   revalidatePath("/integrations")

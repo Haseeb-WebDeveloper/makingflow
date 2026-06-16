@@ -17,7 +17,13 @@ import { MAKINGFLOW_NAV } from "@/components/dashboard/dashboard-nav";
 import { recordRecentForm, useRecentForms } from "@/lib/hooks/use-recent-forms";
 import { SVGIcon } from "../ui/svg-icon";
 
-export type FormSummary = { id: string; title: string; status: string; publicId?: string };
+export type FormSummary = {
+  id: string
+  title: string
+  status: string
+  publicId?: string
+  folderId?: string | null
+};
 
 const STATUS_STYLES: Record<string, string> = {
   published: "bg-success/10 text-success",

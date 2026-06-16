@@ -10,7 +10,6 @@ import {
   SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
-  SidebarGroupLabel,
   SidebarHeader,
   SidebarInset,
   SidebarMenu,
@@ -29,16 +28,16 @@ import {
   CommandMenu,
   type FormSummary,
 } from "@/components/dashboard/command-menu";
-import { FormRowMenu } from "@/components/dashboard/form-row-menu";
 import { NewFormButton } from "@/components/dashboard/new-form-button";
 import { UserNav, type NavWorkspace } from "@/components/dashboard/user-nav";
+import { SidebarForms } from "@/components/dashboard/sidebar-forms";
+import type { WorkspaceFolder } from "@/lib/data/folders";
 import { SVGIcon } from "../ui/svg-icon";
-
-const FORMS_IN_SIDEBAR = 10;
 
 export type DashboardShellProps = {
   navItems: DashboardNavItem[];
   forms: FormSummary[];
+  folders: WorkspaceFolder[];
   user: { email: string; name: string; avatarUrl: string | null };
   workspaces: NavWorkspace[];
   activeWorkspaceId: string | null;
@@ -48,6 +47,7 @@ export type DashboardShellProps = {
 export function DashboardShell({
   navItems,
   forms,
+  folders,
   user,
   workspaces,
   activeWorkspaceId,
@@ -67,8 +67,6 @@ export function DashboardShell({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
-
-  const shownForms = forms.slice(0, FORMS_IN_SIDEBAR);
 
   return (
     <TooltipProvider delayDuration={300}>
@@ -140,56 +138,11 @@ export function DashboardShell({
               </SidebarGroupContent>
             </SidebarGroup>
 
-            <SidebarGroup className="group-data-[collapsible=icon]:hidden">
-              <SidebarGroupLabel>Forms</SidebarGroupLabel>
-              <SidebarGroupContent>
-                <SidebarMenu>
-                  {shownForms.length === 0 ? (
-                    <p className="px-2 py-1.5 text-xs text-muted-foreground">
-                      No forms yet
-                    </p>
-                  ) : (
-                    shownForms.map((f) => {
-                      const active = pathname.startsWith(`/forms/${f.id}`);
-                      return (
-                        <SidebarMenuItem key={f.id}>
-                          <SidebarMenuButton
-                            asChild
-                            isActive={active}
-                            tooltip={f.title || "Untitled form"}
-                            className="text-sidebar-foreground/70 hover:text-sidebar-foreground data-active:bg-sidebar-accent data-active:font-medium data-active:text-sidebar-foreground"
-                          >
-                            <Link
-                              href={`/forms/${f.id}`}
-                              prefetch
-                              className="flex w-full min-w-0 items-center"
-                            >
-                              <span className="min-w-0 flex-1 truncate">
-                                {f.title || "Untitled form"}
-                              </span>
-                            </Link>
-                          </SidebarMenuButton>
-                          <FormRowMenu
-                            formId={f.id}
-                            title={f.title || "Untitled form"}
-                            status={f.status}
-                            publicId={f.publicId}
-                          />
-                        </SidebarMenuItem>
-                      );
-                    })
-                  )}
-                </SidebarMenu>
-                <button
-                  type="button"
-                  onClick={() => setSearchOpen(true)}
-                  className="mt-1 flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
-                >
-                  <Icon name="search" className="size-4 shrink-0" />
-                  <span>Search forms{forms.length > FORMS_IN_SIDEBAR ? ` (${forms.length})` : ""}</span>
-                </button>
-              </SidebarGroupContent>
-            </SidebarGroup>
+            <SidebarForms
+              forms={forms}
+              folders={folders}
+              onSearch={() => setSearchOpen(true)}
+            />
           </SidebarContent>
 
           <SidebarFooter className="border-t border-border p-2">

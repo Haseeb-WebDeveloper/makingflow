@@ -30,6 +30,7 @@ export async function getWorkspaceForms(workspaceId: string) {
       title: forms.title,
       status: forms.status,
       publicId: forms.publicId,
+      folderId: forms.folderId,
       updatedAt: forms.updatedAt,
     })
     .from(forms)

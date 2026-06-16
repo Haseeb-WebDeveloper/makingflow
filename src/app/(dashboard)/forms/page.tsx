@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import dynamic from "next/dynamic";
 import { getFormsDashboard } from "@/lib/data/analytics";
+import { getWorkspaceFolders } from "@/lib/data/folders";
+import { getDefaultWorkspace } from "@/lib/auth/session";
 import {
   PageContainer,
   PageHeader,
@@ -26,7 +28,11 @@ const DevicesDonut = dynamic(() =>
 export const metadata: Metadata = { title: "Home · MakingFlow" };
 
 export default async function FormsPage() {
-  const data = await getFormsDashboard();
+  const workspace = await getDefaultWorkspace();
+  const [data, folders] = await Promise.all([
+    getFormsDashboard(),
+    workspace ? getWorkspaceFolders(workspace.id) : Promise.resolve([]),
+  ]);
   const totals = data?.totals;
   const forms = data?.forms ?? [];
 
@@ -109,7 +115,7 @@ export default async function FormsPage() {
             <h2 className="mb-3 text-sm font-semibold text-foreground">
               Your forms
             </h2>
-            <FormsOverviewTable forms={forms} />
+            <FormsOverviewTable forms={forms} folders={folders} />
           </div>
         </div>
       )}

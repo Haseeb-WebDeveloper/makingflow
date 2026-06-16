@@ -509,6 +509,22 @@ export const workspaceUsage = pgTable(
 // Forms
 // ---------------------------------------------------------------------------
 
+// Workspace-scoped folders to organize forms in the sidebar + dashboard. A form
+// belongs to at most one folder (forms.folderId); deleting a folder un-files its
+// forms (set null), never deletes them.
+export const folders = pgTable(
+  'folders',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    ...timestamps,
+  },
+  (table) => [index('folders_workspace_idx').on(table.workspaceId)],
+)
+
 export const forms = pgTable(
   'forms',
   {
@@ -519,6 +535,8 @@ export const forms = pgTable(
     createdById: uuid('created_by_id').references(() => users.id, {
       onDelete: 'set null',
     }),
+    // Optional organizing folder (sidebar grouping). Null = "Uncategorized".
+    folderId: uuid('folder_id').references(() => folders.id, { onDelete: 'set null' }),
     title: text('title').notNull().default('Untitled form'),
     // Short app-generated id for the public runtime URL (/f/[publicId]) —
     // unguessable, decoupled from the internal uuid.
@@ -553,6 +571,7 @@ export const forms = pgTable(
   (table) => [
     uniqueIndex('forms_public_id_idx').on(table.publicId),
     index('forms_workspace_idx').on(table.workspaceId),
+    index('forms_folder_idx').on(table.folderId),
     // No two forms on the same custom domain may share a slug. (NULLs are
     // distinct in Postgres, so unassigned forms don't collide.)
     uniqueIndex('forms_domain_slug_idx').on(table.customDomainId, table.slug),
@@ -810,9 +829,18 @@ export const workspacesRelations = relations(workspaces, ({ one, many }) => ({
   connections: many(workspaceConnections),
   customDomains: many(customDomains),
   usage: many(workspaceUsage),
+  folders: many(folders),
   forms: many(forms),
   submissions: many(submissions),
   uploads: many(uploads),
+}))
+
+export const foldersRelations = relations(folders, ({ one, many }) => ({
+  workspace: one(workspaces, {
+    fields: [folders.workspaceId],
+    references: [workspaces.id],
+  }),
+  forms: many(forms),
 }))
 
 export const workspaceMembersRelations = relations(workspaceMembers, ({ one }) => ({
@@ -873,6 +901,10 @@ export const formsRelations = relations(forms, ({ one, many }) => ({
   createdBy: one(users, {
     fields: [forms.createdById],
     references: [users.id],
+  }),
+  folder: one(folders, {
+    fields: [forms.folderId],
+    references: [folders.id],
   }),
   customDomain: one(customDomains, {
     fields: [forms.customDomainId],
@@ -972,6 +1004,7 @@ export type WorkspaceInvitation = typeof workspaceInvitations.$inferSelect
 export type WorkspaceConnection = typeof workspaceConnections.$inferSelect
 export type CustomDomain = typeof customDomains.$inferSelect
 export type WorkspaceUsage = typeof workspaceUsage.$inferSelect
+export type Folder = typeof folders.$inferSelect
 export type Form = typeof forms.$inferSelect
 export type FormField = typeof formFields.$inferSelect
 export type FormTranslation = typeof formTranslations.$inferSelect

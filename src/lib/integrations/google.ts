@@ -235,11 +235,22 @@ export async function appendRow(
   sheetName: string,
   values: string[],
 ): Promise<void> {
+  await appendRows(accessToken, spreadsheetId, sheetName, [values])
+}
+
+/** Append many rows in one call (used to backfill existing submissions). */
+export async function appendRows(
+  accessToken: string,
+  spreadsheetId: string,
+  sheetName: string,
+  rows: string[][],
+): Promise<void> {
+  if (rows.length === 0) return
   const range = `${sheetName}!A1`
   await sheetsFetch(
     accessToken,
     `${SHEETS_API}/${spreadsheetId}/values/${encodeURIComponent(range)}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
-    { method: "POST", body: JSON.stringify({ values: [values] }) },
+    { method: "POST", body: JSON.stringify({ values: rows }) },
   )
 }
 
