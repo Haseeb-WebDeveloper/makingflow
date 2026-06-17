@@ -45,6 +45,18 @@ import { cn } from "@/lib/utils"
 
 export type BuilderTheme = { logoUrl?: string; coverImageUrl?: string }
 
+// The placeholder-capable field types (whose runtime control renders a free-text
+// placeholder — see `Control` in field-control.tsx) get an editable placeholder
+// in the canvas preview, with this type-appropriate ghost text until the author
+// sets their own (so a Link field doesn't say "Short answer").
+const PLACEHOLDER_HINT: Partial<Record<AiFieldType, string>> = {
+  short_text: "Short answer",
+  long_text: "Long answer",
+  email: "name@example.com",
+  url: "https://example.com",
+  phone: "Phone number",
+}
+
 export function FormEditor({
   form,
   onChange,
@@ -497,7 +509,7 @@ function Block({
               {isChoice(field.type) ? (
                 <OptionEditor field={field} onChange={onChange} />
               ) : (
-                <ControlPreview field={field} />
+                <ControlPreview field={field} onChange={onChange} />
               )}
             </div>
           </>
@@ -571,12 +583,49 @@ function OptionEditor({
   )
 }
 
-/** Non-interactive representation of an input field on the editor canvas. */
-function ControlPreview({ field }: { field: EditorField }) {
+/**
+ * Representation of an input field on the editor canvas. For placeholder-capable
+ * types the control is editable IN PLACE — typing sets the field's placeholder,
+ * and the type-appropriate hint shows as ghost text until then. Everything else
+ * is a non-interactive preview.
+ */
+function ControlPreview({
+  field,
+  onChange,
+}: {
+  field: EditorField
+  onChange: (patch: Partial<EditorField>) => void
+}) {
   const base = "pointer-events-none flex items-center rounded-md border border-input bg-background px-3 text-sm text-muted-foreground"
+  const editBase = "w-full rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground/70 focus-visible:border-foreground/40"
+  const hint = PLACEHOLDER_HINT[field.type] ?? "Short answer"
+  const setPlaceholder = (v: string) => onChange({ placeholder: v || undefined })
+
   switch (field.type) {
     case "long_text":
-      return <div className={cn(base, "h-16 items-start py-2")}>{field.placeholder || "Long answer"}</div>
+      return (
+        <textarea
+          rows={2}
+          value={field.placeholder ?? ""}
+          placeholder={hint}
+          onChange={(e) => setPlaceholder(e.target.value)}
+          onClick={(e) => e.stopPropagation()}
+          className={cn(editBase, "thin-scroll resize-none py-2")}
+        />
+      )
+    case "short_text":
+    case "email":
+    case "url":
+    case "phone":
+      return (
+        <input
+          value={field.placeholder ?? ""}
+          placeholder={hint}
+          onChange={(e) => setPlaceholder(e.target.value)}
+          onClick={(e) => e.stopPropagation()}
+          className={cn(editBase, "h-10")}
+        />
+      )
     case "date":
       return (
         <div className={cn(base, "h-10 justify-between")}>
