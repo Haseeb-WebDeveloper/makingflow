@@ -139,6 +139,7 @@ export const AI_OP_NAMES = [
   "set_options",
   "set_logic",
   "remove_logic",
+  "set_required",
 ] as const
 
 export const aiOperationSchema = z.object({
@@ -184,6 +185,12 @@ export const aiOperationSchema = z.object({
       'Placement. For add_field/move_field: the ref of the field to place this AFTER. For add_option: the option text to place after. Omit to append; use "start" to place first.',
     ),
   toIndex: z.number().optional().describe("Zero-based position to move an option to (move_option)."),
+  targets: z
+    .array(z.string())
+    .optional()
+    .describe(
+      'For set_required: the refs of the fields to change. OMIT to apply to ALL answerable fields at once.',
+    ),
   logic: aiLogicSchema.optional().describe("The show/hide rule to set on the target field (set_logic)."),
   title: z.string().optional().describe("New form title (rename_form)."),
 })
@@ -239,6 +246,7 @@ Operations (set "op" + only the fields that op needs):
 - set_options { target, options } — replace a choice field's ENTIRE options list with this exact array.
 - set_logic { target, logic } — set/replace this field's show/hide rule. Name the trigger field by its EXACT label; for choice/yes_no triggers, "value" is the option's exact text.
 - remove_logic { target } — clear this field's conditional logic.
+- set_required { targets?, set: { required } } — set the required flag on MANY fields at once. List the field refs in "targets", or OMIT "targets" to apply to ALL answerable fields. Use this ONE op for any "make these / all fields required (or optional)" request — never emit a separate update_field per field. (Headings, paragraphs, and page breaks are never required and are skipped automatically.)
 
 Even for a big request (e.g. "translate the whole form" or a broad restructure), express it as granular ops — one update_field per field you change, etc. There is no whole-form replace; always edit field by field so nothing unrelated is lost.
 

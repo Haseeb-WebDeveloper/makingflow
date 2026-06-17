@@ -131,6 +131,36 @@ describe("applyOperations", () => {
     const out = apply({ op: "remove_field", target: "does-not-exist" })
     expect(out.fields.map((f) => f.id)).toEqual(["f-name", "f-tech", "f-confirm"])
   })
+
+  test("set_required with no targets marks ALL answerable fields", () => {
+    const out = apply({ op: "set_required", set: { required: true } })
+    expect(out.fields.map((f) => f.required)).toEqual([true, true, true])
+  })
+
+  test("set_required can clear required on all fields", () => {
+    const out = apply({ op: "set_required", set: { required: false } })
+    expect(out.fields.map((f) => f.required)).toEqual([false, false, false])
+  })
+
+  test("set_required with targets only touches those fields", () => {
+    const out = apply({ op: "set_required", targets: ["f-tech"], set: { required: true } })
+    expect(field(out, "f-name").required).toBe(true) // unchanged (was already true)
+    expect(field(out, "f-tech").required).toBe(true) // flipped
+    expect(field(out, "f-confirm").required).toBe(false) // unchanged
+  })
+
+  test("set_required skips content blocks (they can never be required)", () => {
+    const withHeading: EditorForm = {
+      title: "X",
+      fields: [
+        { id: "h1", type: "heading", label: "Section", required: false },
+        { id: "q1", type: "short_text", label: "Name", required: false },
+      ],
+    }
+    const out = applyOperations(withHeading, [{ op: "set_required", set: { required: true } }])
+    expect(out.fields.find((f) => f.id === "h1")?.required).toBe(false) // heading untouched
+    expect(out.fields.find((f) => f.id === "q1")?.required).toBe(true)
+  })
 })
 
 describe("short refs (toEditContext + resolveOpRefs)", () => {
@@ -170,5 +200,14 @@ describe("short refs (toEditContext + resolveOpRefs)", () => {
     const op = resolveOpRefs({ op: "move_field", target: "f3", after: "start" }, refs)
     expect(op.target).toBe("f-confirm")
     expect(op.after).toBe("start")
+  })
+
+  test("resolveOpRefs translates the set_required targets array", () => {
+    const { refs } = toEditContext(base())
+    const op = resolveOpRefs(
+      { op: "set_required", targets: ["f1", "f3"], set: { required: true } },
+      refs,
+    )
+    expect(op.targets).toEqual(["f-name", "f-confirm"])
   })
 })

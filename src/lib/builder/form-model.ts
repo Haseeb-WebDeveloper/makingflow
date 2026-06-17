@@ -325,7 +325,15 @@ export function toEditContext(form: EditorForm) {
  *  through anything that isn't a known short ref (option text, "start", etc.). */
 export function resolveOpRefs(op: AiOperation, refs: Record<string, string>): AiOperation {
   const map = (v?: string) => (v != null && refs[v] != null ? refs[v] : v)
-  return { ...op, target: map(op.target), after: map(op.after), label: map(op.label), from: map(op.from) }
+  return {
+    ...op,
+    target: map(op.target),
+    after: map(op.after),
+    label: map(op.label),
+    from: map(op.from),
+    // set_required lists field refs in `targets` — translate each short ref too.
+    targets: op.targets?.map((t) => map(t) as string),
+  }
 }
 
 /**
@@ -476,6 +484,19 @@ export function applyOperations(form: EditorForm, ops: AiOperation[]): EditorFor
       case "remove_logic": {
         const f = byId(op.target)
         if (f) f.logic = undefined
+        break
+      }
+      case "set_required": {
+        if (op.set?.required == null) break
+        const value = op.set.required
+        // Omitted/empty targets = every answerable field. Content blocks and
+        // page breaks can't be required, so they're always skipped.
+        const targetIds = op.targets && op.targets.length > 0 ? new Set(op.targets) : null
+        for (const f of fields) {
+          if (!isAnswerable(f.type)) continue
+          if (targetIds && !targetIds.has(f.id)) continue
+          f.required = value
+        }
         break
       }
     }
