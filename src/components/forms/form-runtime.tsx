@@ -273,7 +273,7 @@ export function FormRuntime({
     setDone(true);
   }
 
-  if (true) {
+  if (done) {
     return (
       <div className="mx-auto flex min-h-[70dvh] w-full max-w-xl flex-col items-center justify-center text-center">
         <div className="mx-auto mb-4 flex size-14 items-center justify-center rounded-full bg-success/10 text-success">
