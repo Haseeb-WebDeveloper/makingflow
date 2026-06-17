@@ -483,15 +483,68 @@
   text-decoration: underline;
 }
 .tiptap-editor .ProseMirror img {
+  display: block;
   margin: 0.75rem auto;
   max-height: 20rem;
   width: auto;
   border-radius: 0.5rem;
 }
+/* Icon images (title="icon") render small + inline so several sit on one row,
+   mirroring the public success page. */
+.tiptap-editor .ProseMirror img[title="icon"] {
+  display: inline-block;
+  margin: 0.25rem;
+  height: 3rem;
+  max-height: 3rem;
+  width: auto;
+  vertical-align: middle;
+  border-radius: 0.375rem;
+}
+.tiptap-editor .ProseMirror img.ProseMirror-selectednode {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
 /* Placeholder text shown when the editor is empty. */
 .tiptap-editor .ProseMirror p.is-editor-empty:first-child::before {
   content: attr(data-placeholder);
   color: var(--color-muted-foreground);
+  pointer-events: none;
+  height: 0;
+  float: left;
+}
+
+/* Seamless inline editor used for the builder's heading + paragraph blocks.
+   Borderless so it reads as plain canvas text; formatting comes from the
+   floating bubble toolbar. Typography is supplied per-block via `className`. */
+.inline-rich-text .ProseMirror {
+  outline: none;
+}
+.inline-rich-text .ProseMirror > * + * {
+  margin-top: 0.4rem;
+}
+.inline-rich-text .ProseMirror p {
+  margin: 0;
+}
+.inline-rich-text .ProseMirror ul {
+  list-style: disc;
+  padding-left: 1.25rem;
+}
+.inline-rich-text .ProseMirror ol {
+  list-style: decimal;
+  padding-left: 1.25rem;
+}
+.inline-rich-text .ProseMirror blockquote {
+  border-left: 2px solid var(--color-border);
+  padding-left: 0.75rem;
+  color: var(--color-muted-foreground);
+}
+.inline-rich-text .ProseMirror a {
+  text-decoration: underline;
+}
+.inline-rich-text .ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: var(--color-muted-foreground);
+  opacity: 0.5;
   pointer-events: none;
   height: 0;
   float: left;

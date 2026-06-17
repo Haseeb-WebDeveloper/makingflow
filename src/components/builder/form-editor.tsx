@@ -32,6 +32,7 @@ import { LogicEditor, starterLogic } from "@/components/builder/logic-editor"
 import { uploadToCloudinary } from "@/lib/cloudinary/upload"
 import { showToast } from "@/components/ui/toast"
 import { SuccessPageEditor, type SuccessPage } from "@/components/builder/success-page-editor"
+import { InlineRichText } from "@/components/builder/inline-rich-text"
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -457,7 +458,8 @@ function Block({
             <span className="h-px flex-1 border-t border-dashed border-border" />
           </div>
         ) : field.type === "heading" ? (
-          <AutoText
+          <InlineRichText
+            variant="heading"
             value={field.label}
             onChange={(label) => onChange({ label })}
             placeholder={field.config?.headingLevel === "h1" ? "Heading" : "Subheading"}
@@ -467,7 +469,8 @@ function Block({
             )}
           />
         ) : field.type === "paragraph" ? (
-          <AutoText
+          <InlineRichText
+            variant="paragraph"
             value={field.label}
             onChange={(label) => onChange({ label })}
             placeholder="Add a line of text…"

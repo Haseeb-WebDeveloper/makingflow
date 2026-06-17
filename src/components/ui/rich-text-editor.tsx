@@ -8,8 +8,12 @@ import Placeholder from "@tiptap/extension-placeholder"
 import { markdownToHtml, htmlToMarkdown } from "@/lib/markdown"
 
 export type RichTextEditorHandle = {
-  /** Insert an image block at the current selection. */
-  insertImage: (src: string) => void
+  /**
+   * Insert an image at the current selection. `icon` inserts it as a small
+   * inline image (tagged via the markdown title `"icon"`) so several can sit
+   * side by side on one line; otherwise it's a full-width block image.
+   */
+  insertImage: (src: string, opts?: { icon?: boolean }) => void
   focus: () => void
 }
 
@@ -50,7 +54,9 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
             HTMLAttributes: { rel: "noreferrer noopener", target: "_blank" },
           },
         }),
-        Image.configure({ allowBase64: false }),
+        // inline:true lets icon-sized images flow next to each other on one
+        // line (a row of social icons) instead of each taking a full block.
+        Image.configure({ allowBase64: false, inline: true }),
         Placeholder.configure({ placeholder: placeholder ?? "Write something…" }),
       ],
       content: markdownToHtml(value),
@@ -63,7 +69,12 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
     React.useImperativeHandle(
       ref,
       () => ({
-        insertImage: (src: string) => editor?.chain().focus().setImage({ src }).run(),
+        insertImage: (src: string, opts?: { icon?: boolean }) =>
+          editor
+            ?.chain()
+            .focus()
+            .setImage({ src, title: opts?.icon ? "icon" : undefined })
+            .run(),
         focus: () => editor?.chain().focus().run(),
       }),
       [editor],

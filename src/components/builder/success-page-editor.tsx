@@ -23,8 +23,9 @@ export function SuccessPageEditor({
 }) {
   const editorRef = useRef<RichTextEditorHandle>(null)
   const imageRef = useRef<HTMLInputElement>(null)
+  const iconRef = useRef<HTMLInputElement>(null)
   const videoRef = useRef<HTMLInputElement>(null)
-  const [uploading, setUploading] = useState<"image" | "video" | null>(null)
+  const [uploading, setUploading] = useState<"image" | "icon" | "video" | null>(null)
 
   // Latest value, so the editor's onChange (markdown body) merges with the most
   // recent title/video instead of a stale snapshot captured at mount.
@@ -37,7 +38,7 @@ export function SuccessPageEditor({
     onChange({ ...valueRef.current, body })
   }
 
-  async function uploadImage(file?: File | null) {
+  async function uploadImage(file: File | null | undefined, asIcon: boolean) {
     if (!file) return
     if (!file.type.startsWith("image/")) {
       showToast("Please choose an image file.", { type: "error" })
@@ -47,10 +48,10 @@ export function SuccessPageEditor({
       showToast("That image is too large (max 8MB).", { type: "error" })
       return
     }
-    setUploading("image")
+    setUploading(asIcon ? "icon" : "image")
     try {
       const r = await uploadToCloudinary(file, "formAssets")
-      editorRef.current?.insertImage(r.secureUrl)
+      editorRef.current?.insertImage(r.secureUrl, { icon: asIcon })
     } catch {
       showToast("Couldn't upload that image. Please try again.", { type: "error" })
     } finally {
@@ -101,8 +102,14 @@ export function SuccessPageEditor({
           <>
             <TBtn
               label={uploading === "image" ? "…" : "Image"}
-              title="Insert image"
+              title="Insert a full-width image"
               onClick={() => imageRef.current?.click()}
+              disabled={uploading !== null}
+            />
+            <TBtn
+              label={uploading === "icon" ? "…" : "Icon"}
+              title="Insert a small inline icon — add a few in a row"
+              onClick={() => iconRef.current?.click()}
               disabled={uploading !== null}
             />
             <TBtn
@@ -145,7 +152,18 @@ export function SuccessPageEditor({
         onChange={(e) => {
           const f = e.target.files?.[0]
           e.target.value = ""
-          void uploadImage(f)
+          void uploadImage(f, false)
+        }}
+      />
+      <input
+        ref={iconRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(e) => {
+          const f = e.target.files?.[0]
+          e.target.value = ""
+          void uploadImage(f, true)
         }}
       />
       <input

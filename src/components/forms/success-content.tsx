@@ -35,10 +35,17 @@ const COMPONENTS: Components = {
       {children}
     </blockquote>
   ),
-  img: ({ src, alt }) =>
+  // `title="icon"` (set by the builder's "Icon" button) renders small + inline,
+  // so a few sit side by side on one line; anything else is a full-width block.
+  img: ({ src, alt, title }) =>
     typeof src === "string" ? (
-      // eslint-disable-next-line @next/next/no-img-element
-      <img src={src} alt={alt ?? ""} className="mx-auto my-3 max-h-80 w-auto rounded-lg" />
+      title === "icon" ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={src} alt={alt ?? ""} className="mx-1 my-1 inline-block h-12 w-auto rounded-md align-middle" />
+      ) : (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={src} alt={alt ?? ""} className="mx-auto my-3 max-h-80 w-auto rounded-lg" />
+      )
     ) : null,
   hr: () => <hr className="border-border" />,
 }
@@ -64,7 +71,7 @@ export function SuccessContent({
         />
       ) : null}
       {body ? (
-        <div className="mx-auto max-w-md space-y-3 text-left text-base text-muted-foreground">
+        <div className="mx-auto w-full space-y-3 text-left text-base text-muted-foreground">
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
             rehypePlugins={[rehypeSanitize]}

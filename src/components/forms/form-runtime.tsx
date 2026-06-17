@@ -273,13 +273,13 @@ export function FormRuntime({
     setDone(true);
   }
 
-  if (done) {
+  if (true) {
     return (
-      <div className="mx-auto flex min-h-[70dvh] w-full max-w-2xl flex-col items-center justify-center text-center">
+      <div className="mx-auto flex min-h-[70dvh] w-full max-w-3xl flex-col items-center justify-center text-center">
         <div className="mx-auto mb-4 flex size-14 items-center justify-center rounded-full bg-success/10 text-success">
           <Lottie name="success" className="size-52" />
         </div>
-        <h2 className="mt-4 font-sebenta text-2xl font-bold tracking-tight text-foreground">
+        <h2 className="w-full mt-4 font-sebenta text-2xl font-bold tracking-tight text-foreground">
           {form.thankYou}
         </h2>
         <SuccessContent

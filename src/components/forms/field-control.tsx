@@ -3,6 +3,9 @@
 import { useEffect, useRef, useState } from "react"
 import dynamic from "next/dynamic"
 import { format, parse } from "date-fns"
+import ReactMarkdown, { type Components } from "react-markdown"
+import remarkGfm from "remark-gfm"
+import rehypeSanitize from "rehype-sanitize"
 import type { PublicField, PublicTheme } from "@/lib/data/public-form"
 import type { AnswerValue } from "@/lib/db/schema"
 import { uploadToCloudinary } from "@/lib/cloudinary/upload"
@@ -44,6 +47,46 @@ export type UploadedFile = {
   bytes: number
 }
 
+// Heading + paragraph content blocks are authored as markdown in the builder
+// (see InlineRichText), so render them with the same sanitized react-markdown
+// pipeline the success page uses. Headings allow inline marks only — `p` is
+// unwrapped to a fragment so the marks sit directly inside the <h2>/<h3>.
+const INLINE_MD: Components = {
+  p: ({ children }) => <>{children}</>,
+  strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+  em: ({ children }) => <em className="italic">{children}</em>,
+  a: ({ children, href }) => (
+    <a href={href} target="_blank" rel="noreferrer noopener" className="underline">
+      {children}
+    </a>
+  ),
+}
+
+const PARAGRAPH_MD: Components = {
+  p: ({ children }) => <p className="leading-relaxed">{children}</p>,
+  strong: ({ children }) => <strong className="font-semibold text-foreground">{children}</strong>,
+  em: ({ children }) => <em className="italic">{children}</em>,
+  a: ({ children, href }) => (
+    <a href={href} target="_blank" rel="noreferrer noopener" className="text-primary underline">
+      {children}
+    </a>
+  ),
+  ul: ({ children }) => <ul className="list-disc space-y-1 pl-5">{children}</ul>,
+  ol: ({ children }) => <ol className="list-decimal space-y-1 pl-5">{children}</ol>,
+  li: ({ children }) => <li className="leading-relaxed">{children}</li>,
+  blockquote: ({ children }) => (
+    <blockquote className="border-l-2 border-border pl-3 text-muted-foreground">{children}</blockquote>
+  ),
+}
+
+function InlineMarkdown({ content }: { content: string }) {
+  return (
+    <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]} components={INLINE_MD}>
+      {content}
+    </ReactMarkdown>
+  )
+}
+
 /**
  * Shared field renderers for both runtimes. The classic `FormRuntime` renders
  * `Field` (label + control); the conversational runtime renders `Control`
@@ -65,13 +108,23 @@ export function Field({
 }) {
   if (field.type === "heading") {
     return field.config?.headingLevel === "h1" ? (
-      <h2 className="pt-2 font-sebenta text-2xl font-bold tracking-tight text-foreground">{field.label}</h2>
+      <h2 className="pt-2 font-sebenta text-2xl font-bold tracking-tight text-foreground">
+        <InlineMarkdown content={field.label} />
+      </h2>
     ) : (
-      <h3 className="pt-2 font-sebenta text-lg font-semibold text-foreground">{field.label}</h3>
+      <h3 className="pt-2 font-sebenta text-lg font-semibold text-foreground">
+        <InlineMarkdown content={field.label} />
+      </h3>
     )
   }
   if (field.type === "paragraph") {
-    return <p className="text-sm leading-relaxed text-muted-foreground">{field.label}</p>
+    return (
+      <div className="space-y-2 text-sm leading-relaxed text-muted-foreground">
+        <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]} components={PARAGRAPH_MD}>
+          {field.label}
+        </ReactMarkdown>
+      </div>
+    )
   }
 
   return (
