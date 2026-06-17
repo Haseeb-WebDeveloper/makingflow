@@ -1,5 +1,10 @@
 import { describe, expect, test } from "vitest"
-import { applyOperations, type EditorForm } from "@/lib/builder/form-model"
+import {
+  applyOperations,
+  toEditContext,
+  resolveOpRefs,
+  type EditorForm,
+} from "@/lib/builder/form-model"
 import type { AiOperation } from "@/lib/ai/form-schema"
 
 const base = (): EditorForm => ({
@@ -95,18 +100,6 @@ describe("applyOperations", () => {
     expect(field(cleared, "f-tech").logic).toBeUndefined()
   })
 
-  test("replace_form swaps everything but preserves ids by matching label", () => {
-    const out = apply({
-      op: "replace_form",
-      title: "New title",
-      fields: [{ type: "checkboxes", label: "Tech?", options: ["React", "Vue"] }],
-    })
-    expect(out.title).toBe("New title")
-    expect(out.fields).toHaveLength(1)
-    expect(field(out, "f-tech")).toBeTruthy() // id preserved (matched type+label)
-    expect(field(out, "f-tech").options?.find((o) => o.label === "React")?.id).toBe("o1")
-  })
-
   test("remove_option resolves by ref, and by a paraphrased (substring) label", () => {
     // by option ref (id)
     const byRef = apply({ op: "remove_option", target: "f-tech", label: "o2" })
@@ -137,5 +130,45 @@ describe("applyOperations", () => {
   test("an unknown target is skipped, not fatal", () => {
     const out = apply({ op: "remove_field", target: "does-not-exist" })
     expect(out.fields.map((f) => f.id)).toEqual(["f-name", "f-tech", "f-confirm"])
+  })
+})
+
+describe("short refs (toEditContext + resolveOpRefs)", () => {
+  test("context uses short, sequential refs mapped back to real ids", () => {
+    const { context, refs } = toEditContext(base())
+    expect(context.fields.map((f) => f.ref)).toEqual(["f1", "f2", "f3"])
+    // option refs are scoped to their field
+    const tech = context.fields[1] as { options: { ref: string; label: string }[] }
+    expect(tech.options.map((o) => o.ref)).toEqual(["f2o1", "f2o2", "f2o3"])
+    // and the map points back to the real ids
+    expect(refs).toMatchObject({ f1: "f-name", f2: "f-tech", f3: "f-confirm", f2o2: "o2" })
+  })
+
+  test("resolveOpRefs maps short refs in ref-bearing fields, leaves text alone", () => {
+    const { refs } = toEditContext(base())
+    // target (field ref) + from (option ref) translated; `to` (new text) untouched
+    const op = resolveOpRefs(
+      { op: "rename_option", target: "f2", from: "f2o3", to: "Something else" },
+      refs,
+    )
+    expect(op.target).toBe("f-tech")
+    expect(op.from).toBe("o3")
+    expect(op.to).toBe("Something else")
+  })
+
+  test("a short-ref op survives translation + applyOperations end to end", () => {
+    const form = base()
+    const { refs } = toEditContext(form)
+    // model returns short refs; we translate then apply
+    const op = resolveOpRefs({ op: "remove_option", target: "f2", label: "f2o2" }, refs)
+    const out = applyOperations(form, [op])
+    expect(field(out, "f-tech").options?.map((o) => o.label)).toEqual(["React", "Other"])
+  })
+
+  test("non-ref placement tokens like 'start' pass through untranslated", () => {
+    const { refs } = toEditContext(base())
+    const op = resolveOpRefs({ op: "move_field", target: "f3", after: "start" }, refs)
+    expect(op.target).toBe("f-confirm")
+    expect(op.after).toBe("start")
   })
 })

@@ -3,7 +3,7 @@
 import { generateObject, type ModelMessage } from "ai"
 import { geminiModel } from "@/lib/ai/provider"
 import { aiEditSchema, FORM_EDIT_SYSTEM, type AiEditResult } from "@/lib/ai/form-schema"
-import { toEditContext, type EditorForm } from "@/lib/builder/form-model"
+import { toEditContext, resolveOpRefs, type EditorForm } from "@/lib/builder/form-model"
 import { getOptionalUser } from "@/lib/auth/session"
 
 /**
@@ -22,14 +22,14 @@ export async function aiEditForm(input: {
   if (!user) return { error: "unauthorized" }
   if (!process.env.GEMINI_API_KEY) return { error: "ai_unavailable" }
 
-  const ctx = toEditContext(input.current)
+  const { context, refs } = toEditContext(input.current)
   const debug = process.env.NODE_ENV === "development"
 
   // Diagnostic: print the refs the model can target + the ops it returns.
   if (debug) {
     console.log("\n[aiEditForm] instruction:", JSON.stringify(input.instruction))
     console.log("[aiEditForm] available refs:")
-    for (const f of ctx.fields) {
+    for (const f of context.fields) {
       console.log(`  field ${f.ref}  "${f.label}" (${f.type})`)
       const opts = (f as { options?: { ref: string; label: string }[] }).options
       if (opts) for (const o of opts) console.log(`      option ${o.ref}  "${o.label}"`)
@@ -43,7 +43,7 @@ export async function aiEditForm(input: {
   messages.push({
     role: "user",
     content: `${input.instruction.trim()}\n\nThe current form is:\n${JSON.stringify(
-      ctx,
+      context,
     )}\n\nReturn only the operations needed for my request; leave everything else untouched.`,
   })
 
@@ -53,10 +53,14 @@ export async function aiEditForm(input: {
       schema: aiEditSchema,
       system: FORM_EDIT_SYSTEM,
       messages,
+      // Deterministic structured edits — no creative drift, same input → same ops.
+      temperature: 0,
     })
+    // Map the model's short refs (f3, f3o2) back to the real field/option ids.
+    const operations = object.operations.map((op) => resolveOpRefs(op, refs))
     if (debug)
-      console.log("[aiEditForm] operations returned:\n" + JSON.stringify(object.operations, null, 2))
-    return object
+      console.log("[aiEditForm] operations returned:\n" + JSON.stringify(operations, null, 2))
+    return { ...object, operations }
   } catch (err) {
     console.error("[aiEditForm] failed", err)
     return { error: "edit_failed" }

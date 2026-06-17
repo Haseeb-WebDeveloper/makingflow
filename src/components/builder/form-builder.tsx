@@ -78,7 +78,7 @@ const rid = () => crypto.randomUUID();
 const BUILDER_PHRASES = [
   "Reading your request…",
   "Designing the form…",
-  "Adding the fields…",
+  "Working on fields…",
 ];
 
 export function FormBuilder({

@@ -268,21 +268,33 @@ export function editorToAi(form: EditorForm): AiForm {
  * The current form annotated with a stable `ref` per field, sent to the model so
  * an edit can target fields unambiguously (by ref, not by re-matching labels).
  */
+// Returns the compact form `context` the model edits, plus `refs`: a map from
+// each short ref (f1, f1o2, …) back to the real field/option id for translating
+// the model's operations afterwards (see resolveOpRefs).
 export function toEditContext(form: EditorForm) {
   const idToLabel = new Map(form.fields.map((f) => [f.id, f.label]))
-  return {
-    title: form.title,
-    fields: form.fields.map((f) => ({
-      ref: f.id,
+  const refs: Record<string, string> = {}
+
+  const fields = form.fields.map((f, i) => {
+    // Short, sequential refs instead of raw UUIDs: LLMs reliably copy "f3"/"f3o2"
+    // but routinely mis-transcribe a 36-char uuid, which then silently no-ops.
+    const fref = `f${i + 1}`
+    refs[fref] = f.id
+    const options = f.options?.map((o, j) => {
+      const oref = `${fref}o${j + 1}`
+      refs[oref] = o.id
+      return { ref: oref, label: o.label }
+    })
+    return {
+      ref: fref,
       type: f.type,
       label: f.label,
       ...(f.description ? { description: f.description } : {}),
+      // Surface the current placeholder so the model can see/edit/remove it
+      // (update_field set.placeholder); without this an edit to it is blind.
+      ...(f.placeholder ? { placeholder: f.placeholder } : {}),
       required: f.required,
-      // Each option carries its own ref so the model can target it exactly,
-      // instead of us re-matching a paraphrased label string.
-      ...(f.options
-        ? { options: f.options.map((o) => ({ ref: o.id, label: o.label })) }
-        : {}),
+      ...(options ? { options } : {}),
       ...(f.logic
         ? {
             logic: {
@@ -303,8 +315,17 @@ export function toEditContext(form: EditorForm) {
             },
           }
         : {}),
-    })),
-  }
+    }
+  })
+
+  return { context: { title: form.title, fields }, refs }
+}
+
+/** Translate an op's ref-bearing fields from short refs back to real ids; passes
+ *  through anything that isn't a known short ref (option text, "start", etc.). */
+export function resolveOpRefs(op: AiOperation, refs: Record<string, string>): AiOperation {
+  const map = (v?: string) => (v != null && refs[v] != null ? refs[v] : v)
+  return { ...op, target: map(op.target), after: map(op.after), label: map(op.label), from: map(op.from) }
 }
 
 /**
@@ -335,7 +356,7 @@ function resolveOptionIndex(options: FieldOption[], query?: string): number {
 export function applyOperations(form: EditorForm, ops: AiOperation[]): EditorForm {
   let title = form.title
   // Deep-copy the parts we mutate (fields + their option arrays).
-  let fields: EditorField[] = form.fields.map((f) => ({
+  const fields: EditorField[] = form.fields.map((f) => ({
     ...f,
     options: f.options?.map((o) => ({ ...o })),
   }))
@@ -354,15 +375,6 @@ export function applyOperations(form: EditorForm, ops: AiOperation[]): EditorFor
     switch (op.op) {
       case "rename_form": {
         if (op.title != null) title = op.title
-        break
-      }
-      case "replace_form": {
-        const merged = mergeAiIntoEditor(
-          { title: op.title ?? title, fields: op.fields ?? [] },
-          { title, fields },
-        )
-        title = merged.title
-        fields = merged.fields
         break
       }
       case "add_field": {

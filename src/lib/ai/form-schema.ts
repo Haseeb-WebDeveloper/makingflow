@@ -139,7 +139,6 @@ export const AI_OP_NAMES = [
   "set_options",
   "set_logic",
   "remove_logic",
-  "replace_form",
 ] as const
 
 export const aiOperationSchema = z.object({
@@ -186,11 +185,7 @@ export const aiOperationSchema = z.object({
     ),
   toIndex: z.number().optional().describe("Zero-based position to move an option to (move_option)."),
   logic: aiLogicSchema.optional().describe("The show/hide rule to set on the target field (set_logic)."),
-  title: z.string().optional().describe("New form title (rename_form, or with replace_form)."),
-  fields: z
-    .array(aiFieldSchema)
-    .optional()
-    .describe("The COMPLETE new field list (replace_form only)."),
+  title: z.string().optional().describe("New form title (rename_form)."),
 })
 export type AiOperation = z.infer<typeof aiOperationSchema>
 
@@ -227,7 +222,7 @@ Rules:
 - ALWAYS fill "summary" with a brief, first-person, conversational note of what you did this turn — on an edit, describe ONLY what changed (the specific fields you added/removed/edited), not the whole form. Keep it to 1-2 sentences. Use Markdown: wrap any field name/label you mention in **bold** (never plain quotes), and use a short bullet list when you changed several things. Never write generic filler like "Done" or "I've updated your form."`
 
 /** System instruction for EDITING an existing form via explicit operations. */
-export const FORM_EDIT_SYSTEM = `You edit an existing form by returning a precise list of CHANGE OPERATIONS — never the whole form. You are given the current form as JSON: each field has a stable "ref", and each option also has its own "ref" (e.g. { "ref": "abc", "label": "Discord message" }). ALWAYS target an existing field or option by its "ref" — copy the ref exactly from the context. Do not rely on retyping the field/option text; refs are how the change is matched.
+export const FORM_EDIT_SYSTEM = `You edit an existing form by returning a precise list of CHANGE OPERATIONS — never the whole form. You are given the current form as JSON: each field has a short "ref" like "f1", "f2", and each option has its own "ref" like "f1o1", "f1o2" (e.g. { "ref": "f3o2", "label": "Discord message" }). ALWAYS target an existing field or option by copying its exact "ref" from the context. Do not retype the field/option text to identify it — the ref is how the change is matched, so an exact ref is essential.
 
 Return ONLY the operations needed to satisfy the user's request, and NOTHING for anything they didn't ask to change. Do not touch other fields or options. Apply the smallest set of operations that does the job.
 
@@ -236,7 +231,7 @@ Operations (set "op" + only the fields that op needs):
 - add_field { field, after? } — add a new field. "field" is a full field spec (type, label, options for choice types, etc.). "after" = the ref to place it after; omit to append; "start" to place first.
 - remove_field { target } — delete the field with this ref.
 - move_field { target, after? } — reorder: place this field after the given ref ("start" = first).
-- update_field { target, set } — change field properties. "set" includes ONLY the changed ones: label, description, placeholder, required, type.
+- update_field { target, set } — change field properties. "set" includes ONLY the changed ones: label, description, placeholder, required, type. To REMOVE a field's placeholder (or description), set it to an empty string "" — omitting it leaves the current value unchanged.
 - add_option { target, label, after? } — add one option to a choice field. "label" = the new option's text. "after" = the ref of the option to place it after.
 - remove_option { target, label } — remove ONE existing option. Put its ref in "label" (e.g. the ref of "Discord message"). The rest stay.
 - rename_option { target, from, to } — rename one option. "from" = the existing option's ref; "to" = the new text.
@@ -244,7 +239,8 @@ Operations (set "op" + only the fields that op needs):
 - set_options { target, options } — replace a choice field's ENTIRE options list with this exact array.
 - set_logic { target, logic } — set/replace this field's show/hide rule. Name the trigger field by its EXACT label; for choice/yes_no triggers, "value" is the option's exact text.
 - remove_logic { target } — clear this field's conditional logic.
-- replace_form { title, fields } — replace the WHOLE form. Use this ONLY for sweeping rewrites (e.g. translate everything, or completely restructure). Never use it for a small, targeted change — use the granular ops above so unrelated fields and options are left exactly as they are.
+
+Even for a big request (e.g. "translate the whole form" or a broad restructure), express it as granular ops — one update_field per field you change, etc. There is no whole-form replace; always edit field by field so nothing unrelated is lost.
 
 To CHANGE an option, use the option ops (remove_option / rename_option / set_options) — do NOT re-list a field's options unless you are intentionally replacing them.
 
