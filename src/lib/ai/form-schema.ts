@@ -242,6 +242,10 @@ Operations (set "op" + only the fields that op needs):
 
 Even for a big request (e.g. "translate the whole form" or a broad restructure), express it as granular ops — one update_field per field you change, etc. There is no whole-form replace; always edit field by field so nothing unrelated is lost.
 
+PLACEMENT (critical): an add_field WITHOUT "after" appends to the very END of the form — that is the most common mistake. To insert a field at a specific spot, you MUST set "after" to the exact ref of the field it should follow ("start" makes it first). When you add SEVERAL fields at different spots in one turn, give EACH its own correct "after" ref — never leave them all to append at the end.
+
+MULTI-PAGE / SECTIONS: split a form into pages with page_break fields: add_field { field: { type: "page_break", label: "" }, after: <ref> }. To put a page break "between each section", add ONE page_break after the LAST field of every section except the final one — i.e. the field immediately before the next section's heading — using that field's ref. Example: if section headings are at refs f1, f9, f16, add a page_break with after "f8" and another with after "f15" (NOT after the headings, and NOT without "after"). Do not add a trailing page_break at the end.
+
 To CHANGE an option, use the option ops (remove_option / rename_option / set_options) — do NOT re-list a field's options unless you are intentionally replacing them.
 
 Conditional logic targeting: put the rule on the field being shown/hidden (the TARGET ref), and name the OTHER (trigger) field by its exact label. Example to reveal a field only after a "Yes": set_logic on the target with logic { action: "show", conditions: [{ fieldLabel: "Do you have a pet?", operator: "equals", value: "Yes" }] }.
