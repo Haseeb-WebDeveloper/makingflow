@@ -1,18 +1,47 @@
 "use client"
 
+import type { CSSProperties } from "react"
 import ReactMarkdown, { type Components } from "react-markdown"
 import remarkGfm from "remark-gfm"
-import rehypeSanitize from "rehype-sanitize"
+import rehypeRaw from "rehype-raw"
+import rehypeSanitize, { defaultSchema } from "rehype-sanitize"
+import { cn } from "@/lib/utils"
 
 /**
  * Renders the owner-authored success page shown to respondents after they
- * submit: an optional uploaded video + a markdown body. The body is rendered
- * with rehype-sanitize so owner content can never inject script/unsafe HTML
- * into a respondent's browser.
+ * submit: an optional uploaded video + the body. The body is HTML (authored in
+ * the builder's WYSIWYG; legacy bodies are markdown, which this still handles).
+ * rehype-raw parses the stored HTML and rehype-sanitize strips anything unsafe,
+ * so owner content can never inject script/unsafe HTML into a respondent's
+ * browser. Inline `text-align` is whitelisted on text blocks for alignment.
  */
+const SCHEMA = {
+  ...defaultSchema,
+  attributes: {
+    ...defaultSchema.attributes,
+    p: [...(defaultSchema.attributes?.p ?? []), "style"],
+    h1: [...(defaultSchema.attributes?.h1 ?? []), "style"],
+    h2: [...(defaultSchema.attributes?.h2 ?? []), "style"],
+    h3: [...(defaultSchema.attributes?.h3 ?? []), "style"],
+  },
+}
+
+/** Map an authored text-align onto a tailwind class (other inline CSS is ignored). */
+function alignClass(style?: CSSProperties): string {
+  switch (style?.textAlign) {
+    case "center":
+      return "text-center"
+    case "right":
+      return "text-right"
+    case "justify":
+      return "text-justify"
+    default:
+      return ""
+  }
+}
 
 const COMPONENTS: Components = {
-  p: ({ children }) => <p className="leading-relaxed">{children}</p>,
+  p: ({ children, style }) => <p className={cn("leading-relaxed", alignClass(style))}>{children}</p>,
   a: ({ children, href }) => (
     <a href={href} target="_blank" rel="noreferrer noopener" className="text-primary underline">
       {children}
@@ -20,13 +49,15 @@ const COMPONENTS: Components = {
   ),
   strong: ({ children }) => <strong className="font-semibold text-foreground">{children}</strong>,
   em: ({ children }) => <em className="italic">{children}</em>,
-  h1: ({ children }) => (
-    <h2 className="font-sebenta text-xl font-bold tracking-tight text-foreground">{children}</h2>
+  h1: ({ children, style }) => (
+    <h2 className={cn("font-sebenta text-xl font-bold tracking-tight text-foreground", alignClass(style))}>{children}</h2>
   ),
-  h2: ({ children }) => (
-    <h3 className="font-sebenta text-lg font-bold tracking-tight text-foreground">{children}</h3>
+  h2: ({ children, style }) => (
+    <h3 className={cn("font-sebenta text-lg font-bold tracking-tight text-foreground", alignClass(style))}>{children}</h3>
   ),
-  h3: ({ children }) => <h4 className="text-base font-semibold text-foreground">{children}</h4>,
+  h3: ({ children, style }) => (
+    <h4 className={cn("text-base font-semibold text-foreground", alignClass(style))}>{children}</h4>
+  ),
   ul: ({ children }) => <ul className="list-disc space-y-1 pl-5 text-left">{children}</ul>,
   ol: ({ children }) => <ol className="list-decimal space-y-1 pl-5 text-left">{children}</ol>,
   li: ({ children }) => <li className="leading-relaxed">{children}</li>,
@@ -74,7 +105,7 @@ export function SuccessContent({
         <div className="mx-auto w-full space-y-3 text-left text-base text-muted-foreground">
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
-            rehypePlugins={[rehypeSanitize]}
+            rehypePlugins={[rehypeRaw, [rehypeSanitize, SCHEMA]]}
             components={COMPONENTS}
           >
             {body}

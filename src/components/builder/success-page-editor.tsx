@@ -95,6 +95,7 @@ export function SuccessPageEditor({
       <label className="mb-1 block text-xs font-medium text-muted-foreground">Message</label>
       <RichTextEditor
         ref={editorRef}
+        mode="html"
         value={value.body}
         onChange={onBodyChange}
         placeholder="Add a message, links, or images shown after submitting."

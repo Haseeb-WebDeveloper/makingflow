@@ -155,7 +155,7 @@ export type FormSettings = {
   showProgressBar?: boolean
   submitButtonLabel?: string
   thankYouMessage?: string // success-page title (heading shown after submit)
-  successBody?: string // success-page body, markdown (links, bold, headings, images)
+  successBody?: string // success-page body, HTML (links, bold, headings, images, alignment); legacy rows may be markdown
   successVideoUrl?: string // optional uploaded video shown on the success page
   captchaEnabled?: boolean
 }

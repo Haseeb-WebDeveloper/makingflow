@@ -5,7 +5,8 @@ import { useEditor, useEditorState, EditorContent, type Editor } from "@tiptap/r
 import StarterKit from "@tiptap/starter-kit"
 import Image from "@tiptap/extension-image"
 import Placeholder from "@tiptap/extension-placeholder"
-import { markdownToHtml, htmlToMarkdown } from "@/lib/markdown"
+import TextAlign from "@tiptap/extension-text-align"
+import { markdownToHtml, htmlToMarkdown, toEditorHtml, preserveSpacing } from "@/lib/markdown"
 
 export type RichTextEditorHandle = {
   /**
@@ -18,13 +19,19 @@ export type RichTextEditorHandle = {
 }
 
 type RichTextEditorProps = {
-  /** Initial content as markdown (read once on mount; editor owns it after). */
+  /** Initial content (read once on mount; editor owns it after). */
   value: string
-  /** Fires on every edit with the content serialized back to markdown. */
-  onChange: (markdown: string) => void
+  /** Fires on every edit with the content serialized back out (format per `mode`). */
+  onChange: (value: string) => void
   placeholder?: string
   /** Extra controls rendered at the end of the toolbar (e.g. image/video upload). */
   toolbarExtras?: React.ReactNode
+  /**
+   * Storage format. "html" keeps full fidelity (text alignment, exact spacing) and
+   * is what the success page uses; "markdown" round-trips through markdown (lossy
+   * for alignment). Defaults to "markdown".
+   */
+  mode?: "markdown" | "html"
 }
 
 /**
@@ -34,7 +41,8 @@ type RichTextEditorProps = {
  * them, keeping the round-trip lossless.
  */
 export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEditorProps>(
-  function RichTextEditor({ value, onChange, placeholder, toolbarExtras }, ref) {
+  function RichTextEditor({ value, onChange, placeholder, toolbarExtras, mode = "markdown" }, ref) {
+    const html = mode === "html"
     // Always call the latest onChange — Tiptap captures onUpdate at creation, so
     // a ref keeps it from going stale and clobbering sibling state (title/video).
     const onChangeRef = React.useRef(onChange)
@@ -58,12 +66,16 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
         // line (a row of social icons) instead of each taking a full block.
         Image.configure({ allowBase64: false, inline: true }),
         Placeholder.configure({ placeholder: placeholder ?? "Write something…" }),
+        // Text alignment can't be expressed in markdown, so it's only meaningful
+        // (and persisted) in html mode.
+        ...(html ? [TextAlign.configure({ types: ["heading", "paragraph"] })] : []),
       ],
-      content: markdownToHtml(value),
+      content: html ? toEditorHtml(value) : markdownToHtml(value),
       editorProps: {
         attributes: { class: "ProseMirror tiptap-body", "aria-label": "Rich text editor" },
       },
-      onUpdate: ({ editor }) => onChangeRef.current(htmlToMarkdown(editor.getHTML())),
+      onUpdate: ({ editor }) =>
+        onChangeRef.current(html ? preserveSpacing(editor.getHTML()) : htmlToMarkdown(editor.getHTML())),
     })
 
     React.useImperativeHandle(
@@ -82,7 +94,7 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
 
     return (
       <div className="tiptap-editor rounded-md border border-input bg-input/30 focus-within:border-foreground/40">
-        <Toolbar editor={editor}>{toolbarExtras}</Toolbar>
+        <Toolbar editor={editor} align={html}>{toolbarExtras}</Toolbar>
         <EditorContent
           editor={editor}
           className="thin-scroll max-h-[420px] overflow-y-auto px-3 py-2.5 text-sm text-foreground"
@@ -92,7 +104,15 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
   },
 )
 
-function Toolbar({ editor, children }: { editor: Editor | null; children?: React.ReactNode }) {
+function Toolbar({
+  editor,
+  align,
+  children,
+}: {
+  editor: Editor | null
+  align?: boolean
+  children?: React.ReactNode
+}) {
   const state = useEditorState({
     editor,
     selector: (ctx) => ({
@@ -105,6 +125,9 @@ function Toolbar({ editor, children }: { editor: Editor | null; children?: React
       ordered: ctx.editor?.isActive("orderedList") ?? false,
       quote: ctx.editor?.isActive("blockquote") ?? false,
       link: ctx.editor?.isActive("link") ?? false,
+      alignLeft: ctx.editor?.isActive({ textAlign: "left" }) ?? false,
+      alignCenter: ctx.editor?.isActive({ textAlign: "center" }) ?? false,
+      alignRight: ctx.editor?.isActive({ textAlign: "right" }) ?? false,
     }),
   })
 
@@ -135,6 +158,14 @@ function Toolbar({ editor, children }: { editor: Editor | null; children?: React
       <Btn label="1." title="Numbered list" active={state?.ordered} disabled={disabled} onClick={() => editor?.chain().focus().toggleOrderedList().run()} />
       <Btn label="❝" title="Quote" active={state?.quote} disabled={disabled} onClick={() => editor?.chain().focus().toggleBlockquote().run()} />
       <Btn label="Link" title="Link" active={state?.link} disabled={disabled} onClick={setLink} />
+      {align ? (
+        <>
+          <Sep />
+          <Btn label="⯇" title="Align left" active={state?.alignLeft} disabled={disabled} onClick={() => editor?.chain().focus().setTextAlign("left").run()} />
+          <Btn label="≡" title="Align center" active={state?.alignCenter} disabled={disabled} onClick={() => editor?.chain().focus().setTextAlign("center").run()} />
+          <Btn label="⯈" title="Align right" active={state?.alignRight} disabled={disabled} onClick={() => editor?.chain().focus().setTextAlign("right").run()} />
+        </>
+      ) : null}
       {children ? (
         <>
           <Sep />

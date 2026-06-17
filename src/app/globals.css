@@ -447,6 +447,10 @@
 .tiptap-editor .ProseMirror {
   outline: none;
   min-height: 120px;
+  /* Preserve runs of spaces the author types (e.g. spacing out a row of icons);
+     they're saved as non-breaking spaces so the live page matches — see
+     `preserveSpacing` in @/lib/markdown. */
+  white-space: pre-wrap;
 }
 .tiptap-editor .ProseMirror > * + * {
   margin-top: 0.5rem;
@@ -518,6 +522,7 @@
    floating bubble toolbar. Typography is supplied per-block via `className`. */
 .inline-rich-text .ProseMirror {
   outline: none;
+  white-space: pre-wrap;
 }
 .inline-rich-text .ProseMirror > * + * {
   margin-top: 0.4rem;
