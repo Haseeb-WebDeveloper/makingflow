@@ -119,6 +119,43 @@ export async function syncSubmissionToSheets(
 }
 
 /**
+ * Eagerly create a form's Google spreadsheet so it exists BEFORE any response
+ * arrives. Under the global model the sheet is otherwise provisioned lazily on
+ * the first submission (see {@link syncSubmissionToSheets}); this brings it
+ * forward — e.g. on publish — so a live form already has an empty, ready
+ * destination at 0 rows.
+ *
+ * No-op when the workspace hasn't connected Google, or when the form already has
+ * a Sheets integration row (already provisioned, or explicitly paused — we never
+ * override the user's choice). Mirrors the lazy-create branch below. Best-effort:
+ * never throws, so it's safe to call off the response path.
+ */
+export async function ensureFormSheet(form: {
+  id: string
+  workspaceId: string
+  title: string
+}): Promise<void> {
+  try {
+    const conn = await googleConnection(form.workspaceId)
+    if (!conn) return // Sheets not connected for this workspace — nothing to do.
+
+    const row = await sheetIntegration(form.id)
+    if (row) return // already has a sheet (or is paused) — leave it as-is.
+
+    const config = await createFormSheet(conn, form.id, form.title)
+    await db.insert(formIntegrations).values({
+      formId: form.id,
+      workspaceId: form.workspaceId,
+      type: "google_sheets",
+      enabled: true,
+      config,
+    })
+  } catch (err) {
+    console.error("[sync] eager google sheet provisioning failed", err)
+  }
+}
+
+/**
  * Bulk-deliver every completed submission a form already has into its sheet.
  * Runs when Sheets is connected/enabled AFTER responses exist, so the sheet
  * shows the full history rather than only rows that arrive from then on.

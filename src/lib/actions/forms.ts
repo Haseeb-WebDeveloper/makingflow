@@ -7,6 +7,7 @@ import { db } from "@/lib/db"
 import { forms, formFields, uploads, type FormSettings, type FormAiConfig, type FormTheme, type FieldConfig, type FieldLogic } from "@/lib/db/schema"
 import { getRequiredUser, getDefaultWorkspace } from "@/lib/auth/session"
 import { destroyAssets, assetFromUrl, resourceTypeFromMime, type CloudinaryAsset } from "@/lib/cloudinary/delete"
+import { ensureFormSheet } from "@/lib/integrations/sync"
 import { type EditorForm, DEFAULT_FORM_TITLE } from "@/lib/builder/form-model"
 
 type SaveResult = { success: true; id: string } | { success: false; error: string }
@@ -177,7 +178,7 @@ export async function publishForm(formId: string): Promise<PublishResult> {
   if (!workspace) return { success: false, error: "No workspace" }
 
   const [row] = await db
-    .select({ id: forms.id, publicId: forms.publicId })
+    .select({ id: forms.id, publicId: forms.publicId, title: forms.title })
     .from(forms)
     .where(and(eq(forms.id, formId), eq(forms.workspaceId, workspace.id)))
     .limit(1)
@@ -187,6 +188,17 @@ export async function publishForm(formId: string): Promise<PublishResult> {
     .update(forms)
     .set({ status: "published", publishedAt: new Date() })
     .where(eq(forms.id, formId))
+
+  // A freshly live form should already have its Google Sheet (empty, 0 rows) so
+  // the owner can wire up downstream tooling before the first response — rather
+  // than the sheet only appearing on the first submission. Off the response path
+  // and best-effort: a Sheets/Drive hiccup must never fail the publish. No-op
+  // when Google isn't connected or the form already has a sheet.
+  after(async () => {
+    await ensureFormSheet({ id: formId, workspaceId: workspace.id, title: row.title })
+    revalidatePath(`/forms/${formId}/integrations`)
+    revalidatePath("/integrations")
+  })
 
   updateTag(`form-${formId}`)
   updateTag(`workspace-forms-${workspace.id}`)
