@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import dynamic from "next/dynamic";
 import { submitForm } from "@/lib/actions/submissions";
 import type { PublicForm, PublicField } from "@/lib/data/public-form";
@@ -74,6 +75,17 @@ export function FormRuntime({
   const [stepFieldId, setStepFieldId] = useState<string | null>(null);
   const startedRef = useRef(false);
   const fillModeKey = `mf:fillmode:${form.publicId}`;
+
+  // Micro transition applied when a new question/page appears. A short fade +
+  // slight vertical slide; motion is dropped (opacity only) for respondents who
+  // prefer reduced motion.
+  const reduceMotion = useReducedMotion();
+  const questionMotion = {
+    initial: { opacity: 0, y: reduceMotion ? 0 : 8 },
+    animate: { opacity: 1, y: 0 },
+    exit: { opacity: 0, y: reduceMotion ? 0 : -6 },
+    transition: { duration: 0.2, ease: [0.22, 1, 0.36, 1] as const },
+  };
   // Save & resume: the partial submission id (resume token) + a mirror of values
   // for the debounced/unload saver + the autosave debounce timer.
   const submissionIdRef = useRef<string | null>(null);
@@ -118,9 +130,18 @@ export function FormRuntime({
     } catch {
       /* storage blocked */
     }
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (saved === "normal" || saved === "step") setFillMode(saved);
-  }, [testMode, fillMode, fillModeKey]);
+    if (saved !== "normal" && saved !== "step") return;
+    if (saved === "step") {
+      // Seed the current question so step mode never renders with a null
+      // stepFieldId (which would fall back to the first question).
+      const first =
+        nextAnswerableField(form.fields, valuesRef.current, null) ??
+        answerable[0] ??
+        null;
+      if (first) setStepFieldId(first.id);
+    }
+    setFillMode(saved);
+  }, [testMode, fillMode, fillModeKey, form.fields, answerable]);
 
   // ── Save & resume ─────────────────────────────────────────────────
   async function savePartialNow() {
@@ -380,17 +401,14 @@ export function FormRuntime({
     return null;
   }
 
-  // The field on screen in step mode. Falls back to the first unanswered (then
-  // the first) answerable field so a mode restored from localStorage — where
-  // stepFieldId was never seeded by a click — still lands on a real question.
+  // The field on screen in step mode. Resolved from `stepFieldId` (seeded when
+  // step mode is entered). The fallback is the FIRST answerable field, never
+  // "first unanswered" — a render-time derivation that skipped answered fields
+  // would move off the current question the instant the respondent answers it,
+  // making inputs feel unclickable. Navigation advances `stepFieldId` explicitly.
   const currentStepField: PublicField | null =
     fillMode === "step"
-      ? (stepFieldId != null
-          ? form.fields.find((f) => f.id === stepFieldId)
-          : undefined) ??
-        nextAnswerableField(form.fields, values, null) ??
-        answerable[0] ??
-        null
+      ? form.fields.find((f) => f.id === stepFieldId) ?? answerable[0] ?? null
       : null;
 
   function stepBack() {
@@ -516,6 +534,15 @@ export function FormRuntime({
         noValidate
         className="mx-auto w-full max-w-2xl pb-28"
       >
+        {/* Progress bar fixed to the top of the screen. */}
+        {form.showProgressBar ? (
+          <div className="fixed inset-x-0 top-0 z-30 h-1.5 bg-muted">
+            <div
+              className="h-full bg-foreground transition-all"
+              style={{ width: `${((stepPos + 1) / totalSteps) * 100}%` }}
+            />
+          </div>
+        ) : null}
         <FormBranding theme={form.theme} />
         <header className="mb-8">
           <h1 className="font-sebenta text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
@@ -539,26 +566,35 @@ export function FormRuntime({
           </div>
         ) : null}
 
-        <div className="space-y-7">
-          {leadingBlocks.map((field) => (
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.div
+            key={currentStepField.id}
+            className="space-y-7"
+            initial={questionMotion.initial}
+            animate={questionMotion.animate}
+            exit={questionMotion.exit}
+            transition={questionMotion.transition}
+          >
+            {leadingBlocks.map((field) => (
+              <Field
+                key={field.id}
+                field={field}
+                value={values[field.id]}
+                error={errors[field.id]}
+                onChange={(v) => setValue(field.id, v)}
+                testMode={testMode}
+              />
+            ))}
             <Field
-              key={field.id}
-              field={field}
-              value={values[field.id]}
-              error={errors[field.id]}
-              onChange={(v) => setValue(field.id, v)}
+              key={currentStepField.id}
+              field={currentStepField}
+              value={values[currentStepField.id]}
+              error={errors[currentStepField.id]}
+              onChange={(v) => setValue(currentStepField.id, v)}
               testMode={testMode}
             />
-          ))}
-          <Field
-            key={currentStepField.id}
-            field={currentStepField}
-            value={values[currentStepField.id]}
-            error={errors[currentStepField.id]}
-            onChange={(v) => setValue(currentStepField.id, v)}
-            testMode={testMode}
-          />
-        </div>
+          </motion.div>
+        </AnimatePresence>
 
         {error ? (
           <p role="alert" className="mt-6 text-sm text-destructive">
@@ -584,7 +620,7 @@ export function FormRuntime({
             <button
               type="submit"
               disabled={submitting}
-              className="inline-flex h-11 items-center justify-center rounded-md bg-foreground px-6 text-sm font-medium text-background transition-colors hover:bg-foreground/90 disabled:opacity-60"
+              className="inline-flex h-11 flex-1 items-center justify-center rounded-md bg-foreground px-6 text-sm font-medium text-background transition-colors hover:bg-foreground/90 disabled:opacity-60 sm:flex-none"
             >
               {isLastStep
                 ? submitting
@@ -600,23 +636,24 @@ export function FormRuntime({
 
   return (
     <form onSubmit={onSubmit} noValidate className="mx-auto w-full max-w-2xl">
+      {/* Progress bar fixed to the top of the screen. */}
+      {form.showProgressBar && pageCount > 1 ? (
+        <div className="fixed inset-x-0 top-0 z-30 h-1.5 bg-muted">
+          <div
+            className="h-full bg-foreground transition-all"
+            style={{ width: `${((idx + 1) / pageCount) * 100}%` }}
+          />
+        </div>
+      ) : null}
       <FormBranding theme={form.theme} />
       <header className="mb-8">
         <h1 className="font-sebenta text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
           {form.title}
         </h1>
         {form.showProgressBar && pageCount > 1 ? (
-          <div className="mt-4">
-            <div className="h-1.5 overflow-hidden rounded-full bg-muted">
-              <div
-                className="h-full rounded-full bg-foreground transition-all"
-                style={{ width: `${((idx + 1) / pageCount) * 100}%` }}
-              />
-            </div>
-            <p className="mt-1.5 text-xs text-muted-foreground">
-              Step {idx + 1} of {pageCount}
-            </p>
-          </div>
+          <p className="mt-4 text-xs text-muted-foreground">
+            Step {idx + 1} of {pageCount}
+          </p>
         ) : null}
       </header>
 
@@ -633,20 +670,29 @@ export function FormRuntime({
         </div>
       ) : null}
 
-      <div className="space-y-7">
-        {currentPage.map((field) =>
-          isFieldVisible(field.logic, values) ? (
-            <Field
-              key={field.id}
-              field={field}
-              value={values[field.id]}
-              error={errors[field.id]}
-              onChange={(v) => setValue(field.id, v)}
-              testMode={testMode}
-            />
-          ) : null
-        )}
-      </div>
+      <AnimatePresence mode="wait" initial={false}>
+        <motion.div
+          key={idx}
+          className="space-y-7"
+          initial={questionMotion.initial}
+          animate={questionMotion.animate}
+          exit={questionMotion.exit}
+          transition={questionMotion.transition}
+        >
+          {currentPage.map((field) =>
+            isFieldVisible(field.logic, values) ? (
+              <Field
+                key={field.id}
+                field={field}
+                value={values[field.id]}
+                error={errors[field.id]}
+                onChange={(v) => setValue(field.id, v)}
+                testMode={testMode}
+              />
+            ) : null
+          )}
+        </motion.div>
+      </AnimatePresence>
 
       {error ? (
         <p role="alert" className="mt-6 text-sm text-destructive">
