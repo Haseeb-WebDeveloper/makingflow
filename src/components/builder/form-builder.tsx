@@ -248,6 +248,7 @@ export function FormBuilder({
         successVideoUrl: successPage.videoUrl,
         redirectUrl: null, // never redirect in the builder preview
         showProgressBar: initialSettings?.showProgressBar ?? false,
+        chooserStyle: initialSettings?.chooserStyle ?? "cards",
         // The preview always renders classic — conversational needs a published,
         // AI-enabled form + the live turn endpoint.
         renderMode: "classic",

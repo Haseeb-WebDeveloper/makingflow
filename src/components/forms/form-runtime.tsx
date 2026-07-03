@@ -94,6 +94,9 @@ export function FormRuntime({
   // In step mode, the key of the step on screen: a field id, or `c:<firstBlockId>`
   // for a content-only intro/section step.
   const [stepKey, setStepKey] = useState<string | null>(null);
+  // The fill style the respondent has highlighted in the chooser (before they
+  // press Continue).
+  const [chooserSel, setChooserSel] = useState<"normal" | "step" | null>(null);
   const startedRef = useRef(false);
   const fillModeKey = `mf:fillmode:${form.publicId}`;
 
@@ -502,7 +505,7 @@ export function FormRuntime({
           }
           animate={{ opacity: 1, scale: 1, y: 0 }}
           transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
-          className="w-full max-w-xl rounded-xl md:border border-border bg-background p-6 sm:p-8"
+          className="w-full max-w-xl rounded-lg md:border border-border bg-background p-6 sm:p-8"
         >
           {form.title ? (
             <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
@@ -518,21 +521,100 @@ export function FormRuntime({
           <p className="mt-1.5 text-sm text-muted-foreground">
             Same questions either way. Pick the style you prefer.
           </p>
-          <div className="mt-7 grid gap-4 md:gap-3 sm:grid-cols-2">
-            <FillModeOption
-              autoFocus
-              title="All at once"
-              desc={allAtOnceDesc}
-              preview={<AllAtOncePreview />}
-              onClick={() => chooseFillMode("normal")}
-            />
-            <FillModeOption
-              title="One at a time"
-              desc="One question per screen."
-              preview={<OneAtATimePreview />}
-              onClick={() => chooseFillMode("step")}
-            />
-          </div>
+
+          {(() => {
+            const options = [
+              {
+                mode: "normal" as const,
+                title: "All at once",
+                desc: allAtOnceDesc,
+                preview: <AllAtOncePreview />,
+              },
+              {
+                mode: "step" as const,
+                title: "One at a time",
+                desc: "One question per screen.",
+                preview: <OneAtATimePreview />,
+              },
+            ];
+            return form.chooserStyle === "list" ? (
+              // Radio list rows.
+              <div className="mt-7 divide-y divide-border overflow-hidden rounded-md border border-border">
+                {options.map((o, i) => {
+                  const selected = chooserSel === o.mode;
+                  return (
+                    <button
+                      key={o.mode}
+                      type="button"
+                      autoFocus={i === 0}
+                      aria-pressed={selected}
+                      onClick={() => setChooserSel(o.mode)}
+                      className={
+                        "flex w-full items-center gap-3 p-4 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/60 " +
+                        (selected ? "bg-muted/40" : "hover:bg-muted/20")
+                      }
+                    >
+                      <RadioDot selected={selected} />
+                      <span>
+                        <span className="block font-medium text-foreground">
+                          {o.title}
+                        </span>
+                        <span className="mt-0.5 block text-sm text-muted-foreground">
+                          {o.desc}
+                        </span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              // Preview cards with a radio.
+              <div className="mt-7 grid gap-4 md:gap-3 sm:grid-cols-2">
+                {options.map((o, i) => {
+                  const selected = chooserSel === o.mode;
+                  return (
+                    <button
+                      key={o.mode}
+                      type="button"
+                      autoFocus={i === 0}
+                      aria-pressed={selected}
+                      onClick={() => setChooserSel(o.mode)}
+                      className={
+                        // No padding on the card so the preview is flush/full-width;
+                        // the title + description get their own padding below.
+                        "group relative flex h-full flex-col overflow-hidden rounded-lg border-2 md:border text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/60 " +
+                        (selected
+                          ? "border-foreground bg-muted/30"
+                          : "border-border hover:border-foreground/50 hover:bg-muted/40")
+                      }
+                    >
+                      <span className="absolute right-2 top-2 z-10">
+                        <RadioDot selected={selected} />
+                      </span>
+                      {o.preview}
+                      <div className="mt-3 px-4 pb-3">
+                        <span className="block font-semibold text-foreground">
+                          {o.title}
+                        </span>
+                        <span className="mt-0.5 block text-sm text-muted-foreground">
+                          {o.desc}
+                        </span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            );
+          })()}
+
+          <button
+            type="button"
+            disabled={!chooserSel}
+            onClick={() => chooserSel && chooseFillMode(chooserSel)}
+            className="mt-5 inline-flex h-11 w-full items-center justify-center rounded-md bg-foreground px-6 text-sm font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-40 sm:w-auto"
+          >
+            Continue
+          </button>
         </motion.div>
       </div>
     );
@@ -774,36 +856,30 @@ export function FormRuntime({
   );
 }
 
-/** One selectable option in the fill-style chooser: an animated preview, a
- *  title, and a one-line description. Minimal and borderless so it doesn't read
- *  as a card inside the dialog. Clicking selects the mode and starts the form. */
-function FillModeOption({
-  title,
-  desc,
-  preview,
-  onClick,
-  autoFocus,
-}: {
-  title: string;
-  desc: string;
-  preview: React.ReactNode;
-  onClick: () => void;
-  autoFocus?: boolean;
-}) {
+/** Radio indicator for the chooser options. Always an opaque fill so an animated
+ *  preview behind it never shows through the circle. */
+function RadioDot({ selected }: { selected: boolean }) {
   return (
-    <button
-      type="button"
-      autoFocus={autoFocus}
-      onClick={onClick}
-      className="group flex h-full overflow-hidden flex-col rounded-lg border-2 md:border hover:border-foreground/70 text-left outline-none transition-colors hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring/60"
+    <span
+      aria-hidden="true"
+      className={
+        "flex size-5 shrink-0 items-center justify-center rounded-full border transition-colors " +
+        (selected
+          ? "border-foreground bg-foreground text-background"
+          : "border-muted-foreground/40 bg-background")
+      }
     >
-      {preview}
-      <div className="mt-3 px-4 pb-3">
-        <span className="block font-semibold text-foreground">{title}</span>
-        <span className="mt-0.5 block text-sm text-muted-foreground">
-          {desc}
-        </span>
-      </div>
-    </button>
+      {selected ? (
+        <svg viewBox="0 0 20 20" fill="none" className="size-4">
+          <path
+            d="M5 10.5l3 3 7-7"
+            stroke="currentColor"
+            strokeWidth="2.4"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      ) : null}
+    </span>
   );
 }

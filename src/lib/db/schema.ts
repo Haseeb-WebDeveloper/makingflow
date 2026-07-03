@@ -153,6 +153,10 @@ export type FormTheme = {
 
 export type FormSettings = {
   showProgressBar?: boolean
+  // Presentation of the "how would you like to fill this out?" chooser:
+  // 'list' = compact radio rows, 'cards' = preview cards with a radio. Defaults
+  // to 'cards' when unset.
+  chooserStyle?: 'list' | 'cards'
   submitButtonLabel?: string
   thankYouMessage?: string // success-page title (heading shown after submit)
   successBody?: string // success-page body, HTML (links, bold, headings, images, alignment); legacy rows may be markdown

@@ -426,6 +426,7 @@ export type FormSettingsPatch = {
   redirectUrl?: string | null
   oneResponsePerPerson?: boolean
   showProgressBar?: boolean
+  chooserStyle?: "list" | "cards"
   submitButtonLabel?: string | null
   thankYouMessage?: string | null
   successBody?: string | null
@@ -490,6 +491,7 @@ export async function updateFormSettings(
 
   if (
     patch.showProgressBar !== undefined ||
+    patch.chooserStyle !== undefined ||
     patch.submitButtonLabel !== undefined ||
     patch.thankYouMessage !== undefined ||
     patch.successBody !== undefined ||
@@ -497,6 +499,7 @@ export async function updateFormSettings(
   ) {
     const settings: FormSettings = { ...(row.settings ?? {}) }
     if (patch.showProgressBar !== undefined) settings.showProgressBar = patch.showProgressBar
+    if (patch.chooserStyle !== undefined) settings.chooserStyle = patch.chooserStyle
     if (patch.submitButtonLabel !== undefined)
       settings.submitButtonLabel = patch.submitButtonLabel?.trim() || undefined
     if (patch.thankYouMessage !== undefined)

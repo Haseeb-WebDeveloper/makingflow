@@ -65,6 +65,7 @@ function diffPatch(base: FormSettingsData, next: FormSettingsData): FormSettings
   if (next.oneResponsePerPerson !== base.oneResponsePerPerson)
     p.oneResponsePerPerson = next.oneResponsePerPerson
   if (next.showProgressBar !== base.showProgressBar) p.showProgressBar = next.showProgressBar
+  if (next.chooserStyle !== base.chooserStyle) p.chooserStyle = next.chooserStyle
   if (next.submitButtonLabel !== base.submitButtonLabel) p.submitButtonLabel = next.submitButtonLabel
   // thankYouMessage + success page are edited on the canvas (SuccessPageEditor).
   if (next.renderMode !== base.renderMode) p.renderMode = next.renderMode
@@ -374,6 +375,37 @@ export const FormSettings = forwardRef<
               checked={state.showProgressBar}
               onCheckedChange={(v) => setState((s) => ({ ...s, showProgressBar: v }))}
             />
+          }
+        />
+
+        <SettingRow
+          title="Fill-style chooser"
+          description="How respondents pick between all-at-once and one-at-a-time."
+          control={
+            <div className="inline-flex rounded-md bg-muted p-0.5">
+              {(
+                [
+                  { key: "cards", label: "Cards" },
+                  { key: "list", label: "List" },
+                ] as const
+              ).map((o) => (
+                <button
+                  key={o.key}
+                  type="button"
+                  onClick={() =>
+                    setState((s) => ({ ...s, chooserStyle: o.key }))
+                  }
+                  className={
+                    "rounded px-3 py-1 text-sm font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/60 " +
+                    (state.chooserStyle === o.key
+                      ? "bg-background text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground")
+                  }
+                >
+                  {o.label}
+                </button>
+              ))}
+            </div>
           }
         />
 

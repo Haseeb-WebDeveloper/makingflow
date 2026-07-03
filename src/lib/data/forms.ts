@@ -152,6 +152,7 @@ export type FormSettingsData = {
   redirectUrl: string | null
   oneResponsePerPerson: boolean
   showProgressBar: boolean
+  chooserStyle: "list" | "cards"
   submitButtonLabel: string
   thankYouMessage: string
   successBody: string
@@ -204,6 +205,7 @@ export async function getFormSettings(id: string, workspaceId: string): Promise<
     redirectUrl: row.redirectUrl,
     oneResponsePerPerson: row.oneResponsePerPerson,
     showProgressBar: row.settings?.showProgressBar ?? false,
+    chooserStyle: row.settings?.chooserStyle ?? "cards",
     submitButtonLabel: row.settings?.submitButtonLabel ?? "",
     thankYouMessage: row.settings?.thankYouMessage ?? "",
     successBody: row.settings?.successBody ?? "",
