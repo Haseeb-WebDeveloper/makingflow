@@ -7,25 +7,45 @@ import { submitForm } from "@/lib/actions/submissions";
 import type { PublicForm, PublicField } from "@/lib/data/public-form";
 import type { AnswerValue } from "@/lib/db/schema";
 import { isValidPhoneNumber } from "react-phone-number-input";
-import {
-  isFieldVisible,
-  NON_ANSWER_TYPES,
-  isEmpty,
-  nextAnswerableField,
-  prevAnswerableField,
-} from "@/lib/builder/logic";
+import { isFieldVisible, NON_ANSWER_TYPES, isEmpty } from "@/lib/builder/logic";
 import { Field, FormBranding } from "@/components/forms/field-control";
+import {
+  AllAtOncePreview,
+  OneAtATimePreview,
+} from "@/components/forms/fill-mode-previews";
 import { SuccessContent } from "@/components/forms/success-content";
 import { collectClientMeta, track } from "@/lib/forms/client-meta";
 
 // The Lottie WASM player only appears on the post-submit success screen — code-
 // split it so it never loads while the respondent is filling the form.
-const Lottie = dynamic(() => import("../builder/lottie").then((m) => m.Lottie), {
-  ssr: false,
-});
+const Lottie = dynamic(
+  () => import("../builder/lottie").then((m) => m.Lottie),
+  {
+    ssr: false,
+  }
+);
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const URL_RE = /^https?:\/\/\S+\.\S+/i;
+
+/** Focus the first interactive control inside a container — used to move focus
+ *  onto each new question in step mode so keyboard/AT users land on the input
+ *  and sighted users can just start typing. `preventScroll` stops the browser
+ *  from scrolling the field under the fixed top progress bar. */
+function focusFirstControl(container: HTMLElement | null) {
+  if (!container) return;
+  const el = container.querySelector<HTMLElement>(
+    'input:not([type="hidden"]), textarea, select, [role="radio"], [role="slider"], button:not([tabindex="-1"]), [tabindex]:not([tabindex="-1"])'
+  );
+  el?.focus({ preventScroll: true });
+}
+
+/** A stop in one-at-a-time mode: a question (with any content blocks that
+ *  introduce it), or a content-only intro/section screen bounded by page
+ *  breaks. */
+type Step =
+  | { kind: "field"; key: string; field: PublicField; blocks: PublicField[] }
+  | { kind: "content"; key: string; blocks: PublicField[] };
 
 /** The first problem with a field's current value, or null if it's fine: covers
  *  required-but-empty and bad email/phone/url formats. */
@@ -71,8 +91,9 @@ export function FormRuntime({
       ? "normal"
       : null
   );
-  // In step mode, the id of the answerable field currently on screen.
-  const [stepFieldId, setStepFieldId] = useState<string | null>(null);
+  // In step mode, the key of the step on screen: a field id, or `c:<firstBlockId>`
+  // for a content-only intro/section step.
+  const [stepKey, setStepKey] = useState<string | null>(null);
   const startedRef = useRef(false);
   const fillModeKey = `mf:fillmode:${form.publicId}`;
 
@@ -86,6 +107,8 @@ export function FormRuntime({
     exit: { opacity: 0, y: reduceMotion ? 0 : -6 },
     transition: { duration: 0.2, ease: [0.22, 1, 0.36, 1] as const },
   };
+  // Wraps the current question in step mode so we can move focus into it.
+  const questionRef = useRef<HTMLDivElement>(null);
   // Save & resume: the partial submission id (resume token) + a mirror of values
   // for the debounced/unload saver + the autosave debounce timer.
   const submissionIdRef = useRef<string | null>(null);
@@ -130,18 +153,9 @@ export function FormRuntime({
     } catch {
       /* storage blocked */
     }
-    if (saved !== "normal" && saved !== "step") return;
-    if (saved === "step") {
-      // Seed the current question so step mode never renders with a null
-      // stepFieldId (which would fall back to the first question).
-      const first =
-        nextAnswerableField(form.fields, valuesRef.current, null) ??
-        answerable[0] ??
-        null;
-      if (first) setStepFieldId(first.id);
-    }
-    setFillMode(saved);
-  }, [testMode, fillMode, fillModeKey, form.fields, answerable]);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (saved === "normal" || saved === "step") setFillMode(saved);
+  }, [testMode, fillMode, fillModeKey]);
 
   // ── Save & resume ─────────────────────────────────────────────────
   async function savePartialNow() {
@@ -304,7 +318,7 @@ export function FormRuntime({
     submissionIdRef.current = null;
     // A redirect URL is the form's own thank-you page.
     if (form.redirectUrl) {
-      window.location.href = form.redirectUrl;
+      window.location.assign(form.redirectUrl);
       return;
     }
     setDone(true);
@@ -336,9 +350,8 @@ export function FormRuntime({
   }
 
   // ── One-question-at-a-time (step) mode ────────────────────────────
-  /** Lock in a fill style. Persist it so a resumed draft reopens the same way;
-   *  when entering step mode, land on the first unanswered question (resume) or
-   *  the very first question. */
+  /** Lock in a fill style and persist it so a resumed draft reopens the same
+   *  way. Step position falls back to the first step (see `currentStep`). */
   function chooseFillMode(mode: "normal" | "step") {
     if (!testMode) {
       try {
@@ -347,48 +360,7 @@ export function FormRuntime({
         /* storage blocked */
       }
     }
-    if (mode === "step") {
-      const first =
-        nextAnswerableField(form.fields, valuesRef.current, null) ??
-        answerable[0] ??
-        null;
-      setStepFieldId(first ? first.id : null);
-    }
     setFillMode(mode);
-  }
-
-  /** The next answerable+visible field strictly after `afterId` in document
-   *  order. Unlike `nextAnswerableField` this does NOT skip already-answered
-   *  fields, so stepping is strictly sequential (never jumps over a filled-in
-   *  question when navigating). */
-  function stepForwardFrom(afterId: string): PublicField | null {
-    let reached = false;
-    for (const f of form.fields) {
-      if (!reached) {
-        if (f.id === afterId) reached = true;
-        continue;
-      }
-      if (NON_ANSWER_TYPES.has(f.type)) continue;
-      if (!isFieldVisible(f.logic, values)) continue;
-      return f;
-    }
-    return null;
-  }
-
-  /** Content/layout blocks (heading, paragraph, image, embed) that sit between
-   *  the previous answerable field and this one, so they render above the
-   *  question they introduce. A page_break bounds the group. */
-  function leadingBlocksFor(fieldId: string): PublicField[] {
-    const i = form.fields.findIndex((f) => f.id === fieldId);
-    const out: PublicField[] = [];
-    for (let j = i - 1; j >= 0; j--) {
-      const f = form.fields[j];
-      if (f.type === "page_break") break;
-      if (!NON_ANSWER_TYPES.has(f.type)) break; // reached the previous question
-      if (!isFieldVisible(f.logic, values)) continue;
-      out.unshift(f);
-    }
-    return out;
   }
 
   /** First visible answerable field that fails validation, or null. */
@@ -401,56 +373,98 @@ export function FormRuntime({
     return null;
   }
 
-  // The field on screen in step mode. Resolved from `stepFieldId` (seeded when
-  // step mode is entered). The fallback is the FIRST answerable field, never
-  // "first unanswered" — a render-time derivation that skipped answered fields
-  // would move off the current question the instant the respondent answers it,
-  // making inputs feel unclickable. Navigation advances `stepFieldId` explicitly.
-  const currentStepField: PublicField | null =
-    fillMode === "step"
-      ? form.fields.find((f) => f.id === stepFieldId) ?? answerable[0] ?? null
-      : null;
+  // Step-mode "stops". Each visible answerable field is a step, carrying the
+  // content blocks (heading/text/image) that introduce it. A run of content
+  // blocks bounded by a page break with no following question becomes its own
+  // intro/section step. Recomputed against current answers so conditional
+  // visibility is respected.
+  const steps: Step[] = [];
+  if (fillMode === "step") {
+    let buffer: PublicField[] = [];
+    for (const f of form.fields) {
+      if (f.type === "page_break") {
+        if (buffer.length) {
+          steps.push({
+            kind: "content",
+            key: `c:${buffer[0].id}`,
+            blocks: buffer,
+          });
+          buffer = [];
+        }
+      } else if (NON_ANSWER_TYPES.has(f.type)) {
+        if (isFieldVisible(f.logic, values)) buffer.push(f);
+      } else if (isFieldVisible(f.logic, values)) {
+        steps.push({ kind: "field", key: f.id, field: f, blocks: buffer });
+        buffer = [];
+      }
+    }
+    if (buffer.length) {
+      steps.push({ kind: "content", key: `c:${buffer[0].id}`, blocks: buffer });
+    }
+  }
+  // Current step resolved by key; falls back to the first step so a fresh entry
+  // starts at the top (the intro, if any) and an unknown key never blanks out.
+  const foundStepIndex = steps.findIndex((s) => s.key === stepKey);
+  const currentStepIndex = foundStepIndex === -1 ? 0 : foundStepIndex;
+  const currentStep: Step | null = steps[currentStepIndex] ?? null;
 
   function stepBack() {
-    if (!currentStepField) return;
+    if (currentStepIndex <= 0) return;
     setError(null);
     setErrors({});
-    const prev = prevAnswerableField(form.fields, values, currentStepField.id);
-    if (prev) {
-      setStepFieldId(prev.id);
-      window.scrollTo({ top: 0, behavior: "smooth" });
-    }
+    setStepKey(steps[currentStepIndex - 1].key);
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   async function stepNext() {
-    if (!currentStepField) return;
+    if (!currentStep) return;
     setError(null);
-    // Validate just the field on screen before moving on.
-    const prob = problemMessage(currentStepField, values[currentStepField.id]);
-    if (prob) {
-      setErrors({ [currentStepField.id]: prob });
-      return;
+    // A question step validates before moving on; a content step just advances.
+    if (currentStep.kind === "field") {
+      const prob = problemMessage(
+        currentStep.field,
+        values[currentStep.field.id]
+      );
+      if (prob) {
+        setErrors({ [currentStep.field.id]: prob });
+        return;
+      }
     }
     setErrors({});
 
-    const next = stepForwardFrom(currentStepField.id);
-    if (next) {
-      setStepFieldId(next.id);
+    if (currentStepIndex < steps.length - 1) {
+      setStepKey(steps[currentStepIndex + 1].key);
       window.scrollTo({ top: 0, behavior: "smooth" });
       return;
     }
 
-    // Last question → re-validate the whole form, then submit. If something
-    // earlier is invalid (e.g. a field revealed by logic), jump back to it.
+    // Last step → re-validate the whole form, then submit. If something earlier
+    // is invalid (e.g. a field revealed by logic), jump back to its step.
     const bad = firstProblemField();
     if (bad) {
-      setStepFieldId(bad.id);
+      const badStep = steps.find(
+        (s) => s.kind === "field" && s.field.id === bad.id
+      );
+      if (badStep) setStepKey(badStep.key);
       setErrors({ [bad.id]: bad.msg });
       window.scrollTo({ top: 0, behavior: "smooth" });
       return;
     }
     await submitAll();
   }
+
+  // Move focus onto each new question in step mode, after the enter transition
+  // so the element is mounted. Keyboard/AT users land on the control instead of
+  // being stranded on the Next button, and sighted users can just start typing.
+  useEffect(() => {
+    if (fillMode !== "step" || !currentStep) return;
+    const t = setTimeout(
+      () => focusFirstControl(questionRef.current),
+      reduceMotion ? 0 : 230
+    );
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fillMode, currentStep?.key, reduceMotion]);
 
   if (done) {
     return (
@@ -470,60 +484,72 @@ export function FormRuntime({
     );
   }
 
-  // Fill-style chooser — shown once, before the form, for multi-question forms.
+  // Fill-style chooser — a modal asked before the form (product requirement),
+  // shown once for multi-question forms. It can't be dismissed without choosing.
+  // Each option carries a mini-preview so the choice reads at a glance, without
+  // relying on the copy.
   if (fillMode === null) {
+    const allAtOnceDesc =
+      pageCount > 1 ? "A few fields at a time." : "The whole form at once.";
     return (
-      <div className="mx-auto w-full max-w-2xl">
-        <FormBranding theme={form.theme} />
-        <header className="mb-8">
-          <h1 className="font-sebenta text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
-            {form.title}
-          </h1>
-          <p className="mt-3 text-muted-foreground">
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 px-4 backdrop-blur-sm">
+        <motion.div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="fillmode-title"
+          initial={
+            reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.98, y: 6 }
+          }
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+          className="w-full max-w-xl rounded-xl border border-border bg-background p-6 sm:p-8"
+        >
+          {form.title ? (
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              {form.title}
+            </p>
+          ) : null}
+          <h2
+            id="fillmode-title"
+            className="mt-1 font-sebenta text-xl font-bold tracking-tight text-foreground sm:text-2xl"
+          >
             How would you like to fill this out?
+          </h2>
+          <p className="mt-1.5 text-sm text-muted-foreground">
+            Same questions either way. Pick the style you prefer.
           </p>
-        </header>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <button
-            type="button"
-            onClick={() => chooseFillMode("normal")}
-            className="group flex flex-col items-start rounded-lg border border-border bg-background p-5 text-left transition-colors hover:border-foreground/40 hover:bg-muted/40"
-          >
-            <span className="font-medium text-foreground">All at once</span>
-            <span className="mt-1 text-sm text-muted-foreground">
-              See the whole form and fill it in at your own pace.
-            </span>
-          </button>
-          <button
-            type="button"
-            onClick={() => chooseFillMode("step")}
-            className="group flex flex-col items-start rounded-lg border border-border bg-background p-5 text-left transition-colors hover:border-foreground/40 hover:bg-muted/40"
-          >
-            <span className="font-medium text-foreground">
-              One question at a time
-            </span>
-            <span className="mt-1 text-sm text-muted-foreground">
-              Focus on a single question per screen, step by step.
-            </span>
-          </button>
-        </div>
+          <div className="mt-7 grid gap-3 sm:grid-cols-2">
+            <FillModeOption
+              autoFocus
+              title="All at once"
+              desc={allAtOnceDesc}
+              preview={<AllAtOncePreview />}
+              onClick={() => chooseFillMode("normal")}
+            />
+            <FillModeOption
+              title="One at a time"
+              desc="One question per screen."
+              preview={<OneAtATimePreview />}
+              onClick={() => chooseFillMode("step")}
+            />
+          </div>
+        </motion.div>
       </div>
     );
   }
 
   // One-question-at-a-time view.
-  if (fillMode === "step" && currentStepField) {
-    const visibleAnswerable = answerable.filter((f) =>
-      isFieldVisible(f.logic, values)
-    );
-    const stepPos = visibleAnswerable.findIndex(
-      (f) => f.id === currentStepField.id
-    );
-    const totalSteps = visibleAnswerable.length;
-    const isLastStep = stepForwardFrom(currentStepField.id) === null;
-    const hasPrev =
-      prevAnswerableField(form.fields, values, currentStepField.id) !== null;
-    const leadingBlocks = leadingBlocksFor(currentStepField.id);
+  if (fillMode === "step" && currentStep) {
+    const totalSteps = steps.length;
+    const isLastStep = currentStepIndex >= steps.length - 1;
+    const hasPrev = currentStepIndex > 0;
+    const nextLabel = isLastStep
+      ? submitting
+        ? "Submitting…"
+        : form.submitLabel
+      : currentStep.kind === "content" && currentStepIndex === 0
+      ? "Start"
+      : "Next";
 
     return (
       <form
@@ -536,10 +562,20 @@ export function FormRuntime({
       >
         {/* Progress bar fixed to the top of the screen. */}
         {form.showProgressBar ? (
-          <div className="fixed inset-x-0 top-0 z-30 h-1.5 bg-muted">
+          <div
+            className="fixed inset-x-0 top-0 z-30 h-1.5 bg-muted"
+            role="progressbar"
+            aria-label="Form progress"
+            aria-valuemin={0}
+            aria-valuemax={totalSteps}
+            aria-valuenow={currentStepIndex + 1}
+            aria-valuetext={`Step ${currentStepIndex + 1} of ${totalSteps}`}
+          >
             <div
-              className="h-full bg-foreground transition-all"
-              style={{ width: `${((stepPos + 1) / totalSteps) * 100}%` }}
+              className="h-full bg-primary transition-all rounded-full"
+              style={{
+                width: `${((currentStepIndex + 1) / totalSteps) * 100}%`,
+              }}
             />
           </div>
         ) : null}
@@ -549,7 +585,7 @@ export function FormRuntime({
             {form.title}
           </h1>
           <p className="mt-3 text-xs text-muted-foreground">
-            Question {stepPos + 1} of {totalSteps}
+            Step {currentStepIndex + 1} of {totalSteps}
           </p>
         </header>
 
@@ -568,14 +604,15 @@ export function FormRuntime({
 
         <AnimatePresence mode="wait" initial={false}>
           <motion.div
-            key={currentStepField.id}
+            key={currentStep.key}
+            ref={questionRef}
             className="space-y-7"
             initial={questionMotion.initial}
             animate={questionMotion.animate}
             exit={questionMotion.exit}
             transition={questionMotion.transition}
           >
-            {leadingBlocks.map((field) => (
+            {currentStep.blocks.map((field) => (
               <Field
                 key={field.id}
                 field={field}
@@ -585,14 +622,16 @@ export function FormRuntime({
                 testMode={testMode}
               />
             ))}
-            <Field
-              key={currentStepField.id}
-              field={currentStepField}
-              value={values[currentStepField.id]}
-              error={errors[currentStepField.id]}
-              onChange={(v) => setValue(currentStepField.id, v)}
-              testMode={testMode}
-            />
+            {currentStep.kind === "field" ? (
+              <Field
+                key={currentStep.field.id}
+                field={currentStep.field}
+                value={values[currentStep.field.id]}
+                error={errors[currentStep.field.id]}
+                onChange={(v) => setValue(currentStep.field.id, v)}
+                testMode={testMode}
+              />
+            ) : null}
           </motion.div>
         </AnimatePresence>
 
@@ -603,30 +642,24 @@ export function FormRuntime({
         ) : null}
 
         {/* Fixed navigation bar pinned to the bottom of the screen. */}
-        <div className="fixed inset-x-0 bottom-0 z-10 border-t border-border bg-canvas/95 backdrop-blur">
-          <div className="mx-auto flex w-full max-w-2xl items-center justify-between gap-3 px-4 py-3">
-            {hasPrev ? (
+        <div className="fixed inset-x-0 bottom-0 z-10 bg-canvas/90 backdrop-blur">
+          <div className="mx-auto flex w-full max-w-2xl items-center justify-between gap-3 px-4 py-3 lg:px-0">
+            {hasPrev && (
               <button
                 type="button"
                 onClick={stepBack}
                 disabled={submitting}
-                className="inline-flex h-11 items-center justify-center rounded-md border border-border px-5 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-60"
+                className="inline-flex h-10 items-center justify-center rounded-md border border-border lg:px-8 px-5 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-60"
               >
                 Back
               </button>
-            ) : (
-              <span />
             )}
             <button
               type="submit"
               disabled={submitting}
-              className="inline-flex h-11 flex-1 items-center justify-center rounded-md bg-foreground px-6 text-sm font-medium text-background transition-colors hover:bg-foreground/90 disabled:opacity-60 sm:flex-none"
+              className="inline-flex h-10 flex-1 items-center justify-center rounded-md bg-foreground px-6 lg:px-8 text-sm font-medium text-background transition-colors hover:bg-foreground/90 disabled:opacity-60 sm:flex-none"
             >
-              {isLastStep
-                ? submitting
-                  ? "Submitting…"
-                  : form.submitLabel
-                : "Next"}
+              {nextLabel}
             </button>
           </div>
         </div>
@@ -635,10 +668,28 @@ export function FormRuntime({
   }
 
   return (
-    <form onSubmit={onSubmit} noValidate className="mx-auto w-full max-w-2xl">
+    // Flex column that reaches the bottom of the screen so the nav row's
+    // `mt-auto` pins it there when the content is short, and flows right after
+    // the content when it's tall. `min-h` subtracts only the page's top padding
+    // (py-10 top = 2.5rem); `-mb-10` cancels the page's bottom padding so the
+    // row sits flush near the bottom edge (like the one-at-a-time bar), with
+    // `pb-6` for breathing room.
+    <form
+      onSubmit={onSubmit}
+      noValidate
+      className="mx-auto flex min-h-[calc(100dvh-2.5rem)] w-full max-w-2xl flex-col -mb-10 pb-3"
+    >
       {/* Progress bar fixed to the top of the screen. */}
       {form.showProgressBar && pageCount > 1 ? (
-        <div className="fixed inset-x-0 top-0 z-30 h-1.5 bg-muted">
+        <div
+          className="fixed inset-x-0 top-0 z-30 h-1.5 bg-muted"
+          role="progressbar"
+          aria-label="Form progress"
+          aria-valuemin={0}
+          aria-valuemax={pageCount}
+          aria-valuenow={idx + 1}
+          aria-valuetext={`Step ${idx + 1} of ${pageCount}`}
+        >
           <div
             className="h-full bg-foreground transition-all"
             style={{ width: `${((idx + 1) / pageCount) * 100}%` }}
@@ -700,13 +751,13 @@ export function FormRuntime({
         </p>
       ) : null}
 
-      <div className="mt-8 flex items-center gap-3">
+      <div className="mt-auto flex items-center justify-between gap-3 pt-8">
         {idx > 0 ? (
           <button
             type="button"
             onClick={goBack}
             disabled={submitting}
-            className="inline-flex h-11 items-center justify-center rounded-md border border-border px-5 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-60"
+            className="inline-flex h-10 items-center justify-center rounded-md border border-border px-6 lg:px-8 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-60"
           >
             Back
           </button>
@@ -714,11 +765,45 @@ export function FormRuntime({
         <button
           type="submit"
           disabled={submitting}
-          className="inline-flex h-11 items-center justify-center rounded-md bg-foreground px-6 text-sm font-medium text-background transition-colors hover:bg-foreground/90 disabled:opacity-60"
+          className="inline-flex h-10 flex-1 items-center justify-center rounded-md bg-foreground px-6 lg:px-8 text-sm font-medium text-background transition-colors hover:bg-foreground/90 disabled:opacity-60 sm:flex-none"
         >
           {isLast ? (submitting ? "Submitting…" : form.submitLabel) : "Next"}
         </button>
       </div>
     </form>
+  );
+}
+
+/** One selectable option in the fill-style chooser: an animated preview, a
+ *  title, and a one-line description. Minimal and borderless so it doesn't read
+ *  as a card inside the dialog. Clicking selects the mode and starts the form. */
+function FillModeOption({
+  title,
+  desc,
+  preview,
+  onClick,
+  autoFocus,
+}: {
+  title: string;
+  desc: string;
+  preview: React.ReactNode;
+  onClick: () => void;
+  autoFocus?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      autoFocus={autoFocus}
+      onClick={onClick}
+      className="group flex h-full overflow-hidden flex-col rounded-lg border hover:border-foreground/70 text-left outline-none transition-colors hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring/60"
+    >
+      {preview}
+      <div className="mt-3 px-4 pb-3">
+        <span className="block font-semibold text-foreground">{title}</span>
+        <span className="mt-0.5 block text-sm text-muted-foreground">
+          {desc}
+        </span>
+      </div>
+    </button>
   );
 }

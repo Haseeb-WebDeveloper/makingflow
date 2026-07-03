@@ -345,6 +345,87 @@ function OverlayButton({
   )
 }
 
+/** Image content block editor: upload to Cloudinary, preview, replace/remove. */
+function ImageBlockEditor({
+  url,
+  onUrl,
+}: {
+  url?: string
+  onUrl: (url: string) => void
+}) {
+  const [busy, setBusy] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  async function pick(file?: File | null) {
+    if (!file) return
+    if (!file.type.startsWith("image/")) {
+      showToast("Please choose an image file.", { type: "error" })
+      return
+    }
+    if (file.size > 8 * 1024 * 1024) {
+      showToast("That image is too large (max 8MB).", { type: "error" })
+      return
+    }
+    setBusy(true)
+    try {
+      const r = await uploadToCloudinary(file, "formAssets")
+      onUrl(r.secureUrl)
+    } catch {
+      showToast("Couldn't upload that image. Please try again.", { type: "error" })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div onClick={(e) => e.stopPropagation()}>
+      {url ? (
+        <div className="group/img relative">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={url}
+            alt=""
+            className="w-full rounded-lg border border-border object-cover"
+          />
+          <div className="absolute right-2 top-2 flex gap-1.5 opacity-0 transition-opacity group-hover/img:opacity-100">
+            <OverlayButton onClick={() => inputRef.current?.click()} disabled={busy}>
+              {busy ? "Uploading…" : "Replace"}
+            </OverlayButton>
+            <OverlayButton onClick={() => onUrl("")}>Remove</OverlayButton>
+          </div>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => inputRef.current?.click()}
+          disabled={busy}
+          className="flex h-28 w-full items-center justify-center gap-2 rounded-lg border border-dashed border-border text-sm text-muted-foreground transition-colors hover:bg-muted/50 disabled:opacity-60"
+        >
+          {busy ? (
+            "Uploading…"
+          ) : (
+            <>
+              <Plus className="size-4" />
+              Add image
+            </>
+          )}
+        </button>
+      )}
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(e) => {
+          const f = e.target.files?.[0]
+          e.target.value = ""
+          void pick(f)
+        }}
+      />
+    </div>
+  )
+}
+
 function Block({
   field,
   fields,
@@ -364,7 +445,10 @@ function Block({
   onDuplicate: () => void
   onInsertAfter: () => void
 }) {
-  const isContentBlock = field.type === "heading" || field.type === "paragraph"
+  const isContentBlock =
+    field.type === "heading" ||
+    field.type === "paragraph" ||
+    field.type === "image"
   const { setNodeRef, attributes, listeners, transform, transition, isDragging } = useSortable({ id: field.id })
 
   const style = { transform: CSS.Transform.toString(transform), transition }
@@ -487,6 +571,13 @@ function Block({
             onChange={(label) => onChange({ label })}
             placeholder="Add a line of text…"
             className="text-sm leading-relaxed text-muted-foreground"
+          />
+        ) : field.type === "image" ? (
+          <ImageBlockEditor
+            url={field.config?.imageUrl}
+            onUrl={(imageUrl) =>
+              onChange({ config: { ...field.config, imageUrl: imageUrl || undefined } })
+            }
           />
         ) : (
           <>
