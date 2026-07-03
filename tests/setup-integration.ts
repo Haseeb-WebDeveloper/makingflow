@@ -13,9 +13,20 @@
  */
 
 import { execSync } from 'node:child_process'
-import { afterEach, beforeAll } from 'vitest'
+import { afterEach, beforeAll, vi } from 'vitest'
 import { db } from '@/lib/db'
 import { sql } from 'drizzle-orm'
+
+// Next's `after()` schedules work to run after the response is flushed and
+// requires a request scope. Server actions invoked directly from integration
+// tests have no such scope, so the real `after()` throws. Stub it to a no-op:
+// these tests assert on the persisted submission + answers, not on the deferred
+// side-effects (event logging, Sheets/webhook/email delivery). In production
+// `after()` runs within the request as normal.
+vi.mock('next/server', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('next/server')>()
+  return { ...actual, after: () => {} }
+})
 
 // ============================================================
 // Supabase schema stubs.
