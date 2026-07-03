@@ -55,6 +55,10 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm test:integration
+        env:
+          # Point at the Postgres service above. setup-integration.ts refuses
+          # to run (and db:migrate can't connect) without this.
+          DATABASE_URL: postgres://makingflow_test:makingflow_test@localhost:54322/makingflow_test
 
   e2e:
     name: e2e (playwright)
@@ -87,6 +91,8 @@ jobs:
       - run: pnpm test:e2e
         env:
           CI: 'true'
+          # The Playwright webServer boots the app, which needs a database.
+          DATABASE_URL: postgres://makingflow_test:makingflow_test@localhost:54322/makingflow_test
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
