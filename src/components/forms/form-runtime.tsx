@@ -492,7 +492,7 @@ export function FormRuntime({
     const allAtOnceDesc =
       pageCount > 1 ? "A few fields at a time." : "The whole form at once.";
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 px-4 backdrop-blur-sm">
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 md:px-4 backdrop-blur-sm">
         <motion.div
           role="dialog"
           aria-modal="true"
@@ -502,7 +502,7 @@ export function FormRuntime({
           }
           animate={{ opacity: 1, scale: 1, y: 0 }}
           transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
-          className="w-full max-w-xl rounded-xl border border-border bg-background p-6 sm:p-8"
+          className="w-full max-w-xl rounded-xl md:border border-border bg-background p-6 sm:p-8"
         >
           {form.title ? (
             <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
@@ -518,7 +518,7 @@ export function FormRuntime({
           <p className="mt-1.5 text-sm text-muted-foreground">
             Same questions either way. Pick the style you prefer.
           </p>
-          <div className="mt-7 grid gap-3 sm:grid-cols-2">
+          <div className="mt-7 grid gap-4 md:gap-3 sm:grid-cols-2">
             <FillModeOption
               autoFocus
               title="All at once"
@@ -795,7 +795,7 @@ function FillModeOption({
       type="button"
       autoFocus={autoFocus}
       onClick={onClick}
-      className="group flex h-full overflow-hidden flex-col rounded-lg border hover:border-foreground/70 text-left outline-none transition-colors hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring/60"
+      className="group flex h-full overflow-hidden flex-col rounded-lg border-2 md:border hover:border-foreground/70 text-left outline-none transition-colors hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring/60"
     >
       {preview}
       <div className="mt-3 px-4 pb-3">
