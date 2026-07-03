@@ -115,3 +115,27 @@ export function nextAnswerableField<T extends FieldLike>(
   }
   return null
 }
+
+/**
+ * The previous answerable field a respondent should land on when stepping back:
+ * scan in document order strictly BEFORE `beforeFieldId` and return the LAST
+ * one that is answerable and currently visible. Unlike the forward walk this
+ * does NOT skip already-answered fields — going back must revisit the field the
+ * respondent just filled. Returns null when there's nothing before it (the
+ * one-at-a-time runtime uses this for its Back button). Content/layout blocks
+ * are skipped; the runtime re-attaches any leading ones when it renders a step.
+ */
+export function prevAnswerableField<T extends FieldLike>(
+  fields: T[],
+  values: Values,
+  beforeFieldId: string,
+): T | null {
+  let prev: T | null = null
+  for (const f of fields) {
+    if (f.id === beforeFieldId) return prev
+    if (NON_ANSWER_TYPES.has(f.type)) continue
+    if (!isFieldVisible(f.logic ?? undefined, values)) continue
+    prev = f
+  }
+  return prev
+}

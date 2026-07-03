@@ -47,10 +47,10 @@ export const CHOICE_TYPES = new Set<AiFieldType>([
   "dropdown",
   "multi_select",
 ])
-export const CONTENT_TYPES = new Set<AiFieldType>(["heading", "paragraph"])
+export const CONTENT_TYPES = new Set<AiFieldType>(["heading", "paragraph", "image"])
 // Layout/structural blocks that never collect an answer (page_break is a
 // multi-page divider, not a question).
-export const NON_ANSWER_TYPES = new Set<AiFieldType>(["heading", "paragraph", "page_break"])
+export const NON_ANSWER_TYPES = new Set<AiFieldType>(["heading", "paragraph", "image", "page_break"])
 
 export const isChoice = (t: AiFieldType) => CHOICE_TYPES.has(t)
 export const isContent = (t: AiFieldType) => CONTENT_TYPES.has(t)
@@ -89,6 +89,7 @@ export const FIELD_CATALOG: CatalogItem[] = [
   { type: "heading", label: "Heading", group: "Layout", keywords: "section title h1 large", config: { headingLevel: "h1" } },
   { type: "heading", label: "Subheading", group: "Layout", keywords: "subsection subtitle h2", config: { headingLevel: "h2" } },
   { type: "paragraph", label: "Text", group: "Layout", keywords: "description note paragraph body" },
+  { type: "image", label: "Image", group: "Layout", keywords: "picture photo upload media banner" },
   { type: "page_break", label: "Page break", group: "Layout", keywords: "page step multi-page next" },
 ]
 

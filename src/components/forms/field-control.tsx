@@ -126,19 +126,54 @@ export function Field({
       </div>
     )
   }
+  if (field.type === "image") {
+    if (!field.config?.imageUrl) return null
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={cldDeliver(field.config.imageUrl, "f_auto,q_auto,w_1400,c_limit")}
+        alt={field.label || ""}
+        decoding="async"
+        loading="lazy"
+        className="w-full rounded-lg object-cover"
+      />
+    )
+  }
+
+  // Ids that tie the visible label, help text, and error message to the control
+  // so assistive tech announces them together (the controls aren't wrapped in a
+  // native <label>, so association is via aria-labelledby / aria-describedby).
+  const labelId = `label-${field.id}`
+  const descId = field.description ? `desc-${field.id}` : undefined
+  const errId = error ? `err-${field.id}` : undefined
+  const describedBy = [descId, errId].filter(Boolean).join(" ") || undefined
 
   return (
     <div id={`field-${field.id}`} className="space-y-2">
-      <label className="block text-sm font-medium text-foreground">
+      <label id={labelId} className="block text-sm font-medium text-foreground">
         {field.label}
-        {field.required ? <span className="ml-0.5 text-destructive">*</span> : null}
+        {field.required ? (
+          <span className="ml-0.5 text-destructive" aria-hidden="true">
+            *
+          </span>
+        ) : null}
       </label>
       {field.description ? (
-        <p className="-mt-1 text-xs text-muted-foreground">{field.description}</p>
+        <p id={descId} className="-mt-1 text-xs text-muted-foreground">
+          {field.description}
+        </p>
       ) : null}
-      <Control field={field} value={value} invalid={!!error} onChange={onChange} testMode={testMode} />
+      <Control
+        field={field}
+        value={value}
+        invalid={!!error}
+        onChange={onChange}
+        testMode={testMode}
+        labelId={labelId}
+        describedBy={describedBy}
+      />
       {error ? (
-        <p role="alert" className="text-xs font-medium text-destructive">
+        <p id={errId} role="alert" className="text-xs font-medium text-destructive">
           {error}
         </p>
       ) : null}
@@ -190,7 +225,13 @@ export function FormBranding({ theme }: { theme?: PublicTheme | null }) {
 }
 
 export const inputBase =
-  "h-11 w-full rounded-md border bg-background px-3 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-foreground/40"
+  "h-11 w-full rounded-md border bg-background px-3 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-foreground/40 focus-visible:ring-2 focus-visible:ring-ring/60"
+
+/** Visible keyboard-focus ring for the custom option buttons (yes/no, choices,
+ *  NPS). Replaces the removed native outline so keyboard users never lose their
+ *  place — WCAG 2.4.7. */
+export const btnFocus =
+  "outline-none focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
 
 export function Control({
   field,
@@ -198,17 +239,34 @@ export function Control({
   invalid,
   onChange,
   testMode,
+  labelId,
+  describedBy,
 }: {
   field: PublicField
   value: AnswerValue | undefined
   invalid: boolean
   onChange: (v: AnswerValue) => void
   testMode?: boolean
+  labelId?: string
+  describedBy?: string
 }) {
   const opts = field.options ?? []
   const border = invalid ? "border-destructive" : "border-input"
   const str = typeof value === "string" ? value : ""
   const arr = Array.isArray(value) ? (value as string[]) : []
+
+  // ARIA wiring shared by the single-input controls. Composite controls
+  // (choice groups, sliders) put labelId on their group container instead.
+  const inputA11y = {
+    "aria-labelledby": labelId,
+    "aria-describedby": describedBy,
+    "aria-invalid": invalid || undefined,
+    "aria-required": field.required || undefined,
+  }
+  const groupA11y = {
+    "aria-labelledby": labelId,
+    "aria-describedby": describedBy,
+  }
 
   switch (field.type) {
     case "long_text":
@@ -218,7 +276,8 @@ export function Control({
           value={str}
           placeholder={field.placeholder}
           onChange={(e) => onChange(e.target.value)}
-          className={cn("thin-scroll w-full resize-none rounded-md border bg-background px-3 py-2.5 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:border-foreground/40", border)}
+          {...inputA11y}
+          className={cn("thin-scroll w-full resize-none rounded-md border bg-background px-3 py-2.5 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:border-foreground/40 focus-visible:ring-2 focus-visible:ring-ring/60", border)}
         />
       )
 
@@ -227,7 +286,7 @@ export function Control({
         <PhoneInput
           value={str}
           placeholder={field.placeholder}
-          aria-invalid={invalid || undefined}
+          {...inputA11y}
           onChange={(v) => onChange((v ?? "") as string)}
           className="w-full"
         />
@@ -242,19 +301,20 @@ export function Control({
           value={str}
           placeholder={field.placeholder}
           onChange={(e) => onChange(e.target.value)}
+          {...inputA11y}
           className={cn(inputBase, border)}
         />
       )
 
     case "date":
-      return <DateControl value={str} invalid={invalid} onChange={onChange} />
+      return <DateControl value={str} invalid={invalid} onChange={onChange} inputA11y={inputA11y} />
     case "time":
-      return <input type="time" value={str} onChange={(e) => onChange(e.target.value)} className={cn(inputBase, border)} />
+      return <input type="time" value={str} onChange={(e) => onChange(e.target.value)} {...inputA11y} className={cn(inputBase, border)} />
 
     case "dropdown":
       return (
         <Select value={str || undefined} onValueChange={(v) => onChange(v)}>
-          <SelectTrigger aria-invalid={invalid || undefined} className="h-11 w-full bg-background">
+          <SelectTrigger {...inputA11y} className="h-11 w-full bg-background">
             <SelectValue placeholder="Select an option" />
           </SelectTrigger>
           <SelectContent>
@@ -269,50 +329,58 @@ export function Control({
 
     case "yes_no":
       return (
-        <div className="flex gap-2">
-          {["Yes", "No"].map((o) => (
-            <button
-              key={o}
-              type="button"
-              onClick={() => onChange(o)}
-              className={cn(
-                "h-10 rounded-md border px-6 text-sm transition-colors",
-                str === o ? "border-foreground bg-foreground text-background" : cn(border, "text-foreground hover:bg-muted"),
-              )}
-            >
-              {o}
-            </button>
-          ))}
-        </div>
+        <RadioGroupControl
+          {...groupA11y}
+          value={str}
+          options={["Yes", "No"].map((o) => ({ id: o, label: o }))}
+          onChange={onChange}
+          className="flex gap-2"
+          optionClassName={(selected) =>
+            cn(
+              "inline-flex h-11 items-center justify-center rounded-md border px-6 text-sm transition-colors",
+              btnFocus,
+              selected
+                ? "border-foreground bg-foreground text-background"
+                : cn(border, "text-foreground hover:bg-muted"),
+            )
+          }
+          renderContent={(o) => o.label}
+        />
       )
 
     case "multiple_choice":
       return (
-        <div className="space-y-2">
-          {opts.map((o) => {
-            const selected = str === o.label
-            return (
-              <button
-                key={o.id}
-                type="button"
-                onClick={() => onChange(o.label)}
-                className={cn(
-                  "flex w-full items-center gap-3 rounded-md border px-3 py-2.5 text-left text-sm transition-colors",
-                  selected ? "border-foreground bg-muted" : cn(border, "hover:bg-muted"),
-                )}
-              >
-                <span className={cn("size-4 shrink-0 rounded-full border", selected ? "border-[5px] border-foreground" : "border-muted-foreground/50")} />
-                {o.label}
-              </button>
+        <RadioGroupControl
+          {...groupA11y}
+          value={str}
+          options={opts}
+          onChange={onChange}
+          className="space-y-2"
+          optionClassName={(selected) =>
+            cn(
+              "flex w-full items-center gap-3 rounded-md border px-3 py-2.5 text-left text-sm transition-colors",
+              btnFocus,
+              selected ? "border-foreground bg-muted" : cn(border, "hover:bg-muted"),
             )
-          })}
-        </div>
+          }
+          renderContent={(o, selected) => (
+            <>
+              <span
+                className={cn(
+                  "size-4 shrink-0 rounded-full border",
+                  selected ? "border-[5px] border-foreground" : "border-muted-foreground/50",
+                )}
+              />
+              {o.label}
+            </>
+          )}
+        />
       )
 
     case "checkboxes":
     case "multi_select":
       return (
-        <div className="space-y-2">
+        <div role="group" {...groupA11y} className="space-y-2">
           {opts.map((o) => {
             const checked = arr.includes(o.label)
             return (
@@ -341,13 +409,15 @@ export function Control({
       const current = typeof value === "number" ? value : 0
       const max = Math.max(1, field.config?.ratingMax ?? 5)
       return (
-        <Rating
-          rating={current}
-          maxRating={max}
-          size="lg"
-          editable
-          onRatingChange={(n) => onChange(n)}
-        />
+        <div role="group" {...groupA11y}>
+          <Rating
+            rating={current}
+            maxRating={max}
+            size="lg"
+            editable
+            onRatingChange={(n) => onChange(n)}
+          />
+        </div>
       )
     }
 
@@ -357,7 +427,7 @@ export function Control({
       const step = field.config?.step ?? 1
       const current = typeof value === "number" ? value : null
       return (
-        <div className="space-y-3 pt-1">
+        <div role="group" {...groupA11y} className="space-y-3 pt-1">
           <div className="flex items-center gap-4">
             <Slider
               value={[current ?? min]}
@@ -383,14 +453,16 @@ export function Control({
       const current = typeof value === "number" ? value : null
       const nums = Array.from({ length: 11 }, (_, i) => i)
       return (
-        <div className="flex flex-wrap gap-1.5">
+        <div role="group" {...groupA11y} className="flex flex-wrap gap-1.5">
           {nums.map((n) => (
             <button
               key={n}
               type="button"
               onClick={() => onChange(n)}
+              aria-pressed={current === n}
               className={cn(
-                "inline-flex size-9 items-center justify-center rounded-md border text-sm transition-colors",
+                "inline-flex size-11 items-center justify-center rounded-md border text-sm transition-colors",
+                btnFocus,
                 current === n ? "border-foreground bg-foreground text-background" : cn(border, "text-foreground hover:bg-muted"),
               )}
             >
@@ -407,9 +479,81 @@ export function Control({
 
     default:
       return (
-        <input value={str} onChange={(e) => onChange(e.target.value)} className={cn(inputBase, border)} />
+        <input value={str} onChange={(e) => onChange(e.target.value)} {...inputA11y} className={cn(inputBase, border)} />
       )
   }
+}
+
+/**
+ * A single-select choice group with correct ARIA (role="radiogroup" +
+ * role="radio"/aria-checked) and keyboard support: arrow keys move and select
+ * (roving tabindex, so the group is a single Tab stop, as native radios are).
+ */
+function RadioGroupControl({
+  options,
+  value,
+  onChange,
+  className,
+  optionClassName,
+  renderContent,
+  "aria-labelledby": ariaLabelledby,
+  "aria-describedby": ariaDescribedby,
+}: {
+  options: { id: string; label: string }[]
+  value: string
+  onChange: (v: string) => void
+  className?: string
+  optionClassName: (selected: boolean) => string
+  renderContent: (o: { id: string; label: string }, selected: boolean) => React.ReactNode
+  "aria-labelledby"?: string
+  "aria-describedby"?: string
+}) {
+  const refs = useRef<(HTMLButtonElement | null)[]>([])
+  const selectedIndex = options.findIndex((o) => o.label === value)
+
+  function move(from: number, delta: number) {
+    const n = options.length
+    if (n === 0) return
+    const to = ((from + delta) % n + n) % n
+    onChange(options[to].label)
+    refs.current[to]?.focus()
+  }
+
+  return (
+    <div role="radiogroup" aria-labelledby={ariaLabelledby} aria-describedby={ariaDescribedby} className={className}>
+      {options.map((o, i) => {
+        const selected = o.label === value
+        // Roving tabindex: the selected option is the tab stop; if nothing is
+        // selected yet, the first option is, so Tab always lands somewhere.
+        const tabbable = selectedIndex === -1 ? i === 0 : selected
+        return (
+          <button
+            key={o.id}
+            ref={(el) => {
+              refs.current[i] = el
+            }}
+            type="button"
+            role="radio"
+            aria-checked={selected}
+            tabIndex={tabbable ? 0 : -1}
+            onClick={() => onChange(o.label)}
+            onKeyDown={(e) => {
+              if (e.key === "ArrowDown" || e.key === "ArrowRight") {
+                e.preventDefault()
+                move(i, 1)
+              } else if (e.key === "ArrowUp" || e.key === "ArrowLeft") {
+                e.preventDefault()
+                move(i, -1)
+              }
+            }}
+            className={optionClassName(selected)}
+          >
+            {renderContent(o, selected)}
+          </button>
+        )
+      })}
+    </div>
+  )
 }
 
 /** Single-date picker: a styled trigger opening a calendar popover. Stores the
@@ -418,10 +562,12 @@ function DateControl({
   value,
   invalid,
   onChange,
+  inputA11y,
 }: {
   value: string
   invalid: boolean
   onChange: (v: AnswerValue) => void
+  inputA11y?: Record<string, unknown>
 }) {
   const [open, setOpen] = useState(false)
   const parsed = value ? parse(value, "yyyy-MM-dd", new Date()) : undefined
@@ -437,6 +583,7 @@ function DateControl({
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
         type="button"
+        {...inputA11y}
         className={cn(
           inputBase,
           invalid ? "border-destructive" : "border-input",
