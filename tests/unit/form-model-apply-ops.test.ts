@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest"
 import {
   applyOperations,
+  matchSimpleEdit,
   toEditContext,
   resolveOpRefs,
   type EditorForm,
@@ -53,6 +54,99 @@ describe("applyOperations", () => {
 
     const moved = apply({ op: "move_field", target: "f-confirm", after: "start" })
     expect(moved.fields.map((f) => f.id)).toEqual(["f-confirm", "f-name", "f-tech"])
+  })
+
+  test("placement top/bottom put the field at the very start / very end", () => {
+    const top = apply({
+      op: "add_field",
+      field: { type: "paragraph", label: "About our platform" },
+      placement: { mode: "top" },
+    })
+    expect(top.fields.map((f) => f.label)).toEqual([
+      "About our platform",
+      "Full name",
+      "Tech?",
+      "Subscribe?",
+    ])
+
+    const bottom = apply({
+      op: "add_field",
+      field: { type: "email", label: "Email" },
+      placement: { mode: "bottom" },
+    })
+    expect(bottom.fields.map((f) => f.label)).toEqual(["Full name", "Tech?", "Subscribe?", "Email"])
+  })
+
+  test("placement before/after a ref inserts adjacent to it", () => {
+    const before = apply({
+      op: "add_field",
+      field: { type: "email", label: "Email" },
+      placement: { mode: "before", ref: "f-tech" },
+    })
+    expect(before.fields.map((f) => f.label)).toEqual(["Full name", "Email", "Tech?", "Subscribe?"])
+
+    const after = apply({
+      op: "add_field",
+      field: { type: "email", label: "Email" },
+      placement: { mode: "after", ref: "f-tech" },
+    })
+    expect(after.fields.map((f) => f.label)).toEqual(["Full name", "Tech?", "Email", "Subscribe?"])
+  })
+
+  test("placement takes precedence over legacy `after`; unknown ref appends", () => {
+    // placement wins even if a stale `after` is also present
+    const out = apply({
+      op: "add_field",
+      after: "f-confirm",
+      field: { type: "email", label: "Email" },
+      placement: { mode: "top" },
+    })
+    expect(out.fields[0].label).toBe("Email")
+
+    const unknown = apply({
+      op: "add_field",
+      field: { type: "email", label: "Email" },
+      placement: { mode: "after", ref: "nope" },
+    })
+    expect(unknown.fields[unknown.fields.length - 1].label).toBe("Email")
+  })
+
+  test("move_field with placement resolves against the array after removal", () => {
+    // move the first field to just after the last-but-one — must land correctly
+    const out = apply({
+      op: "move_field",
+      target: "f-name",
+      placement: { mode: "after", ref: "f-tech" },
+    })
+    expect(out.fields.map((f) => f.id)).toEqual(["f-tech", "f-name", "f-confirm"])
+
+    const toTop = apply({ op: "move_field", target: "f-confirm", placement: { mode: "top" } })
+    expect(toTop.fields.map((f) => f.id)).toEqual(["f-confirm", "f-name", "f-tech"])
+  })
+
+  test("update_field tolerates the model putting the new label in `to`/`label`", () => {
+    // Exactly what Gemini emitted for "number each question": label in `to`,
+    // plus hallucinated toIndex/title — set was missing entirely.
+    const viaTo = apply({
+      op: "update_field",
+      target: "f-name",
+      to: "1. Full Name",
+      toIndex: 0,
+      title: "ignored",
+    } as AiOperation)
+    expect(field(viaTo, "f-name").label).toBe("1. Full Name")
+
+    const viaLabel = apply({ op: "update_field", target: "f-name", label: "2. Full Name" })
+    expect(field(viaLabel, "f-name").label).toBe("2. Full Name")
+
+    // A real `set` still wins over the fallback.
+    const viaSet = apply({
+      op: "update_field",
+      target: "f-name",
+      set: { label: "Real" },
+      to: "Ignored",
+    })
+    expect(field(viaSet, "f-name").label).toBe("Real")
   })
 
   test("update_field changes props; a type change away from choice drops options", () => {
@@ -163,7 +257,142 @@ describe("applyOperations", () => {
   })
 })
 
+describe("matchSimpleEdit (deterministic required/optional fast path)", () => {
+  // A form whose labels carry question numbers, like the real failing case.
+  const numbered = (): EditorForm => ({
+    title: "Application",
+    fields: [
+      { id: "h1", type: "heading", label: "Candidate Information", required: false },
+      { id: "f-name", type: "short_text", label: "1. Full Name", required: true },
+      { id: "f-email", type: "email", label: "2. Email Address", required: true },
+      { id: "f-phone", type: "phone", label: "3. Phone Number", required: false },
+    ],
+  })
+  const run = (s: string, form = numbered()) => matchSimpleEdit(s, form)
+
+  test("'make Email optional' → set_required false on that field, despite the number prefix", () => {
+    const out = run("make Email optional")
+    expect(out).not.toBeNull()
+    expect(out!.operations).toEqual([
+      { op: "set_required", targets: ["f-email"], set: { required: false } },
+    ])
+    // and it actually applies
+    const applied = applyOperations(numbered(), out!.operations)
+    expect(applied.fields.find((f) => f.id === "f-email")?.required).toBe(false)
+    expect(out!.summary).toContain("optional")
+  })
+
+  test("required verbs and variants all resolve to required=true", () => {
+    for (const s of [
+      "make Phone Number required",
+      "make phone number require", // the typo we saw in the wild
+      "set Phone Number as required",
+      "mark phone number mandatory",
+    ]) {
+      const out = run(s)
+      expect(out?.operations[0]).toMatchObject({
+        op: "set_required",
+        targets: ["f-phone"],
+        set: { required: true },
+      })
+    }
+  })
+
+  test("'make all fields required' → set_required with no targets", () => {
+    const out = run("make all fields required")
+    expect(out!.operations).toEqual([{ op: "set_required", set: { required: true } }])
+  })
+
+  test("multiple fields via 'and' / comma", () => {
+    const out = run("make Email and Phone Number optional")
+    expect(out!.operations[0]).toMatchObject({
+      op: "set_required",
+      set: { required: false },
+    })
+    expect((out!.operations[0].targets ?? []).sort()).toEqual(["f-email", "f-phone"])
+    expect(out!.summary).toContain("and")
+  })
+
+  test("unknown or ambiguous field defers to the AI (returns null)", () => {
+    expect(run("make Nickname required")).toBeNull() // no such field
+    expect(run("make the section required")).toBeNull() // 'section' → heading, not answerable
+  })
+
+  test("non-required-toggle instructions are not hijacked (return null)", () => {
+    expect(run("add a phone number field")).toBeNull()
+    expect(run("rename the form to Careers")).toBeNull()
+    expect(run("make the title bigger")).toBeNull()
+  })
+
+  test("'move Email above Full Name' → move_field before, and applies correctly", () => {
+    const form = numbered()
+    const out = run("move Email above Full Name", form)
+    expect(out!.operations).toEqual([
+      { op: "move_field", target: "f-email", placement: { mode: "before", ref: "f-name" } },
+    ])
+    const applied = applyOperations(form, out!.operations)
+    expect(applied.fields.map((f) => f.id)).toEqual(["h1", "f-email", "f-name", "f-phone"])
+    expect(out!.summary).toBe("Moved **2. Email Address** before **1. Full Name**.")
+  })
+
+  test("filler words are stripped: 'move the email above the name input'", () => {
+    const out = run("move the email above the name input")
+    expect(out!.operations[0]).toMatchObject({
+      op: "move_field",
+      target: "f-email",
+      placement: { mode: "before", ref: "f-name" },
+    })
+  })
+
+  test("below/after → move_field after", () => {
+    const out = run("move Full Name below Phone Number")
+    expect(out!.operations[0]).toMatchObject({
+      op: "move_field",
+      target: "f-name",
+      placement: { mode: "after", ref: "f-phone" },
+    })
+  })
+
+  test("move to the top / bottom need no anchor", () => {
+    expect(run("move Phone Number to the top")!.operations[0]).toEqual({
+      op: "move_field",
+      target: "f-phone",
+      placement: { mode: "top" },
+    })
+    expect(run("move Full Name to the bottom")!.operations[0]).toEqual({
+      op: "move_field",
+      target: "f-name",
+      placement: { mode: "bottom" },
+    })
+  })
+
+  test("unknown/ambiguous anchor or field defers to the AI", () => {
+    expect(run("move Email above Nickname")).toBeNull() // no such anchor
+    expect(run("move Sidebar to the top")).toBeNull() // no such field
+  })
+})
+
 describe("short refs (toEditContext + resolveOpRefs)", () => {
+  test("context carries a 1-based pos on every field", () => {
+    const { context } = toEditContext(base())
+    expect(context.fields.map((f) => f.pos)).toEqual([1, 2, 3])
+  })
+
+  test("resolveOpRefs translates placement.ref, leaves top/bottom mode alone", () => {
+    const { refs } = toEditContext(base())
+    const op = resolveOpRefs(
+      { op: "add_field", field: { type: "email", label: "Email" }, placement: { mode: "after", ref: "f2" } },
+      refs,
+    )
+    expect(op.placement).toEqual({ mode: "after", ref: "f-tech" })
+
+    const top = resolveOpRefs(
+      { op: "add_field", field: { type: "email", label: "Email" }, placement: { mode: "top" } },
+      refs,
+    )
+    expect(top.placement).toEqual({ mode: "top", ref: undefined })
+  })
+
   test("context uses short, sequential refs mapped back to real ids", () => {
     const { context, refs } = toEditContext(base())
     expect(context.fields.map((f) => f.ref)).toEqual(["f1", "f2", "f3"])

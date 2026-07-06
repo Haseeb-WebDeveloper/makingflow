@@ -581,12 +581,25 @@ function Block({
           />
         ) : (
           <>
-            <AutoText
-              value={field.label}
-              onChange={(label) => onChange({ label })}
-              placeholder="Question"
-              className="text-sm font-medium text-foreground"
-            />
+            <div className="flex items-start gap-1.5">
+              <AutoText
+                value={field.label}
+                onChange={(label) => onChange({ label })}
+                placeholder="Question"
+                className="w-auto min-w-0 flex-1 text-sm font-medium text-foreground"
+              />
+              {/* Always-visible required marker — the state otherwise only lives
+                  in the ⋯ menu, so a toggle (manual or AI) looked like a no-op. */}
+              {field.required ? (
+                <span
+                  className="mt-0.5 shrink-0 select-none text-sm font-medium text-destructive"
+                  title="Required"
+                  aria-label="Required"
+                >
+                  *
+                </span>
+              ) : null}
+            </div>
             {active || field.description ? (
               <AutoText
                 value={field.description ?? ""}

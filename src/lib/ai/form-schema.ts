@@ -185,7 +185,23 @@ export const aiOperationSchema = z.object({
     .string()
     .optional()
     .describe(
-      'Placement. For add_field/move_field: the ref of the field to place this AFTER. For add_option: the option text to place after. Omit to append; use "start" to place first.',
+      'Legacy option placement (add_option only): the option text to place after. For FIELD placement (add_field/move_field) prefer "placement" instead. Omit to append.',
+    ),
+  placement: z
+    .object({
+      mode: z
+        .enum(["top", "bottom", "before", "after"])
+        .describe(
+          '"top" = very first field, "bottom" = very last, "before"/"after" = relative to "ref".',
+        ),
+      ref: z
+        .string()
+        .optional()
+        .describe('The field ref this is relative to. REQUIRED for "before"/"after"; omit for "top"/"bottom".'),
+    })
+    .optional()
+    .describe(
+      'Where to put the field (add_field/move_field). Map the user\'s words directly: "at the top / at the start / first / as an intro" -> {mode:"top"}; "at the bottom / at the end / last" -> {mode:"bottom"}; "before/after <field>" -> {mode:"before"|"after", ref:<that field\'s ref>}. If the user gives no position on an add, use {mode:"bottom"}.',
     ),
   toIndex: z.number().optional().describe("Zero-based position to move an option to (move_option)."),
   targets: z
@@ -200,6 +216,15 @@ export const aiOperationSchema = z.object({
 export type AiOperation = z.infer<typeof aiOperationSchema>
 
 export const aiEditSchema = z.object({
+  // A leading reasoning field: because structured output is emitted in schema
+  // order, writing the plan BEFORE the operations forces the model to think
+  // through the target and placement first — which is exactly where blind
+  // single-shot edits go wrong (e.g. appending an intro to the bottom).
+  plan: z
+    .string()
+    .describe(
+      "Think first, in 1-3 sentences, BEFORE writing any operations: restate what the user wants, name the exact target field(s) by their ref and pos, and decide the precise placement (top / bottom / before or after which field). This is your scratchpad — reason here so the operations come out right.",
+    ),
   operations: z
     .array(aiOperationSchema)
     .describe("The ordered list of changes to apply to the current form."),
@@ -210,6 +235,23 @@ export const aiEditSchema = z.object({
     ),
 })
 export type AiEditResult = z.infer<typeof aiEditSchema>
+
+/** The verify-and-repair pass: given the form AFTER the first edit, decide
+ *  whether it actually satisfies the request, and if not, emit corrective ops. */
+export const aiVerifySchema = z.object({
+  reasoning: z
+    .string()
+    .describe(
+      "One or two sentences: does the resulting form fully satisfy the user's request? Check the RIGHT thing was changed, of the RIGHT type, in the RIGHT place. Be specific about any mismatch.",
+    ),
+  satisfied: z
+    .boolean()
+    .describe("True if the form already fully satisfies the request and no corrective operations are needed."),
+  operations: z
+    .array(aiOperationSchema)
+    .describe("Corrective operations to fix any mismatch. MUST be empty when satisfied is true."),
+})
+export type AiVerifyResult = z.infer<typeof aiVerifySchema>
 
 /** System instruction that shapes every generation + edit. */
 export const FORM_BUILDER_SYSTEM = `You are MakingFlow, an expert form designer. You turn a plain-language description into a clean, well-structured form.
@@ -233,16 +275,18 @@ Rules:
 - ALWAYS fill "summary" with a brief, first-person, conversational note of what you did this turn — on an edit, describe ONLY what changed (the specific fields you added/removed/edited), not the whole form. Keep it to 1-2 sentences. Use Markdown: wrap any field name/label you mention in **bold** (never plain quotes), and use a short bullet list when you changed several things. Never write generic filler like "Done" or "I've updated your form."`
 
 /** System instruction for EDITING an existing form via explicit operations. */
-export const FORM_EDIT_SYSTEM = `You edit an existing form by returning a precise list of CHANGE OPERATIONS — never the whole form. You are given the current form as JSON: each field has a short "ref" like "f1", "f2", and each option has its own "ref" like "f1o1", "f1o2" (e.g. { "ref": "f3o2", "label": "Discord message" }). ALWAYS target an existing field or option by copying its exact "ref" from the context. Do not retype the field/option text to identify it — the ref is how the change is matched, so an exact ref is essential.
+export const FORM_EDIT_SYSTEM = `You edit an existing form by returning a precise list of CHANGE OPERATIONS — never the whole form. You are given the current form as JSON: each field has a short "ref" like "f1", "f2", a "pos" (its 1-based position from the TOP of the form — pos 1 is the very first field), and choice fields carry options each with their own "ref" like "f1o1", "f1o2" (e.g. { "ref": "f3o2", "label": "Discord message" }). The fields are listed top-to-bottom in the same order the respondent sees them. ALWAYS target an existing field or option by copying its exact "ref" from the context. Do not retype the field/option text to identify it — the ref is how the change is matched, so an exact ref is essential.
+
+FIRST, always fill "plan": restate the request, name the target ref(s) and pos, and decide the exact placement — THEN write operations that match your plan. This ordering is required and is what keeps edits correct.
 
 Return ONLY the operations needed to satisfy the user's request, and NOTHING for anything they didn't ask to change. Do not touch other fields or options. Apply the smallest set of operations that does the job.
 
 Operations (set "op" + only the fields that op needs):
 - rename_form { title } — change the form's title.
-- add_field { field, after? } — add a new field. "field" is a full field spec (type, label, options for choice types, etc.). "after" = the ref to place it after; omit to append; "start" to place first.
+- add_field { field, placement? } — add a new field. "field" is a full field spec (type, label, options for choice types, etc.). ALWAYS set "placement" (see PLACEMENT below) — never rely on the default.
 - remove_field { target } — delete the field with this ref.
-- move_field { target, after? } — reorder: place this field after the given ref ("start" = first).
-- update_field { target, set } — change field properties. "set" includes ONLY the changed ones: label, description, placeholder, required, type. To REMOVE a field's placeholder (or description), set it to an empty string "" — omitting it leaves the current value unchanged.
+- move_field { target, placement } — reorder the target field to a new spot. ALWAYS set "placement" (top/bottom/before/after — see PLACEMENT). NEVER use "toIndex" for a field move — "toIndex" belongs to move_option only. Example: "move Email above Your Name" -> { "op": "move_field", "target": "f4", "placement": { "mode": "before", "ref": "f3" } }.
+- update_field { target, set } — change field properties. Put the new values in "set" (ONLY the changed ones): label, description, placeholder, required, type. To change a field's TEXT/LABEL, use set.label — e.g. { "op": "update_field", "target": "f3", "set": { "label": "1. Full Name" } }. Do NOT put the new label in "to" or "label" — "to" belongs to rename_option only. To REMOVE a field's placeholder (or description), set it to an empty string "" — omitting it leaves the current value unchanged.
 - add_option { target, label, after? } — add one option to a choice field. "label" = the new option's text. "after" = the ref of the option to place it after.
 - remove_option { target, label } — remove ONE existing option. Put its ref in "label" (e.g. the ref of "Discord message"). The rest stay.
 - rename_option { target, from, to } — rename one option. "from" = the existing option's ref; "to" = the new text.
@@ -250,16 +294,45 @@ Operations (set "op" + only the fields that op needs):
 - set_options { target, options } — replace a choice field's ENTIRE options list with this exact array.
 - set_logic { target, logic } — set/replace this field's show/hide rule. Name the trigger field by its EXACT label; for choice/yes_no triggers, "value" is the option's exact text.
 - remove_logic { target } — clear this field's conditional logic.
-- set_required { targets?, set: { required } } — set the required flag on MANY fields at once. List the field refs in "targets", or OMIT "targets" to apply to ALL answerable fields. Use this ONE op for any "make these / all fields required (or optional)" request — never emit a separate update_field per field. (Headings, paragraphs, and page breaks are never required and are skipped automatically.)
+- set_required { targets?, set: { required } } — set the required flag. Use this for ANY required/optional change — a SINGLE field, several, or all. List the field refs in "targets" (even for one field: targets:["f4"]), or OMIT "targets" to apply to ALL answerable fields. This is the ONLY correct way to change required/optional — do NOT use update_field for it. (Headings, paragraphs, and page breaks are never required and are skipped automatically.)
 
 Even for a big request (e.g. "translate the whole form" or a broad restructure), express it as granular ops — one update_field per field you change, etc. There is no whole-form replace; always edit field by field so nothing unrelated is lost.
 
-PLACEMENT (critical): an add_field WITHOUT "after" appends to the very END of the form — that is the most common mistake. To insert a field at a specific spot, you MUST set "after" to the exact ref of the field it should follow ("start" makes it first). When you add SEVERAL fields at different spots in one turn, give EACH its own correct "after" ref — never leave them all to append at the end.
+PLACEMENT (critical — this is the #1 source of mistakes). Every add_field / move_field MUST carry a "placement". Translate the user's words directly, do not guess:
+- "at the top / at the start / at the beginning / first / as an intro / above everything" -> { "mode": "top" }
+- "at the bottom / at the end / last / after everything" -> { "mode": "bottom" }
+- "before <field>" -> { "mode": "before", "ref": <that field's ref> }
+- "after <field>" / "under <field>" / "below <field>" -> { "mode": "after", "ref": <that field's ref> }
+- No position mentioned on an add -> { "mode": "bottom" }.
+When you add SEVERAL fields in one turn, give EACH its own placement — never let them pile up at the end.
 
-MULTI-PAGE / SECTIONS: split a form into pages with page_break fields: add_field { field: { type: "page_break", label: "" }, after: <ref> }. To put a page break "between each section", add ONE page_break after the LAST field of every section except the final one — i.e. the field immediately before the next section's heading — using that field's ref. Example: if section headings are at refs f1, f9, f16, add a page_break with after "f8" and another with after "f15" (NOT after the headings, and NOT without "after"). Do not add a trailing page_break at the end.
+WORKED EXAMPLES:
+- User: "Add a short description about our platform at the top of the form." -> plan: "Add a paragraph content block at the very top." operations: [{ "op": "add_field", "field": { "type": "paragraph", "label": "<the description text>" }, "placement": { "mode": "top" } }]. (Use a "heading" if they say title/heading; a "paragraph" for a description/intro sentence.)
+- User: "Put a phone number field right after the email." (email is ref f2) -> [{ "op": "add_field", "field": { "type": "phone", "label": "Phone number", "required": false }, "placement": { "mode": "after", "ref": "f2" } }].
+- User: "Move the feedback question to the end." (feedback is ref f5) -> [{ "op": "move_field", "target": "f5", "placement": { "mode": "bottom" } }].
+- User: "Number each question." -> one update_field per ANSWERABLE field (skip headings/paragraphs/page breaks), each prepending the running number: [{ "op": "update_field", "target": "f2", "set": { "label": "1. Full Name" } }, { "op": "update_field", "target": "f3", "set": { "label": "2. Email Address" } }, ...]. The number always goes in set.label — never in "to".
+- User: "Make Email optional." (email is ref f4) -> [{ "op": "set_required", "targets": ["f4"], "set": { "required": false } }]. (Required/optional ALWAYS uses set_required — one op, even for a single field. Never update_field.)
+
+CRITICAL: emit each operation exactly ONCE. Never repeat the same operation — a form change never needs the identical op twice, and repeating it is a bug. Keep the operations list short and minimal.
+
+MULTI-PAGE / SECTIONS: split a form into pages with page_break fields: add_field { field: { type: "page_break", label: "" }, placement: { mode: "after", ref: <ref> } }. To put a page break "between each section", add ONE page_break after the LAST field of every section except the final one — i.e. the field immediately before the next section's heading. Example: if section headings are at refs f1, f9, f16, add a page_break after "f8" and another after "f15" (NOT after the headings). Do not add a trailing page_break at the end.
 
 To CHANGE an option, use the option ops (remove_option / rename_option / set_options) — do NOT re-list a field's options unless you are intentionally replacing them.
 
 Conditional logic targeting: put the rule on the field being shown/hidden (the TARGET ref), and name the OTHER (trigger) field by its exact label. Example to reveal a field only after a "Yes": set_logic on the target with logic { action: "show", conditions: [{ fieldLabel: "Do you have a pet?", operator: "equals", value: "Yes" }] }.
 
 ALWAYS fill "summary": a brief, first-person, 1-2 sentence note of ONLY what you changed, with field/option names in **bold** and a short bullet list if several things changed. Never generic like "Done".`
+
+/** System instruction for the verify-and-repair pass. Runs AFTER the first edit
+ *  has been applied: it sees the RESULTING form and checks it against the
+ *  original request, emitting corrective operations only for a genuine miss. */
+export const FORM_VERIFY_SYSTEM = `You are a strict reviewer checking that a form edit was done correctly. You are given: (1) the user's original edit request, and (2) the form AS IT IS NOW, after the edit was applied. Each field has a "ref" and a "pos" (1-based position from the top).
+
+Your job: decide whether the current form FULLY satisfies the user's request. Check three things:
+1. RIGHT THING — the change the user asked for was actually made (nothing missing, nothing extra).
+2. RIGHT TYPE — any added block/field is the appropriate type (e.g. a "description/intro" is a paragraph or heading content block, not an answerable input).
+3. RIGHT PLACE — it's in the position the user asked for. "top/start/intro" means pos 1 (or the first few if there's an existing intro). "bottom/end" means the last field. "before/after X" means adjacent to X. A description meant for the TOP that sits at the bottom is a FAILURE.
+
+If everything is correct, set "satisfied": true and return an EMPTY operations array. Do NOT make cosmetic or preference changes — only fix a real mismatch with what was asked.
+
+If something is wrong, set "satisfied": false and return the MINIMAL corrective operations to fix it, using the SAME operation format and the refs/placement rules you were given (add_field/move_field with a "placement" of top/bottom/before/after, remove_field, update_field, etc.). To move a misplaced field to the top use move_field with placement { "mode": "top" }. Target fields by their current ref. Fix only the mismatch — touch nothing else.`

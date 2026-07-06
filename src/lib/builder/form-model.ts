@@ -288,6 +288,9 @@ export function toEditContext(form: EditorForm) {
     })
     return {
       ref: fref,
+      // 1-based position from the top, so the model can ground "top"/"bottom"/
+      // "3rd field" and reason about placement against what the user sees.
+      pos: i + 1,
       type: f.type,
       label: f.label,
       ...(f.description ? { description: f.description } : {}),
@@ -332,6 +335,8 @@ export function resolveOpRefs(op: AiOperation, refs: Record<string, string>): Ai
     after: map(op.after),
     label: map(op.label),
     from: map(op.from),
+    // Field placement references a field ref — translate it back to the real id.
+    placement: op.placement ? { ...op.placement, ref: map(op.placement.ref) } : op.placement,
     // set_required lists field refs in `targets` — translate each short ref too.
     targets: op.targets?.map((t) => map(t) as string),
   }
@@ -372,12 +377,29 @@ export function applyOperations(form: EditorForm, ops: AiOperation[]): EditorFor
 
   const byId = (ref?: string) => fields.find((f) => f.id === ref)
   const indexOf = (ref?: string) => fields.findIndex((f) => f.id === ref)
-  // Insert position relative to `after`: first ("start"), after that field, or
-  // appended (omitted / unknown ref).
-  const insertIndex = (after?: string): number => {
-    if (after === "start") return 0
-    const i = indexOf(after)
-    return i < 0 ? fields.length : i + 1
+  // Where to place a field. Explicit `placement` (top/bottom/before/after) is
+  // preferred; falls back — in order — to a legacy `after` ref, then a bare
+  // zero-based `toIndex`. The model sometimes emits move_field WITHOUT placement
+  // and reuses move_option's `toIndex` for the slot (seen in the wild), so
+  // honoring it lands the field where intended instead of silently appending.
+  const placeIndex = (op: AiOperation): number => {
+    const p = op.placement
+    if (p) {
+      if (p.mode === "top") return 0
+      if (p.mode === "bottom") return fields.length
+      const i = indexOf(p.ref)
+      if (i < 0) return fields.length // unknown ref → append rather than guess
+      return p.mode === "before" ? i : i + 1
+    }
+    if (op.after != null) {
+      if (op.after === "start") return 0
+      const i = indexOf(op.after)
+      if (i >= 0) return i + 1
+    }
+    if (typeof op.toIndex === "number" && op.toIndex >= 0) {
+      return Math.max(0, Math.min(op.toIndex, fields.length))
+    }
+    return fields.length
   }
 
   for (const op of ops) {
@@ -397,7 +419,7 @@ export function applyOperations(form: EditorForm, ops: AiOperation[]): EditorFor
           required: op.field.required ?? false,
           options: op.field.options?.map((label) => ({ id: genId(), label })),
         }
-        fields.splice(insertIndex(op.after), 0, ef)
+        fields.splice(placeIndex(op), 0, ef)
         if (op.field.logic) ef.logic = compileAiLogic(op.field.logic, labelIdMap(fields))
         break
       }
@@ -410,18 +432,32 @@ export function applyOperations(form: EditorForm, ops: AiOperation[]): EditorFor
         const i = indexOf(op.target)
         if (i < 0) break
         const [f] = fields.splice(i, 1)
-        fields.splice(insertIndex(op.after), 0, f)
+        // Placement is resolved against the array AFTER removal, so a "before/
+        // after ref" lands correctly relative to the remaining fields.
+        fields.splice(placeIndex(op), 0, f)
         break
       }
       case "update_field": {
         const f = byId(op.target)
-        if (!f || !op.set) break
-        if (op.set.label != null) f.label = op.set.label
-        if (op.set.description != null) f.description = op.set.description
-        if (op.set.placeholder != null) f.placeholder = op.set.placeholder
-        if (op.set.required != null) f.required = op.set.required
-        if (op.set.type != null && op.set.type !== f.type) {
-          f.type = op.set.type
+        if (!f) break
+        // The flat op schema invites the model to dump the new LABEL into `to`
+        // (or `label`) instead of `set.label` — observed in the wild for bulk
+        // relabels like "number each question". Treat a bare string in `to`/
+        // `label` as a label change so the edit isn't silently dropped.
+        const set =
+          op.set ??
+          (typeof op.to === "string"
+            ? { label: op.to }
+            : typeof op.label === "string"
+              ? { label: op.label }
+              : undefined)
+        if (!set) break
+        if (set.label != null) f.label = set.label
+        if (set.description != null) f.description = set.description
+        if (set.placeholder != null) f.placeholder = set.placeholder
+        if (set.required != null) f.required = set.required
+        if (set.type != null && set.type !== f.type) {
+          f.type = set.type
           // Keep options only if the new type still uses them.
           if (!isChoice(f.type)) f.options = undefined
           else if (!f.options) f.options = []
@@ -504,4 +540,162 @@ export function applyOperations(form: EditorForm, ops: AiOperation[]): EditorFor
   }
 
   return { title, fields }
+}
+
+// ── Deterministic fast path for trivial edits ─────────────────────────────
+// Some edit intents are so simple and unambiguous that routing them through the
+// LLM is pure downside: latency, cost, and a real chance the model loops or
+// picks the wrong op. We parse those in code and apply them directly, with NO
+// model call. Anything we can't match with high confidence returns null and
+// falls through to the AI.
+
+export type SimpleEdit = { operations: AiOperation[]; summary: string }
+
+/** A field label with any leading question number ("12. ", "3) ") and quotes
+ *  stripped, normalized — so "email" matches "2. Email Address". */
+const coreLabel = (s: string) =>
+  normLabel(s.replace(/^\s*\d+[.)]\s*/, "").replace(/["'`]/g, ""))
+
+/** Resolve a spoken field name to exactly one field, or null if none / ambiguous
+ *  (ambiguity defers to the AI rather than guessing wrong). */
+function resolveFieldByName(fields: EditorField[], query: string): EditorField | null {
+  const q = coreLabel(query)
+  if (!q) return null
+  // Exact core-label match first.
+  let hits = fields.filter((f) => coreLabel(f.label) === q)
+  if (hits.length === 0) {
+    // Then a unique substring match either direction ("email" ⊂ "email address").
+    hits = fields.filter((f) => {
+      const c = coreLabel(f.label)
+      return c.length > 0 && (c.includes(q) || q.includes(c))
+    })
+  }
+  return hits.length === 1 ? hits[0] : null
+}
+
+const ALL_FIELDS_RE =
+  /^(?:all|all fields|all questions|every field|every question|everything|all of them|them all)$/
+
+/**
+ * Deterministic fast path for trivial edits. Tries each recognizer in turn and
+ * returns the first hit; null means "hand it to the AI". Every recognizer is
+ * conservative — it only fires when the intent AND the target field(s) are
+ * unambiguous, so a wrong guess is never applied.
+ */
+export function matchSimpleEdit(instruction: string, form: EditorForm): SimpleEdit | null {
+  return matchRequiredEdit(instruction, form) ?? matchMoveEdit(instruction, form)
+}
+
+/** Strip filler so a spoken field reference resolves: "the name input" → "name". */
+const cleanFieldRef = (s: string) =>
+  s
+    .trim()
+    .toLowerCase()
+    .replace(/^(?:the|a|an)\s+/, "")
+    .replace(/\s+(?:input|field|question|block|section)$/, "")
+    .trim()
+
+/**
+ * Recognize a required/optional toggle — the most common trivial edit — and
+ * turn it into a deterministic set_required op. Matches phrasings like:
+ *   "make Email optional", "set Phone Number as required", "mark all fields
+ *   required", "make email and phone required". Returns null for anything it
+ *   can't confidently parse (unknown/ambiguous field, other intent).
+ */
+function matchRequiredEdit(instruction: string, form: EditorForm): SimpleEdit | null {
+  const t = instruction.trim().replace(/\s+/g, " ").replace(/[.!]+$/, "")
+  const m =
+    /^(?:please\s+)?(?:make|set|mark)\s+(.+?)\s+(?:as\s+|to\s+be\s+)?(required|require|requires|mandatory|compulsory|optional|not required|not require|non-required)$/i.exec(
+      t,
+    )
+  if (!m) return null
+
+  const fieldPart = m[1].trim().toLowerCase().replace(/^the\s+/, "")
+  const required = !/optional|not requi|non-required/i.test(m[2])
+  const word = required ? "required" : "optional"
+
+  // "make all fields required" → every answerable field (no targets).
+  if (ALL_FIELDS_RE.test(fieldPart)) {
+    if (!form.fields.some((f) => isAnswerable(f.type))) return null
+    return {
+      operations: [{ op: "set_required", set: { required } }],
+      summary: `Made **all fields** ${word}.`,
+    }
+  }
+
+  // One or more named fields, comma / "and" / "&" separated.
+  const names = fieldPart
+    .split(/\s*(?:,|\band\b|&)\s*/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+  if (names.length === 0) return null
+
+  const matched: EditorField[] = []
+  for (const name of names) {
+    const f = resolveFieldByName(form.fields, name)
+    // Unknown, ambiguous, or a non-answerable block (headings can't be required)
+    // → hand the whole thing to the AI rather than half-apply.
+    if (!f || !isAnswerable(f.type)) return null
+    if (!matched.includes(f)) matched.push(f)
+  }
+  if (matched.length === 0) return null
+
+  const names_ = matched.map((f) => `**${f.label}**`)
+  const list =
+    names_.length === 1
+      ? names_[0]
+      : `${names_.slice(0, -1).join(", ")} and ${names_[names_.length - 1]}`
+  return {
+    operations: [{ op: "set_required", targets: matched.map((f) => f.id), set: { required } }],
+    summary: `Made ${list} ${word}.`,
+  }
+}
+
+// Keywords that end a move phrase at the very top / very bottom, no target field.
+const MOVE_TOP_RE = /^(?:to )?(?:the )?(?:very )?(?:top|start|beginning|first)$/
+const MOVE_BOTTOM_RE = /^(?:to )?(?:the )?(?:very )?(?:bottom|end|last)$/
+
+/**
+ * Recognize a field reorder — "move Email above Full Name", "move phone below
+ * email", "move the name field to the top", "move rating to the bottom". Emits a
+ * deterministic move_field with the right placement. Returns null unless BOTH
+ * the field to move and (for before/after) the anchor resolve unambiguously —
+ * exactly the case that keeps burning the AI on placement.
+ */
+function matchMoveEdit(instruction: string, form: EditorForm): SimpleEdit | null {
+  const t = instruction.trim().replace(/\s+/g, " ").replace(/[.!]+$/, "")
+  // move <what> <relation> [<anchor>]
+  const m =
+    /^(?:please\s+)?move\s+(.+?)\s+(above|below|before|after|under|underneath|to the top|to top|to the start|to the beginning|to the very top|to the bottom|to the end|to the very bottom|to be first|to be last|first|last)\b(.*)$/i.exec(
+      t,
+    )
+  if (!m) return null
+
+  const what = resolveFieldByName(form.fields, cleanFieldRef(m[1]))
+  if (!what) return null
+  const relation = m[2].toLowerCase()
+  const rest = cleanFieldRef(m[3].replace(/^\s*of the form\s*$/, ""))
+
+  // Top / bottom — no anchor field needed.
+  if (MOVE_TOP_RE.test(relation)) {
+    return {
+      operations: [{ op: "move_field", target: what.id, placement: { mode: "top" } }],
+      summary: `Moved **${what.label}** to the top.`,
+    }
+  }
+  if (MOVE_BOTTOM_RE.test(relation)) {
+    return {
+      operations: [{ op: "move_field", target: what.id, placement: { mode: "bottom" } }],
+      summary: `Moved **${what.label}** to the bottom.`,
+    }
+  }
+
+  // Relative to an anchor field, which must resolve and differ from `what`.
+  const anchor = resolveFieldByName(form.fields, rest)
+  if (!anchor || anchor.id === what.id) return null
+  const mode = /^(above|before)$/.test(relation) ? "before" : "after"
+  return {
+    operations: [{ op: "move_field", target: what.id, placement: { mode, ref: anchor.id } }],
+    summary: `Moved **${what.label}** ${mode} **${anchor.label}**.`,
+  }
 }

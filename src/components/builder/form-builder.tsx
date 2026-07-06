@@ -20,6 +20,7 @@ import {
   editorToAi,
   mergeAiIntoEditor,
   applyOperations,
+  matchSimpleEdit,
   newField,
   isBlankForm,
 } from "@/lib/builder/form-model";
@@ -572,6 +573,21 @@ export function FormBuilder({
     if (!base) return;
     setEditing(true);
     try {
+      // Deterministic fast path: trivial, unambiguous edits (e.g. "make Email
+      // optional") are applied in code with no model call — instant and 100%
+      // reliable, with no chance of the AI looping or picking the wrong op.
+      const simple = matchSimpleEdit(instruction, base);
+      if (simple) {
+        const updated = applyOperations(base, simple.operations);
+        currentFormRef.current = updated;
+        setCurrentForm(updated);
+        setChat((prev) => [
+          ...prev,
+          { id: rid(), role: "assistant", text: simple.summary },
+        ]);
+        scheduleAutosave(updated);
+        return;
+      }
       const result = await aiEditForm({ instruction, current: base, transcript });
       if ("error" in result) {
         setChat((prev) => [
@@ -587,7 +603,12 @@ export function FormBuilder({
       if (process.env.NODE_ENV === "development") {
         console.debug("[ai-edit] operations:", result.operations);
       }
-      const updated = applyOperations(currentFormRef.current ?? base, result.operations);
+      // Use the server-applied form directly: it already ran the operations plus
+      // the verify-and-repair pass, and newly-added fields keep the ids the
+      // repair pass targeted (re-applying here would mint different ids). Fall
+      // back to a local apply only if the server didn't return a form.
+      const updated =
+        result.form ?? applyOperations(currentFormRef.current ?? base, result.operations);
       currentFormRef.current = updated;
       setCurrentForm(updated);
       const summary = result.summary?.trim();
