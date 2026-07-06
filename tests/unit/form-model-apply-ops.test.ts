@@ -243,6 +243,26 @@ describe("applyOperations", () => {
     expect(field(out, "f-confirm").required).toBe(false) // unchanged
   })
 
+  test("update_settings merges only the provided keys, carrying the rest through", () => {
+    const form: EditorForm = {
+      title: "X",
+      fields: [],
+      settings: { thankYouMessage: "old", submitButtonLabel: "Send" },
+    }
+    const out = applyOperations(form, [
+      { op: "update_settings", settings: { thankYouMessage: "Thanks!" } },
+    ])
+    expect(out.settings).toEqual({ thankYouMessage: "Thanks!", submitButtonLabel: "Send" })
+  })
+
+  test("update_settings can set fields on a form that had no settings yet", () => {
+    const form: EditorForm = { title: "X", fields: [] }
+    const out = applyOperations(form, [
+      { op: "update_settings", settings: { redirectUrl: "https://acme.com/thanks" } },
+    ])
+    expect(out.settings).toEqual({ redirectUrl: "https://acme.com/thanks" })
+  })
+
   test("set_required skips content blocks (they can never be required)", () => {
     const withHeading: EditorForm = {
       title: "X",
@@ -369,6 +389,45 @@ describe("matchSimpleEdit (deterministic required/optional fast path)", () => {
   test("unknown/ambiguous anchor or field defers to the AI", () => {
     expect(run("move Email above Nickname")).toBeNull() // no such anchor
     expect(run("move Sidebar to the top")).toBeNull() // no such field
+  })
+
+  test("settings: title vs message map to the right field (matching the editor labels)", () => {
+    // "message / body / description" → successBody (the "Message" field)
+    const msg = run("change the thank you message to We got it, thanks!")
+    expect(msg!.operations).toEqual([
+      { op: "update_settings", settings: { successBody: "We got it, thanks!" } },
+    ])
+    const body = run("set the thank-you body to More details here")
+    expect(body!.operations[0]).toMatchObject({
+      op: "update_settings",
+      settings: { successBody: "More details here" },
+    })
+
+    // "title / heading" → thankYouMessage (the "Title" field)
+    const title = run("change the thank you title to Thanks!")
+    expect(title!.operations[0]).toMatchObject({
+      op: "update_settings",
+      settings: { thankYouMessage: "Thanks!" },
+    })
+  })
+
+  test("settings: submit button and redirect", () => {
+    const submit = run('set the submit button to "Send it"')
+    expect(submit!.operations[0]).toMatchObject({
+      op: "update_settings",
+      settings: { submitButtonLabel: "Send it" },
+    })
+
+    const redirect = run("set the redirect url to https://acme.com/thanks")
+    expect(redirect!.operations[0]).toMatchObject({
+      op: "update_settings",
+      settings: { redirectUrl: "https://acme.com/thanks" },
+    })
+  })
+
+  test("settings edits without an explicit new value defer to the AI", () => {
+    expect(run("make the thank you message shorter")).toBeNull()
+    expect(run("improve the thank you message")).toBeNull()
   })
 })
 

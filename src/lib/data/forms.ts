@@ -84,6 +84,15 @@ export async function getFormForEdit(id: string): Promise<EditableForm | null> {
       logic: f.logic ?? undefined,
       config: f.config ?? undefined,
     })),
+    // Post-submit settings the AI/fast-path can edit inline (thank-you message,
+    // success body, submit label, redirect). redirectUrl is a column; the rest
+    // live in the settings jsonb.
+    settings: {
+      thankYouMessage: row.form.settings?.thankYouMessage,
+      successBody: row.form.settings?.successBody,
+      submitButtonLabel: row.form.settings?.submitButtonLabel,
+      redirectUrl: row.form.redirectUrl ?? undefined,
+    },
   }
 
   return {

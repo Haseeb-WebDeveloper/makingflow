@@ -3,13 +3,14 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { experimental_useObject as useObject } from "@ai-sdk/react";
-import { aiFormSchema, type AiForm } from "@/lib/ai/form-schema";
+import { aiFormSchema, type AiForm, type AiOperation } from "@/lib/ai/form-schema";
 import {
   saveAiForm,
   publishForm,
   unpublishForm,
   deleteForm,
   updateFormSettings,
+  type FormSettingsPatch,
 } from "@/lib/actions/forms";
 import { setFormDomain } from "@/lib/actions/domains";
 import { buildShareUrl } from "@/lib/forms/share";
@@ -17,6 +18,7 @@ import type { FormSettingsData } from "@/lib/data/forms";
 import type { WorkspaceFolder } from "@/lib/data/folders";
 import {
   type EditorForm,
+  type EditorSettings,
   editorToAi,
   mergeAiIntoEditor,
   applyOperations,
@@ -314,6 +316,43 @@ export function FormBuilder({
     }, 600);
   }
 
+  // Collect the net settings change from an edit's operations (AI or fast path),
+  // or null if it touched no post-submit settings.
+  function settingsFromOps(ops: AiOperation[]): EditorSettings | null {
+    let out: EditorSettings | null = null;
+    for (const op of ops) {
+      if (op.op === "update_settings" && op.settings) out = { ...(out ?? {}), ...op.settings };
+    }
+    return out;
+  }
+
+  // Persist an AI/fast-path settings change through the SAME lane the Settings
+  // tab and the on-canvas success-page editor use (updateFormSettings), and
+  // reflect it live in the success-page editor. Keeping one writer avoids the
+  // two lanes clobbering each other; the field autosave (saveAiForm) stays
+  // structure-only.
+  function applySettingsFromEdit(changed: EditorSettings) {
+    if (changed.thankYouMessage !== undefined || changed.successBody !== undefined) {
+      setSuccessPage((prev) => ({
+        ...prev,
+        ...(changed.thankYouMessage !== undefined ? { title: changed.thankYouMessage } : {}),
+        ...(changed.successBody !== undefined ? { body: changed.successBody } : {}),
+      }));
+    }
+    const id = formIdRef.current;
+    if (!id) return;
+    const patch: FormSettingsPatch = {};
+    if (changed.thankYouMessage !== undefined) patch.thankYouMessage = changed.thankYouMessage || null;
+    if (changed.successBody !== undefined) patch.successBody = changed.successBody || null;
+    if (changed.submitButtonLabel !== undefined)
+      patch.submitButtonLabel = changed.submitButtonLabel || null;
+    if (changed.redirectUrl !== undefined) patch.redirectUrl = changed.redirectUrl || null;
+    if (Object.keys(patch).length === 0) return;
+    void updateFormSettings(id, patch).then((res) => {
+      if (!res.success) showToast(res.error ?? "Couldn't update settings", { type: "error" });
+    });
+  }
+
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [chat, busy]);
@@ -581,6 +620,8 @@ export function FormBuilder({
         const updated = applyOperations(base, simple.operations);
         currentFormRef.current = updated;
         setCurrentForm(updated);
+        const changed = settingsFromOps(simple.operations);
+        if (changed) applySettingsFromEdit(changed);
         setChat((prev) => [
           ...prev,
           { id: rid(), role: "assistant", text: simple.summary },
@@ -611,6 +652,8 @@ export function FormBuilder({
         result.form ?? applyOperations(currentFormRef.current ?? base, result.operations);
       currentFormRef.current = updated;
       setCurrentForm(updated);
+      const changed = settingsFromOps(result.operations);
+      if (changed) applySettingsFromEdit(changed);
       const summary = result.summary?.trim();
       setChat((prev) => [
         ...prev,

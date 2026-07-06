@@ -50,6 +50,12 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
       onChangeRef.current = onChange
     })
 
+    // The exact `value` string last seen — either emitted by our own edit or
+    // pushed in from outside. Lets the sync effect below tell "the parent echoed
+    // our edit back" (skip) from "an external change" (apply), without comparing
+    // re-serialized HTML (which isn't always round-trip stable → would loop).
+    const lastValueRef = React.useRef(value)
+
     const editor = useEditor({
       immediatelyRender: false, // Next SSR: build the editor on the client only
       extensions: [
@@ -74,9 +80,25 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
       editorProps: {
         attributes: { class: "ProseMirror tiptap-body", "aria-label": "Rich text editor" },
       },
-      onUpdate: ({ editor }) =>
-        onChangeRef.current(html ? preserveSpacing(editor.getHTML()) : htmlToMarkdown(editor.getHTML())),
+      onUpdate: ({ editor }) => {
+        const out = html ? preserveSpacing(editor.getHTML()) : htmlToMarkdown(editor.getHTML())
+        lastValueRef.current = out // our own edit — don't let the sync effect re-apply it
+        onChangeRef.current(out)
+      },
     })
+
+    // Reflect EXTERNAL value changes (e.g. an AI edit to the success-page body)
+    // into the editor. Tiptap owns its content after mount, so without this a
+    // programmatic change to `value` would be invisible until reload. Guarded by
+    // lastValueRef so it never fights the user's own typing.
+    React.useEffect(() => {
+      if (!editor) return
+      if (value === lastValueRef.current) return // in sync (or our own echoed edit)
+      lastValueRef.current = value
+      editor.commands.setContent(html ? toEditorHtml(value) : markdownToHtml(value), {
+        emitUpdate: false,
+      })
+    }, [value, editor, html])
 
     React.useImperativeHandle(
       ref,

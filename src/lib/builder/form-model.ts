@@ -21,9 +21,21 @@ export type EditorField = {
   config?: FieldConfig
 }
 
+/** Post-submit / response settings the AI (and the fast path) can edit inline —
+ *  the same values otherwise set in the Settings tab. A subset of the full
+ *  FormSettings: only the text knobs that make sense to change by instruction. */
+export type EditorSettings = {
+  thankYouMessage?: string
+  successBody?: string
+  redirectUrl?: string
+  submitButtonLabel?: string
+}
+
 export type EditorForm = {
   title: string
   fields: EditorField[]
+  /** Present when loaded for editing; carried through AI/fast-path edits + save. */
+  settings?: EditorSettings
 }
 
 export const genId = () => crypto.randomUUID()
@@ -226,7 +238,8 @@ export function mergeAiIntoEditor(ai: AiForm, prev: EditorForm | null): EditorFo
     b.field.logic = b.af.logic ? compileAiLogic(b.af.logic, labelToId) : b.match?.logic
   }
 
-  return { title: ai.title ?? prev.title ?? "Untitled form", fields }
+  // The AI spec carries no settings — keep whatever the form already had.
+  return { title: ai.title ?? prev.title ?? "Untitled form", fields, settings: prev.settings }
 }
 
 export function editorToAi(form: EditorForm): AiForm {
@@ -322,7 +335,17 @@ export function toEditContext(form: EditorForm) {
     }
   })
 
-  return { context: { title: form.title, fields }, refs }
+  // Surface current post-submit settings so the model can see and edit them
+  // (e.g. "change the thank-you message"). Compact and always present, so an
+  // empty value reads as "not set yet" rather than being invisible.
+  const settings = {
+    thankYouMessage: form.settings?.thankYouMessage ?? "",
+    submitButtonLabel: form.settings?.submitButtonLabel ?? "",
+    redirectUrl: form.settings?.redirectUrl ?? "",
+    successBody: form.settings?.successBody ?? "",
+  }
+
+  return { context: { title: form.title, settings, fields }, refs }
 }
 
 /** Translate an op's ref-bearing fields from short refs back to real ids; passes
@@ -369,6 +392,8 @@ function resolveOptionIndex(options: FieldOption[], query?: string): number {
  */
 export function applyOperations(form: EditorForm, ops: AiOperation[]): EditorForm {
   let title = form.title
+  // Carry settings through untouched unless an update_settings op changes them.
+  let settings: EditorSettings | undefined = form.settings ? { ...form.settings } : undefined
   // Deep-copy the parts we mutate (fields + their option arrays).
   const fields: EditorField[] = form.fields.map((f) => ({
     ...f,
@@ -536,10 +561,22 @@ export function applyOperations(form: EditorForm, ops: AiOperation[]): EditorFor
         }
         break
       }
+      case "update_settings": {
+        if (!op.settings) break
+        settings = { ...(settings ?? {}) }
+        const s = op.settings
+        // Only the keys the model sent change; the rest carry through. An empty
+        // string is a deliberate clear (handled at save time → undefined/null).
+        if (s.thankYouMessage != null) settings.thankYouMessage = s.thankYouMessage
+        if (s.successBody != null) settings.successBody = s.successBody
+        if (s.redirectUrl != null) settings.redirectUrl = s.redirectUrl
+        if (s.submitButtonLabel != null) settings.submitButtonLabel = s.submitButtonLabel
+        break
+      }
     }
   }
 
-  return { title, fields }
+  return { title, fields, settings }
 }
 
 // ── Deterministic fast path for trivial edits ─────────────────────────────
@@ -583,7 +620,56 @@ const ALL_FIELDS_RE =
  * unambiguous, so a wrong guess is never applied.
  */
 export function matchSimpleEdit(instruction: string, form: EditorForm): SimpleEdit | null {
-  return matchRequiredEdit(instruction, form) ?? matchMoveEdit(instruction, form)
+  return (
+    matchRequiredEdit(instruction, form) ??
+    matchMoveEdit(instruction, form) ??
+    matchSettingsEdit(instruction)
+  )
+}
+
+/**
+ * Recognize a post-submit settings change with an explicit new value — "change
+ * the thank you message to X", "set the submit button to Send", "set the
+ * redirect url to https://…". Deterministic when a value is given; anything
+ * without a clear "to <value>" (e.g. "make the thank-you shorter") defers to the
+ * AI. The form isn't needed — these are global settings.
+ */
+function matchSettingsEdit(instruction: string): SimpleEdit | null {
+  const t = instruction.trim().replace(/\s+/g, " ")
+  const m =
+    /^(?:please\s+)?(?:set|change|update|edit)\s+the\s+(submit(?: button)?(?: label| text)?|redirect(?: url| link)?|(?:thank[- ]?you|success)(?: page)?(?: title| heading| message| msg| body| description| text)?)\s+(?:to|as|:)\s+([\s\S]+)$/i.exec(
+      t,
+    )
+  if (!m) return null
+  const value = m[2].trim().replace(/^["'`]+|["'`]+$/g, "").trim()
+  if (!value) return null
+  const key = m[1].toLowerCase()
+
+  if (/^submit/.test(key)) {
+    return {
+      operations: [{ op: "update_settings", settings: { submitButtonLabel: value } }],
+      summary: `Set the **submit button** to “${value}”.`,
+    }
+  }
+  if (/^redirect/.test(key)) {
+    return {
+      operations: [{ op: "update_settings", settings: { redirectUrl: value } }],
+      summary: `Set the **redirect URL** to ${value}.`,
+    }
+  }
+  // Thank-you / success page: disambiguate the TITLE from the MESSAGE/body the
+  // same way the editor labels them. "message / body / description / text" →
+  // successBody; "title / heading" (or a bare "thank you") → thankYouMessage.
+  if (/\b(message|msg|body|description|text)\b/.test(key)) {
+    return {
+      operations: [{ op: "update_settings", settings: { successBody: value } }],
+      summary: `Updated the **thank-you message**.`,
+    }
+  }
+  return {
+    operations: [{ op: "update_settings", settings: { thankYouMessage: value } }],
+    summary: `Set the **thank-you title** to “${value}”.`,
+  }
 }
 
 /** Strip filler so a spoken field reference resolves: "the name input" → "name". */

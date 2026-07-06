@@ -143,6 +143,7 @@ export const AI_OP_NAMES = [
   "set_logic",
   "remove_logic",
   "set_required",
+  "update_settings",
 ] as const
 
 export const aiOperationSchema = z.object({
@@ -212,6 +213,30 @@ export const aiOperationSchema = z.object({
     ),
   logic: aiLogicSchema.optional().describe("The show/hide rule to set on the target field (set_logic)."),
   title: z.string().optional().describe("New form title (rename_form)."),
+  settings: z
+    .object({
+      thankYouMessage: z
+        .string()
+        .optional()
+        .describe(
+          "The success page's TITLE — the short headline shown first after submit (labeled \"Title\" in the editor). Use for 'thank-you title / heading'.",
+        ),
+      successBody: z
+        .string()
+        .optional()
+        .describe(
+          "The success page's MESSAGE / body — the longer text shown under the title (labeled \"Message\" in the editor). Use for 'thank-you message / body / description / text'.",
+        ),
+      redirectUrl: z
+        .string()
+        .optional()
+        .describe("URL to send respondents to after submit. Empty string \"\" clears it."),
+      submitButtonLabel: z.string().optional().describe("The text on the submit button."),
+    })
+    .optional()
+    .describe(
+      "Post-submit settings to change (update_settings only). Include ONLY the keys the user asked to change.",
+    ),
 })
 export type AiOperation = z.infer<typeof aiOperationSchema>
 
@@ -275,7 +300,7 @@ Rules:
 - ALWAYS fill "summary" with a brief, first-person, conversational note of what you did this turn — on an edit, describe ONLY what changed (the specific fields you added/removed/edited), not the whole form. Keep it to 1-2 sentences. Use Markdown: wrap any field name/label you mention in **bold** (never plain quotes), and use a short bullet list when you changed several things. Never write generic filler like "Done" or "I've updated your form."`
 
 /** System instruction for EDITING an existing form via explicit operations. */
-export const FORM_EDIT_SYSTEM = `You edit an existing form by returning a precise list of CHANGE OPERATIONS — never the whole form. You are given the current form as JSON: each field has a short "ref" like "f1", "f2", a "pos" (its 1-based position from the TOP of the form — pos 1 is the very first field), and choice fields carry options each with their own "ref" like "f1o1", "f1o2" (e.g. { "ref": "f3o2", "label": "Discord message" }). The fields are listed top-to-bottom in the same order the respondent sees them. ALWAYS target an existing field or option by copying its exact "ref" from the context. Do not retype the field/option text to identify it — the ref is how the change is matched, so an exact ref is essential.
+export const FORM_EDIT_SYSTEM = `You edit an existing form by returning a precise list of CHANGE OPERATIONS — never the whole form. You are given the current form as JSON: a "settings" object (post-submit behavior: thankYouMessage, submitButtonLabel, redirectUrl, successBody — edit these with update_settings, never as fields), and a list of fields where each field has a short "ref" like "f1", "f2", a "pos" (its 1-based position from the TOP of the form — pos 1 is the very first field), and choice fields carry options each with their own "ref" like "f1o1", "f1o2" (e.g. { "ref": "f3o2", "label": "Discord message" }). The fields are listed top-to-bottom in the same order the respondent sees them. ALWAYS target an existing field or option by copying its exact "ref" from the context. Do not retype the field/option text to identify it — the ref is how the change is matched, so an exact ref is essential.
 
 FIRST, always fill "plan": restate the request, name the target ref(s) and pos, and decide the exact placement — THEN write operations that match your plan. This ordering is required and is what keeps edits correct.
 
@@ -294,6 +319,10 @@ Operations (set "op" + only the fields that op needs):
 - set_options { target, options } — replace a choice field's ENTIRE options list with this exact array.
 - set_logic { target, logic } — set/replace this field's show/hide rule. Name the trigger field by its EXACT label; for choice/yes_no triggers, "value" is the option's exact text.
 - remove_logic { target } — clear this field's conditional logic.
+- update_settings { settings } — change POST-SUBMIT settings (shown to the respondent after they submit, NOT questions on the form). "settings" holds ONLY the keys the user asked to change. The success page has TWO text parts — match the user's word to the right one (these are the editor's labels):
+    · thankYouMessage = the "Title" — the short headline shown first. Use for "thank-you title / heading".
+    · successBody = the "Message" / body — the longer text under the title. Use for "thank-you message / body / description / the text of the thank-you page".
+  Plus: redirectUrl (URL to send them to after submit; "" clears it) and submitButtonLabel (the submit button's text). The form context includes a "settings" object with the current values. Examples: "change the thank-you title to Thanks!" -> [{ "op": "update_settings", "settings": { "thankYouMessage": "Thanks!" } }]; "add a description / message to the thank-you page: <text>" -> [{ "op": "update_settings", "settings": { "successBody": "<text>" } }]. Never use add_field/update_field for these — they are settings, not fields.
 - set_required { targets?, set: { required } } — set the required flag. Use this for ANY required/optional change — a SINGLE field, several, or all. List the field refs in "targets" (even for one field: targets:["f4"]), or OMIT "targets" to apply to ALL answerable fields. This is the ONLY correct way to change required/optional — do NOT use update_field for it. (Headings, paragraphs, and page breaks are never required and are skipped automatically.)
 
 Even for a big request (e.g. "translate the whole form" or a broad restructure), express it as granular ops — one update_field per field you change, etc. There is no whole-form replace; always edit field by field so nothing unrelated is lost.
