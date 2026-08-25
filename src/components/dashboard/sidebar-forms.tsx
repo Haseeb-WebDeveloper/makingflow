@@ -224,7 +224,7 @@ export function SidebarForms({
           <button
             type="button"
             onClick={onSearch}
-            className="mt-1 flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
+            className="mt-1 flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
           >
             <Icon name="search" className="size-4 shrink-0" />
             <span>Search forms ({forms.length})</span>
