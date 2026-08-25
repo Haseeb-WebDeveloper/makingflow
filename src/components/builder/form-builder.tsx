@@ -28,6 +28,9 @@ import {
 } from "@/lib/builder/form-model";
 import { aiEditForm } from "@/lib/actions/ai-edit";
 import { useCreateForm } from "@/lib/forms/use-create-form";
+import { appendFormChatMessage } from "@/lib/actions/form-chat";
+import { uploadToCloudinary } from "@/lib/cloudinary/upload";
+import type { FormChatMessage } from "@/lib/data/form-chat";
 import {
   FormPreview,
   type PartialForm,
@@ -70,12 +73,18 @@ type ChatMessage = {
   role: "user" | "assistant";
   text: string;
   image?: string;
+  // Attribution for a SHARED thread: who asked. Absent on assistant turns and
+  // on messages created in this session (always the viewer).
+  authorId?: string | null;
+  authorName?: string | null;
+  authorAvatarUrl?: string | null;
 };
 
 type SaveState = "idle" | "saving" | "saved" | "error";
 
-// Globally-unique chat message ids. A counter would restart at page load and
-// collide with ids restored from localStorage (the "duplicate key" warning).
+// Local ids for optimistically-appended chat messages. Must be globally unique:
+// they share a React key space with the real row ids loaded from the database,
+// and a counter would restart at page load and collide with them.
 const rid = () => crypto.randomUUID();
 
 const BUILDER_PHRASES = [
@@ -95,6 +104,8 @@ export function FormBuilder({
   domains,
   folders,
   initialSettings,
+  initialChat,
+  viewerId,
 }: {
   initialForm?: EditorForm;
   initialFormId?: string;
@@ -106,23 +117,29 @@ export function FormBuilder({
   domains?: { id: string; domain: string }[];
   folders?: WorkspaceFolder[];
   initialSettings?: FormSettingsData | null;
+  /** The form saved AI conversation — one shared thread per form. */
+  initialChat?: FormChatMessage[];
+  /** Current user, so the author label is hidden on your own messages. */
+  viewerId?: string;
 } = {}) {
   const router = useRouter();
   const pathname = usePathname();
   const { createForm } = useCreateForm();
 
+  // Seeded from the form's saved thread (shared across the workspace). A form
+  // with no history starts empty — the "Loaded …" greeting is rendered as a
+  // placeholder further down rather than stored, so it can never be persisted
+  // and repeat on every open.
   const [chat, setChat] = useState<ChatMessage[]>(() =>
-    // A fresh blank draft (entered via "New form") starts with an empty chat so
-    // the "Describe your form" prompt UI shows; an existing form greets instead.
-    initialForm && !isBlankForm(initialForm)
-      ? [
-          {
-            id: rid(),
-            role: "assistant",
-            text: `Loaded “${initialForm.title}”. Ask for any changes.`,
-          },
-        ]
-      : []
+    (initialChat ?? []).map((m) => ({
+      id: m.id,
+      role: m.role,
+      text: m.text,
+      image: m.imageUrl ?? undefined,
+      authorId: m.authorId,
+      authorName: m.authorName,
+      authorAvatarUrl: m.authorAvatarUrl,
+    }))
   );
   const [draft, setDraft] = useState("");
   const [image, setImage] = useState<ComposerImage | null>(null);
@@ -181,7 +198,14 @@ export function FormBuilder({
   const savePromiseRef = useRef<Promise<void> | null>(null);
   // Gate chat persistence until the saved thread is restored, so the empty
   // initial state can't overwrite a stored conversation on first render.
-  const chatHydratedRef = useRef(false);
+  // Whether the assistant has replied in this thread — drives the "Here's your
+  // form" vs "Done. Updated the form." wording. A ref (not derived inside the
+  // setChat updater) so the message text can be computed BEFORE the update and
+  // handed to persistMessage.
+  const hasAssistantRef = useRef((initialChat ?? []).some((m) => m.role === "assistant"));
+  // Warn at most once per session if persistence fails — a toast per turn would
+  // be worse than the problem.
+  const persistWarnedRef = useRef(false);
   // Delete-on-leave: when "New form" created this draft and the user leaves it
   // still empty, discard it. `enteredBlank` is captured at mount; `discarded`
   // makes the delete fire at most once.
@@ -199,20 +223,18 @@ export function FormBuilder({
       const full = mergeAiIntoEditor(object as AiForm, currentFormRef.current);
       currentFormRef.current = full;
       setCurrentForm(full);
-      setChat((prev) => {
-        const isFirst = !prev.some((m) => m.role === "assistant");
-        // Prefer the model's own 1-2 line summary of what it did so the chat
-        // reads like a real conversation; fall back to a generic line.
-        const summary = (object as AiForm)?.summary?.trim();
-        const text = summary
-          ? summary
-          : isFirst
-          ? full.title
-            ? `Here's your form: “${full.title}”. Ask for any changes.`
-            : "Here's your form. Ask for any changes."
-          : "Done. Updated the form.";
-        return [...prev, { id: rid(), role: "assistant", text }];
-      });
+      const isFirst = !hasAssistantRef.current;
+      // Prefer the model's own 1-2 line summary of what it did so the chat
+      // reads like a real conversation; fall back to a generic line.
+      const summary = (object as AiForm)?.summary?.trim();
+      const text = summary
+        ? summary
+        : isFirst
+        ? full.title
+          ? `Here's your form: “${full.title}”. Ask for any changes.`
+          : "Here's your form. Ask for any changes."
+        : "Done. Updated the form.";
+      pushAssistant(text);
       scheduleAutosave(full);
     },
   });
@@ -368,42 +390,9 @@ export function FormBuilder({
     };
   }, []);
 
-  // Restore the saved chat thread for this form (so reloading /forms/[id]/edit
-  // keeps the conversation), then allow persistence.
-  useEffect(() => {
-    const id = initialFormId;
-    if (id) {
-      try {
-        const raw = localStorage.getItem(`mf:chat:${id}`);
-        if (raw) {
-          const parsed = JSON.parse(raw) as ChatMessage[];
-          // One-time restore from localStorage after mount (SSR can't read it).
-          // Reassign ids so a thread saved under the old counter-based scheme
-          // (which could contain duplicates) can't bring key collisions back.
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            // eslint-disable-next-line react-hooks/set-state-in-effect
-            setChat(parsed.map((m) => ({ ...m, id: rid() })));
-          }
-        }
-      } catch {
-        /* ignore corrupt/blocked storage */
-      }
-    }
-    chatHydratedRef.current = true;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Persist the thread per-form. Strip attached image data URLs — they're huge
-  // and would blow the localStorage quota; the conversation text is what matters.
-  useEffect(() => {
-    if (!chatHydratedRef.current || !formId) return;
-    try {
-      const slim = chat.map((m) => ({ ...m, image: undefined }));
-      localStorage.setItem(`mf:chat:${formId}`, JSON.stringify(slim));
-    } catch {
-      /* ignore quota/blocked storage */
-    }
-  }, [chat, formId]);
+  // The thread lives in the database (form_chat_messages) and arrives via
+  // initialChat, so there is no client-side persistence step here — appends go
+  // through persistMessage() as they happen.
 
   // Discard an abandoned blank draft. If "New form" created this form empty and
   // the user leaves it still empty — navigating away (the route instance is kept
@@ -568,21 +557,58 @@ export function FormBuilder({
   }
 
   // ── Conversation ──────────────────────────────────────────────────
+
+  /**
+   * Write one turn to the form's shared thread. Fire-and-forget: the local chat
+   * is what the user sees, so a failed write must never block editing or drop
+   * the bubble — it only means this turn won't survive a reload.
+   */
+  function persistMessage(
+    role: "user" | "assistant",
+    text: string,
+    imageUrl?: string | null,
+  ) {
+    const id = formIdRef.current;
+    if (!id || (!text.trim() && !imageUrl)) return;
+    void appendFormChatMessage({ formId: id, role, text, imageUrl })
+      .then((r) => {
+        if (r.success || persistWarnedRef.current) return;
+        persistWarnedRef.current = true;
+        showToast("Couldn't save the conversation — this thread won't survive a reload.", {
+          type: "error",
+        });
+      })
+      .catch(() => {
+        /* network hiccup — the local thread is unaffected */
+      });
+  }
+
+  /** Append an assistant turn locally and persist it. */
+  function pushAssistant(text: string) {
+    hasAssistantRef.current = true;
+    setChat((prev) => [...prev, { id: rid(), role: "assistant", text }]);
+    persistMessage("assistant", text);
+  }
+
   function send() {
     if (busy) return;
     const text = draft.trim();
     if (!text && !image) return;
 
     const transcript = chat.map((m) => ({ role: m.role, text: m.text }));
+    const userText = text || "Recreate this form from the reference image.";
     setChat((prev) => [
       ...prev,
       {
         id: rid(),
         role: "user",
-        text: text || "Recreate this form from the reference image.",
-        image: image?.url,
+        text: userText,
+        // Preview uses the local data URL; history uses the uploaded copy.
+        image: image?.hostedUrl ?? image?.url,
+        authorId: viewerId ?? null,
       },
     ]);
+    persistMessage("user", userText, image?.hostedUrl ?? null);
     setDraft("");
     setImage(null);
 
@@ -622,23 +648,13 @@ export function FormBuilder({
         setCurrentForm(updated);
         const changed = settingsFromOps(simple.operations);
         if (changed) applySettingsFromEdit(changed);
-        setChat((prev) => [
-          ...prev,
-          { id: rid(), role: "assistant", text: simple.summary },
-        ]);
+        pushAssistant(simple.summary);
         scheduleAutosave(updated);
         return;
       }
       const result = await aiEditForm({ instruction, current: base, transcript });
       if ("error" in result) {
-        setChat((prev) => [
-          ...prev,
-          {
-            id: rid(),
-            role: "assistant",
-            text: "Sorry, I couldn't apply that change. Please try rephrasing it.",
-          },
-        ]);
+        pushAssistant("Sorry, I couldn't apply that change. Please try rephrasing it.");
         return;
       }
       if (process.env.NODE_ENV === "development") {
@@ -655,17 +671,11 @@ export function FormBuilder({
       const changed = settingsFromOps(result.operations);
       if (changed) applySettingsFromEdit(changed);
       const summary = result.summary?.trim();
-      setChat((prev) => [
-        ...prev,
-        { id: rid(), role: "assistant", text: summary || "Done. Updated the form." },
-      ]);
+      pushAssistant(summary || "Done. Updated the form.");
       scheduleAutosave(updated);
     } catch (err) {
       console.error("[form-builder] edit failed", err);
-      setChat((prev) => [
-        ...prev,
-        { id: rid(), role: "assistant", text: "Sorry, something went wrong. Please try again." },
-      ]);
+      pushAssistant("Sorry, something went wrong. Please try again.");
     } finally {
       setEditing(false);
     }
@@ -688,13 +698,30 @@ export function FormBuilder({
       showToast("That image is too large (max 12MB).", { type: "error" });
       return;
     }
+    let url: string;
     try {
-      const url = await fileToDataUrl(file);
-      setImage({ url, name: file.name });
+      url = await fileToDataUrl(file);
     } catch {
       showToast("Couldn't read that image. Try another one.", {
         type: "error",
       });
+      return;
+    }
+    // Show the preview immediately from the local data URL, then upload a copy
+    // in the background so the turn can be stored with a real URL. Uploading
+    // here rather than on send keeps send latency unchanged — by the time the
+    // user has typed their prompt the URL is normally ready.
+    setImage({ url, name: file.name });
+    try {
+      const { secureUrl } = await uploadToCloudinary(file, "formAssets");
+      setImage((prev) =>
+        // Guard against the user having removed or replaced it mid-upload.
+        prev && prev.url === url ? { ...prev, hostedUrl: secureUrl } : prev
+      );
+    } catch {
+      // Non-fatal: the AI still gets the image, it just won't appear in the
+      // saved history. Silent — the user asked to attach, not to upload.
+      console.warn("[form-builder] reference image upload failed");
     }
   }
 
@@ -759,9 +786,17 @@ export function FormBuilder({
     <div className="flex h-[calc(100dvh-3.5rem)] flex-col lg:h-auto lg:flex-row">
       <aside className="flex h-1/2 shrink-0 flex-col border-b border-border lg:sticky lg:top-0 lg:h-[calc(100dvh-3.5rem)] lg:self-start lg:w-[380px] lg:border-b-0 lg:border-r">
         <div className="thin-scroll flex-1 space-y-4 overflow-y-auto px-4 py-4">
+          {/* An existing form with no saved thread yet: greet, but do NOT store
+              the greeting — otherwise it would be persisted and repeat on every
+              open, and every teammate would see a stack of them. */}
+          {chat.length === 0 && !busy && currentForm && !isBlankForm(currentForm) ? (
+            <AssistantRow
+              text={`Loaded “${currentForm.title}”. Ask for any changes.`}
+            />
+          ) : null}
           {chat.map((m) =>
             m.role === "user" ? (
-              <UserBubble key={m.id} message={m} />
+              <UserBubble key={m.id} message={m} viewerId={viewerId} />
             ) : (
               <AssistantRow key={m.id} id={m.id} text={m.text} />
             )
@@ -769,7 +804,7 @@ export function FormBuilder({
           {busy ? <AssistantRow building /> : null}
           {error ? (
             <div className="ml-8 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
-              Something went wrong. Check your Gemini key and try again.
+              Something went wrong. Check your AI API key and try again.
             </div>
           ) : null}
           <div ref={endRef} />
@@ -1050,10 +1085,24 @@ function SaveStatus({ state }: { state: SaveState }) {
   );
 }
 
-function UserBubble({ message }: { message: ChatMessage }) {
+function UserBubble({
+  message,
+  viewerId,
+}: {
+  message: ChatMessage;
+  viewerId?: string;
+}) {
+  // The thread is shared, so a teammate's turn is labelled with their name.
+  // Your own turns stay unlabelled — in the common solo case the chat should
+  // look exactly as it did before.
+  const author =
+    message.authorId && message.authorId !== viewerId ? message.authorName : null;
   return (
-    <div className="flex justify-end">
-      <div className="max-w-[88%] rounded-2xl rounded-br-md bg-foreground px-3.5 py-2 text-sm text-background">
+    <div className="flex flex-col items-end gap-1">
+      {author ? (
+        <span className="pr-1 text-xs text-muted-foreground">{author}</span>
+      ) : null}
+      <div className="max-w-[88%] rounded-md rounded-br-sm bg-foreground px-3.5 py-2 text-sm text-background">
         {message.image ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img

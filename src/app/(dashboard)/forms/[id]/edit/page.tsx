@@ -1,7 +1,8 @@
 import type { Metadata } from "next"
 import { notFound } from "next/navigation"
-import { getDefaultWorkspace } from "@/lib/auth/session"
+import { getDefaultWorkspace, getRequiredUser } from "@/lib/auth/session"
 import { getFormForEdit, getFormSettings } from "@/lib/data/forms"
+import { getFormChat } from "@/lib/data/form-chat"
 import { getActiveDomains } from "@/lib/data/domains"
 import { getWorkspaceFolders } from "@/lib/data/folders"
 import { FormBuilder } from "@/components/builder/form-builder"
@@ -14,13 +15,15 @@ export default async function EditFormPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
-  const workspace = await getDefaultWorkspace()
+  // Both resolve from the same request-cached session query — no extra trip.
+  const [workspace, viewer] = await Promise.all([getDefaultWorkspace(), getRequiredUser()])
   if (!workspace) notFound()
-  const [data, settings, domains, folders] = await Promise.all([
+  const [data, settings, domains, folders, chat] = await Promise.all([
     getFormForEdit(id),
     getFormSettings(id, workspace.id),
     getActiveDomains(workspace.id),
     getWorkspaceFolders(workspace.id),
+    getFormChat(id),
   ])
   if (!data) notFound()
 
@@ -40,6 +43,8 @@ export default async function EditFormPage({
       domains={domains}
       folders={folders}
       initialSettings={settings}
+      initialChat={chat}
+      viewerId={viewer.id}
     />
   )
 }

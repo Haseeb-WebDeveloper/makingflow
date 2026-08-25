@@ -4,7 +4,17 @@ import { useEffect, useRef, type ChangeEvent } from "react"
 import { SVGIcon } from "@/components/ui/svg-icon"
 import { cn } from "@/lib/utils"
 
-export type ComposerImage = { url: string; name: string }
+export type ComposerImage = {
+  /** Local data URL — drives the preview and the model call. */
+  url: string
+  name: string
+  /**
+   * Cloudinary URL of the same image, once uploaded. This is what gets stored
+   * on the chat message: the data URL can be megabytes and must never reach the
+   * database. Undefined while the upload is still in flight or if it failed.
+   */
+  hostedUrl?: string
+}
 
 /**
  * The AI composer — used for the first prompt and the in-conversation edit box,
@@ -69,7 +79,7 @@ export function Composer({
   return (
     <div
       className={cn(
-        "rounded-2xl bg-background p-3 transition-colors",
+        "rounded-md bg-background p-3 transition-colors",
         animatedBorder
           ? "gradient-border [--gb-width:4px]"
           : "border border-border focus-within:border-foreground/30",

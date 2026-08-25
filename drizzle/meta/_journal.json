@@ -43,6 +43,13 @@
       "when": 1781534154629,
       "tag": "0005_ambiguous_bromley",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1787652655338,
+      "tag": "0006_colossal_shotgun",
+      "breakpoints": true
     }
   ]
 }

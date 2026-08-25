@@ -108,6 +108,9 @@ export const fieldTypeEnum = pgEnum('field_type', [
   'page_break',
 ])
 
+// Author side of a builder AI conversation turn.
+export const chatRoleEnum = pgEnum('chat_role', ['user', 'assistant'])
+
 export const submissionStatusEnum = pgEnum('submission_status', [
   'partial', // respondent started, hasn't finished — basis for drop-off analytics
   'completed',
@@ -629,6 +632,45 @@ export const formTranslations = pgTable(
   (table) => [primaryKey({ columns: [table.formId, table.language] })],
 )
 
+// The builder's AI conversation for a form — ONE shared thread per form, not
+// one per person. Every workspace member editing the form sees the same history
+// (with author attribution), so the record of *why* a form looks the way it does
+// travels with the form rather than living in one person's browser.
+//
+// This is a durable log, not prompt state: the model is still given the
+// transcript as context per request (see src/app/api/ai/form/route.ts and
+// src/lib/actions/ai-edit.ts) — these rows are what survive a reload, a new
+// device, or a teammate opening the form.
+export const formChatMessages = pgTable(
+  'form_chat_messages',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    // Insertion order. NOT created_at: Postgres `now()` is transaction-scoped,
+    // so rows written in one transaction share a timestamp and would need a
+    // tiebreaker — and a random uuid tiebreaker orders them arbitrarily, which
+    // can put the answer before the question. A sequence is assigned per row and
+    // is monotonic regardless of clock skew, so the thread always reads back in
+    // the order it was written.
+    seq: bigserial('seq', { mode: 'number' }).notNull(),
+    formId: uuid('form_id')
+      .notNull()
+      .references(() => forms.id, { onDelete: 'cascade' }),
+    // Author of a user message; null for assistant turns, and null again if the
+    // author's account is later removed — the thread outlives the person.
+    userId: uuid('user_id').references(() => users.id, { onDelete: 'set null' }),
+    role: chatRoleEnum('role').notNull(),
+    text: text('text').notNull().default(''),
+    // Cloudinary secure_url of a reference screenshot attached to the turn. The
+    // data URL sent to the model is NOT stored — it would be megabytes per row.
+    imageUrl: text('image_url'),
+    ...timestamps,
+  },
+  (table) => [
+    // Read path is always "the whole thread for one form, in order".
+    index('form_chat_messages_form_seq_idx').on(table.formId, table.seq),
+  ],
+)
+
 // ---------------------------------------------------------------------------
 // Submissions
 // ---------------------------------------------------------------------------
@@ -919,6 +961,18 @@ export const formsRelations = relations(forms, ({ one, many }) => ({
   submissions: many(submissions),
   events: many(formEvents),
   integrations: many(formIntegrations),
+  chatMessages: many(formChatMessages),
+}))
+
+export const formChatMessagesRelations = relations(formChatMessages, ({ one }) => ({
+  form: one(forms, {
+    fields: [formChatMessages.formId],
+    references: [forms.id],
+  }),
+  author: one(users, {
+    fields: [formChatMessages.userId],
+    references: [users.id],
+  }),
 }))
 
 export const formFieldsRelations = relations(formFields, ({ one, many }) => ({
@@ -1012,6 +1066,7 @@ export type Folder = typeof folders.$inferSelect
 export type Form = typeof forms.$inferSelect
 export type FormField = typeof formFields.$inferSelect
 export type FormTranslation = typeof formTranslations.$inferSelect
+export type FormChatMessage = typeof formChatMessages.$inferSelect
 export type Submission = typeof submissions.$inferSelect
 export type Answer = typeof answers.$inferSelect
 export type FormEvent = typeof formEvents.$inferSelect
