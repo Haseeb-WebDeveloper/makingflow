@@ -157,14 +157,27 @@ export async function getFormInsights(formId: string): Promise<FormInsights | nu
       .where(completed)
       .orderBy(desc(submissions.createdAt)), // recent-first → samples are recent
 
-    // Answered fields on UNFINISHED (partial) drafts — the raw material for
-    // drop-off. Partials only ever store non-empty answers, so each row here is
-    // a question the respondent really reached before abandoning.
-    db
-      .select({ submissionId: answers.submissionId, fieldId: answers.fieldId })
-      .from(answers)
-      .innerJoin(submissions, eq(answers.submissionId, submissions.id))
-      .where(and(eq(submissions.formId, formId), eq(submissions.status, "partial"))),
+    // Drop-off: the FURTHEST question each unfinished draft reached — one row
+    // per abandoned draft, not one per answer.
+    //
+    // DISTINCT ON collapses this in the database. Fetching every partial answer
+    // and reducing in JS was unbounded: partials accumulate faster than
+    // completes (every abandoned fill leaves one) and nothing ever prunes them,
+    // so the transfer grew forever while the result stayed one row per draft.
+    // `not in (NON_ANSWER)` mirrors the `posById.has()` guard below, so a
+    // content block can never win the DISTINCT ON and drop a draft from the
+    // tally — the results are identical to the old JS reduction.
+    db.execute<{ submission_id: string; field_id: string }>(sql`
+      SELECT DISTINCT ON (a.submission_id) a.submission_id, a.field_id
+      FROM ${answers} a
+      JOIN ${submissions} s ON s.id = a.submission_id
+      JOIN ${formFields} ff ON ff.id = a.field_id
+      WHERE s.form_id = ${formId}
+        AND s.status = 'partial'
+        AND ff.deleted_at IS NULL
+        AND ff.type NOT IN ('heading', 'paragraph', 'image', 'embed', 'page_break')
+      ORDER BY a.submission_id, ff.position DESC
+    `),
   ])
 
   const submissionsCount = subCount[0]?.n ?? 0
@@ -201,30 +214,17 @@ export async function getFormInsights(formId: string): Promise<FormInsights | nu
   // Drop-off: for each unfinished draft, find the furthest question it answered
   // (highest position among answerable fields) — that's where the respondent
   // stopped. Tally how many stopped at each question; percent is of all drafts.
+  // One row per abandoned draft, already reduced to its furthest question by
+  // the DISTINCT ON above — this just tallies them.
   const posById = new Map(answerable.map((r) => [r.id, r.position]))
-  const answeredBySub = new Map<string, string[]>()
-  for (const r of partialAnswerRows) {
-    if (!r.fieldId || !posById.has(r.fieldId)) continue
-    const arr = answeredBySub.get(r.submissionId)
-    if (arr) arr.push(r.fieldId)
-    else answeredBySub.set(r.submissionId, [r.fieldId])
-  }
   const stoppedAt = new Map<string, number>()
   let abandoned = 0
-  for (const fieldIds of answeredBySub.values()) {
-    let lastId: string | null = null
-    let lastPos = -Infinity
-    for (const fid of fieldIds) {
-      const p = posById.get(fid)!
-      if (p > lastPos) {
-        lastPos = p
-        lastId = fid
-      }
-    }
-    if (lastId) {
-      stoppedAt.set(lastId, (stoppedAt.get(lastId) ?? 0) + 1)
-      abandoned++
-    }
+  for (const r of partialAnswerRows) {
+    // Guards against a field that is soft-deleted or otherwise absent from the
+    // answerable set between the two queries.
+    if (!r.field_id || !posById.has(r.field_id)) continue
+    stoppedAt.set(r.field_id, (stoppedAt.get(r.field_id) ?? 0) + 1)
+    abandoned++
   }
   const dropOffFields: DropOffField[] = answerable.map((f) => {
     const count = stoppedAt.get(f.id) ?? 0
