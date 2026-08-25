@@ -12,18 +12,9 @@ import {
   vercelGetDomainStatus,
   vercelRemoveDomain,
 } from "@/lib/domains/vercel"
+import { normalizeHost } from "@/lib/domains/host"
 
 type Result = { success: true } | { success: false; error: string }
-
-/** Strip scheme/path/port/whitespace and lowercase — accept what users paste. */
-function normalizeDomain(input: string): string {
-  let d = input.trim().toLowerCase()
-  d = d.replace(/^https?:\/\//, "")
-  d = d.split("/")[0] // drop any path
-  d = d.split(":")[0] // drop any port
-  d = d.replace(/\.$/, "") // drop trailing dot
-  return d
-}
 
 const HOSTNAME_RE = /^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/
 
@@ -45,7 +36,7 @@ export async function addCustomDomain(rawDomain: string): Promise<Result> {
     return { success: false, error: "Custom domains aren't configured on this deployment yet." }
   }
 
-  const domain = normalizeDomain(rawDomain)
+  const domain = normalizeHost(rawDomain)
   if (!domain) return { success: false, error: "Enter a domain." }
   if (!isValidSubdomain(domain)) {
     return {
@@ -54,7 +45,7 @@ export async function addCustomDomain(rawDomain: string): Promise<Result> {
     }
   }
 
-  const rootDomain = process.env.NEXT_PUBLIC_ROOT_DOMAIN?.toLowerCase()
+  const rootDomain = normalizeHost(process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? "")
   if (rootDomain && (domain === rootDomain || domain.endsWith(`.${rootDomain}`))) {
     return { success: false, error: "That domain belongs to MakingFlow." }
   }

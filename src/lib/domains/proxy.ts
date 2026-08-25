@@ -1,5 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server"
 
+import { normalizeHost } from "./host"
+
 /**
  * Custom-domain routing for proxy.ts. EDGE-SAFE: pure string logic, no DB, no
  * `server-only` import (middleware runs on the Edge runtime). The domain→form
@@ -13,19 +15,15 @@ import { NextResponse, type NextRequest } from "next/server"
 const ASSET_RE =
   /\.(png|jpg|jpeg|gif|webp|avif|svg|ico|css|js|woff2?|json|txt|xml|webmanifest)$/
 
-function stripPort(host: string): string {
-  return host.split(":")[0].toLowerCase()
-}
-
 /** Is this host one of OUR hosts (app/marketing/preview/local) vs a customer's? */
 function isPrimaryHost(host: string): boolean {
-  const h = stripPort(host)
+  const h = normalizeHost(host)
   if (h === "localhost" || h === "127.0.0.1") return true
   if (h.endsWith(".vercel.app")) return true // preview deployments
 
   const root = process.env.NEXT_PUBLIC_ROOT_DOMAIN
   if (!root) return true // feature off → treat everything as primary
-  const r = stripPort(root)
+  const r = normalizeHost(root)
   return h === r || h.endsWith(`.${r}`)
 }
 
@@ -51,6 +49,6 @@ export function rewriteCustomDomain(request: NextRequest): NextResponse | null {
   }
 
   const url = request.nextUrl.clone()
-  url.pathname = `/sites/${stripPort(host)}${pathname}`
+  url.pathname = `/sites/${normalizeHost(host)}${pathname}`
   return NextResponse.rewrite(url)
 }
