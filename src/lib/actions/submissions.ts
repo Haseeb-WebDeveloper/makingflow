@@ -23,7 +23,7 @@ import { syncSubmissionToNotion, deleteSubmissionFromNotion } from "@/lib/integr
 import { destroyAssets, resourceTypeFromMime } from "@/lib/cloudinary/delete"
 import { processSubmission, intelligenceEnabled } from "@/lib/ai/submission-intelligence"
 import { getDefaultWorkspace } from "@/lib/auth/session"
-import { NON_ANSWER_TYPES, isEmpty } from "@/lib/builder/logic"
+import { NON_ANSWER_TYPES, isEmpty, isFieldVisible } from "@/lib/builder/logic"
 
 // Server-side submit guards (the client validates too, but a crafted POST skips
 // it — never store unbounded or malformed data).
@@ -196,11 +196,27 @@ export async function submitForm(input: {
     }
   }
 
-  // Enforce required.
+  // Enforce required — but ONLY for fields the respondent could actually see.
+  //
+  // A field hidden by its conditional logic is never sent: both runtimes build
+  // the payload with `isFieldVisible` (form-runtime.tsx, conversational-
+  // runtime.tsx). Enforcing `required` across every field regardless of logic
+  // therefore rejected the submission for a question that was never on screen —
+  // e.g. a required "Pet's name" shown only when "Do you have a pet?" is Yes
+  // made the form permanently unsubmittable for anyone answering No, with no UI
+  // path to satisfy it.
+  //
+  // Visibility is evaluated against the accepted answers, which is the same
+  // input the client used, so the two agree. Omitting a trigger answer can only
+  // hide a dependent field — it can't smuggle a value past validation, and a
+  // required trigger is still enforced on its own.
+  const answeredValues: Record<string, AnswerValue | undefined> = {}
+  for (const a of accepted) answeredValues[a.fieldId] = a.value
+
   for (const f of fields) {
-    if (f.required && !NON_ANSWER_TYPES.has(f.type) && !providedIds.has(f.id)) {
-      return { success: false, error: `Please answer: ${f.label || "a required question"}` }
-    }
+    if (!f.required || NON_ANSWER_TYPES.has(f.type) || providedIds.has(f.id)) continue
+    if (!isFieldVisible(f.logic ?? undefined, answeredValues)) continue
+    return { success: false, error: `Please answer: ${f.label || "a required question"}` }
   }
 
   if (form.submissionLimit != null) {
