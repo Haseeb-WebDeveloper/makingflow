@@ -711,8 +711,25 @@ export const submissions = pgTable(
   },
   (table) => [
     index('submissions_form_created_idx').on(table.formId, table.createdAt),
-    index('submissions_form_status_idx').on(table.formId, table.status),
+    // The responses list filters (form_id, status) and orders by created_at.
+    // Neither of the single-purpose indexes served both, so the planner filtered
+    // status row-by-row — degrading as abandoned fills accumulate partials.
+    // This supersedes the old (form_id, status) index, which was a strict
+    // prefix of it; carrying both would only add write cost on the hottest
+    // -insert table in the schema.
+    index('submissions_form_status_created_idx').on(
+      table.formId,
+      table.status,
+      table.createdAt,
+    ),
     index('submissions_workspace_idx').on(table.workspaceId),
+    // Workspace analytics filter (workspace_id, status) and bound by date on
+    // every dashboard load.
+    index('submissions_workspace_status_created_idx').on(
+      table.workspaceId,
+      table.status,
+      table.createdAt,
+    ),
     index('submissions_form_respondent_idx').on(table.formId, table.respondentKey),
   ],
 )
@@ -801,7 +818,14 @@ export const formIntegrations = pgTable(
     config: jsonb('config').$type<IntegrationConfig>().notNull(),
     ...timestamps,
   },
-  (table) => [index('form_integrations_form_idx').on(table.formId)],
+  (table) => [
+    index('form_integrations_form_idx').on(table.formId),
+    // Workspace-wide reads (the /integrations page, disconnectGoogle,
+    // disconnectNotion) filter on workspace_id alone. Without this they are
+    // sequential scans whose cost scales with EVERY tenant's rows, not the
+    // caller's.
+    index('form_integrations_workspace_idx').on(table.workspaceId),
+  ],
 )
 
 // ---------------------------------------------------------------------------
@@ -833,6 +857,10 @@ export const uploads = pgTable(
   (table) => [
     index('uploads_workspace_idx').on(table.workspaceId),
     index('uploads_submission_idx').on(table.submissionId),
+    // deleteForm collects a form's assets by form_id, and the ON DELETE SET
+    // NULL back-reference makes Postgres find these rows on every form delete.
+    // Unindexed, both scan the whole cross-tenant uploads table.
+    index('uploads_form_idx').on(table.formId),
   ],
 )
 
