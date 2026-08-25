@@ -345,13 +345,24 @@ export function ConversationalRuntime({ form }: { form: PublicForm }) {
     }))
 
     if (partialTimer.current) clearTimeout(partialTimer.current)
-    const res = await submitForm({
-      publicId: form.publicId,
-      answers: [...fieldAnswers, ...followUpAnswers],
-      meta: collectClientMeta(),
-      submissionId: submissionIdRef.current,
-      language: submissionLangRef.current,
-    })
+    // The action handles its own errors, but the CALL rejects on transport
+    // failure (offline, dropped tunnel, throttled mobile tab). Unhandled, that
+    // rejection leaves status stuck on "submitting" — "Recording your response…"
+    // forever, with the whole conversation unsent.
+    let res: Awaited<ReturnType<typeof submitForm>>
+    try {
+      res = await submitForm({
+        publicId: form.publicId,
+        answers: [...fieldAnswers, ...followUpAnswers],
+        meta: collectClientMeta(),
+        submissionId: submissionIdRef.current,
+        language: submissionLangRef.current,
+      })
+    } catch {
+      setError("We couldn't reach the server. Check your connection and try again.")
+      setStatus("ready")
+      return
+    }
     if (!res.success) {
       setError(res.error)
       setStatus("ready")
@@ -470,7 +481,28 @@ export function ConversationalRuntime({ form }: { form: PublicForm }) {
           </div>
         ) : null}
 
-        {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
+        {error ? (
+          <div role="alert" className="space-y-2">
+            <p className="text-sm text-destructive">{error}</p>
+            {/* A failed submit happens at expect.kind === "done", where the
+                composer is hidden — without this the respondent is stranded
+                with an error and no control at all, and everything since the
+                last partial save is lost. The answers are still in memory, so
+                retrying just re-runs finish(). */}
+            {expect?.kind === "done" && status === "ready" ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setError(null)
+                  void finish()
+                }}
+                className="rounded-md border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                Try again
+              </button>
+            ) : null}
+          </div>
+        ) : null}
         {status === "submitting" ? (
           <p className="text-center text-xs text-muted-foreground">Recording your response…</p>
         ) : null}

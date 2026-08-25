@@ -301,12 +301,25 @@ export function FormRuntime({
       .filter((f) => isFieldVisible(f.logic, values) && !isEmpty(values[f.id]))
       .map((f) => ({ fieldId: f.id, value: values[f.id]! }));
 
-    const res = await submitForm({
-      publicId: form.publicId,
-      answers: payload,
-      meta: collectClientMeta(),
-      submissionId: submissionIdRef.current, // promote the draft if we have one
-    });
+    // The action returns {success:false} for anything it can handle, but the
+    // CALL itself rejects on transport failure — offline, dropped tunnel, an
+    // edge 502, a mobile tab throttled mid-flight. Without this catch the
+    // rejection escapes (error.tsx does not catch rejections from event
+    // handlers), `setSubmitting(false)` never runs, and the button sits
+    // disabled reading "Submitting…" forever with the answers unsent.
+    let res: Awaited<ReturnType<typeof submitForm>>;
+    try {
+      res = await submitForm({
+        publicId: form.publicId,
+        answers: payload,
+        meta: collectClientMeta(),
+        submissionId: submissionIdRef.current, // promote the draft if we have one
+      });
+    } catch {
+      setSubmitting(false);
+      setError("We couldn't reach the server. Check your connection and try again.");
+      return; // the draft and resume token survive, so Submit can be retried
+    }
     setSubmitting(false);
     if (!res.success) {
       setError(res.error);
