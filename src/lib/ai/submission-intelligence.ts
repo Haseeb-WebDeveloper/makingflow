@@ -5,7 +5,7 @@ import { z } from "zod"
 import { eq } from "drizzle-orm"
 import { db } from "@/lib/db"
 import { answers, forms, submissions, type AnswerValue } from "@/lib/db/schema"
-import { geminiModel, NO_THINKING } from "@/lib/ai/provider"
+import { aiModel, isAiConfigured } from "@/lib/ai/provider"
 import { incrementAiCalls } from "@/lib/usage/meter"
 
 /**
@@ -47,14 +47,13 @@ function buildTranscript(rows: { question: string; value: AnswerValue }[]): stri
 async function summarizeSubmission(transcript: string, formTitle: string): Promise<string | null> {
   try {
     const { object } = await generateObject({
-      model: geminiModel,
+      model: aiModel,
       schema: z.object({ summary: z.string() }),
       system:
         "You write a concise summary of a single form response for the form's owner. " +
         "2-3 sentences, neutral and factual, highlighting the most useful points. " +
         "No preamble, no markdown, no bullet lists — just the summary text.",
       prompt: `Form: "${formTitle}"\n\nResponse:\n${transcript}\n\nSummarize this response.`,
-      providerOptions: NO_THINKING,
     })
     return object.summary.trim() || null
   } catch (err) {
@@ -70,7 +69,7 @@ async function screenSubmission(
 ): Promise<{ score: number; reason: string } | null> {
   try {
     const { object } = await generateObject({
-      model: geminiModel,
+      model: aiModel,
       schema: z.object({
         score: z.number().int().min(0).max(100),
         reason: z.string(),
@@ -80,7 +79,6 @@ async function screenSubmission(
         "Return a fit score from 0 (poor fit) to 100 (excellent fit) and one concise " +
         "sentence explaining the score. Judge only against the stated criteria.",
       prompt: `Screening criteria:\n${criteria}\n\nForm: "${formTitle}"\n\nResponse:\n${transcript}\n\nScore this response against the criteria.`,
-      providerOptions: NO_THINKING,
     })
     // Clamp defensively — the model is instructed to stay in range, but never
     // persist an out-of-range score.
@@ -101,7 +99,7 @@ export async function processSubmission(
   submissionId: string,
 ): Promise<{ aiSummary?: string; aiScore?: number; aiScreenReason?: string } | null> {
   if (!submissionId) return null
-  if (!process.env.GEMINI_API_KEY) return null // graceful: AI unavailable
+  if (!isAiConfigured()) return null // graceful: AI unavailable
 
   try {
     const [sub] = await db

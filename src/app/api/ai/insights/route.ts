@@ -1,5 +1,5 @@
 import { streamText, type ModelMessage } from "ai"
-import { geminiModel, NO_THINKING } from "@/lib/ai/provider"
+import { aiModel } from "@/lib/ai/provider"
 import { getOptionalUser, getDefaultWorkspace } from "@/lib/auth/session"
 import { getFormShell, getFormSubmissions } from "@/lib/data/forms"
 import type { AnswerValue } from "@/lib/db/schema"
@@ -82,10 +82,9 @@ export async function POST(request: Request) {
   })
 
   const result = streamText({
-    model: geminiModel,
+    model: aiModel,
     system,
     messages,
-    providerOptions: NO_THINKING,
   })
   return result.toTextStreamResponse()
 }

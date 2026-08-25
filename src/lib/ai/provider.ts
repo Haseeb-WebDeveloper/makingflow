@@ -1,45 +1,58 @@
-import { createGoogleGenerativeAI } from "@ai-sdk/google"
+import { createDeepSeek } from "@ai-sdk/deepseek"
 
 /**
- * Google Gemini provider for the Vercel AI SDK. Reads our own `GEMINI_API_KEY`
- * (the AI SDK would otherwise look for GOOGLE_GENERATIVE_AI_API_KEY). Server-only
- * — never import this from a Client Component.
+ * The app's AI provider, behind a thin module so swapping vendors is one file —
+ * the rest of the app imports `aiModel` / `aiFastModel` / `aiEditModel` and
+ * never names a vendor. Server-only: never import this from a Client Component.
  *
- * Behind a thin module so swapping providers later (e.g. Claude, if a key
- * appears) is one file — the rest of the app imports `geminiModel`/`google`.
+ * Currently DeepSeek (`DEEPSEEK_API_KEY`). Swapping to another vendor means
+ * changing the import + factory here and nothing else, as long as the new
+ * provider package targets the same `@ai-sdk/provider` major as the installed
+ * `ai` package — a mismatch fails at runtime with "Unsupported model version".
  */
-const google = createGoogleGenerativeAI({
-  apiKey: process.env.GEMINI_API_KEY,
+const deepseek = createDeepSeek({
+  apiKey: process.env.DEEPSEEK_API_KEY,
 })
 
-// Fast model is the right default for a live-streaming builder. Override via env
-// (e.g. a Pro model for higher-quality generation). Confirm IDs against the live
-// model list — the Gemini lineup moves.
-export const GEMINI_MODEL_ID = process.env.GEMINI_MODEL ?? "gemini-2.5-flash"
+// IMPORTANT: DeepSeek does not implement `response_format: json_schema` — the
+// API rejects it outright. The AI SDK falls back to injecting the schema into
+// the system message ("compatibility mode"), which works but is prompt-enforced
+// rather than constrained decoding, so malformed objects are possible. Every
+// generateObject/streamObject call site must stay tolerant of a schema miss.
 
-// Latency-critical, low-reasoning tasks (parsing a reply, phrasing one chat
-// line). flash-lite returns a first token in ~0.8s vs ~4.3s for 2.5-flash with
-// its default "thinking" pass — measured against the live API. flash-lite has
-// no thinking step, so nothing to disable.
-export const GEMINI_FAST_MODEL_ID =
-  process.env.GEMINI_FAST_MODEL ?? "gemini-2.5-flash-lite"
+// General-purpose default: form generation, insights, submission intelligence.
+export const AI_MODEL_ID = process.env.AI_MODEL ?? "deepseek-v4-flash"
 
-// Editing an existing form. Flash (with its thinking pass) is accurate enough
-// now that the op schema, placement semantics, and deterministic apply + verify
-// pass do the heavy lifting — and it's ~3x faster than Pro, which matters since
-// edits aren't streamed and users wait on them. Override to a Pro model via env
-// if you want maximum reasoning on complex restructures.
-export const GEMINI_EDIT_MODEL_ID = process.env.GEMINI_EDIT_MODEL ?? "gemini-2.5-flash"
+// Latency-critical, low-reasoning work (parsing a reply, phrasing one chat line
+// in the conversational runtime). DeepSeek has no lighter tier than flash, so
+// this is the same model for now — kept as its own export so a cheaper/faster
+// model can be slotted in without touching call sites.
+export const AI_FAST_MODEL_ID = process.env.AI_FAST_MODEL ?? "deepseek-v4-flash"
 
-export const geminiModel = google(GEMINI_MODEL_ID)
-export const geminiFastModel = google(GEMINI_FAST_MODEL_ID)
-export const geminiEditModel = google(GEMINI_EDIT_MODEL_ID)
+// Editing an existing form. Flash is accurate enough because the op schema,
+// placement semantics, and the deterministic apply + verify pass do the heavy
+// lifting. Set AI_EDIT_MODEL=deepseek-v4-pro for maximum reasoning on complex
+// restructures, at higher cost and latency.
+export const AI_EDIT_MODEL_ID = process.env.AI_EDIT_MODEL ?? "deepseek-v4-flash"
 
-// Turn OFF Gemini 2.5 "thinking" for calls that don't need chain-of-thought.
-// Default thinking adds ~3s before the first token (measured). Use on 2.5-flash
-// calls where the data is already supplied and the task is summarize/extract.
-export const NO_THINKING = {
-  google: { thinkingConfig: { thinkingBudget: 0 } },
-} as const
+// Multimodal. The default model is TEXT-ONLY and hard-errors with "This model
+// does not support image" on any image part, so the screenshot→form path must
+// select this model explicitly. Kept separate rather than made the default
+// because the vision tier is experimental and slower.
+export const AI_VISION_MODEL_ID =
+  process.env.AI_VISION_MODEL ?? "deepseek-v4-flash-vision-exp"
 
-export { google }
+export const aiModel = deepseek(AI_MODEL_ID)
+export const aiFastModel = deepseek(AI_FAST_MODEL_ID)
+export const aiEditModel = deepseek(AI_EDIT_MODEL_ID)
+export const aiVisionModel = deepseek(AI_VISION_MODEL_ID)
+
+/**
+ * AI is additive, never a hard dependency (see AGENTS.md). Call sites check this
+ * and degrade gracefully — forms must still render, submit and store data with
+ * no key configured. Keeping the env-var name here means swapping vendors never
+ * leaves a stale key check behind in a route.
+ */
+export function isAiConfigured(): boolean {
+  return Boolean(process.env.DEEPSEEK_API_KEY)
+}

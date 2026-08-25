@@ -1,5 +1,5 @@
 import { streamObject, type ModelMessage } from "ai"
-import { geminiModel } from "@/lib/ai/provider"
+import { aiModel, aiVisionModel } from "@/lib/ai/provider"
 import { aiFormSchema, FORM_BUILDER_SYSTEM, type AiForm } from "@/lib/ai/form-schema"
 import { getOptionalUser } from "@/lib/auth/session"
 
@@ -16,9 +16,9 @@ type Body = {
 }
 
 /**
- * Streams a form spec as Gemini generates it. The client (useObject) parses the
- * partial object live, so the preview builds in real time. Conversation-aware:
- * the transcript + current form give every edit full context.
+ * Streams a form spec as the model generates it. The client (useObject) parses
+ * the partial object live, so the preview builds in real time. Conversation-
+ * aware: the transcript + current form give every edit full context.
  */
 export async function POST(request: Request) {
   // Builders only — the proxy already requires a session cookie; this verifies it.
@@ -50,8 +50,10 @@ export async function POST(request: Request) {
     content: image ? [{ type: "text", text }, { type: "image", image }] : text,
   })
 
+  // The default model is text-only — a reference screenshot has to go to the
+  // multimodal one or the request hard-errors.
   const result = streamObject({
-    model: geminiModel,
+    model: image ? aiVisionModel : aiModel,
     schema: aiFormSchema,
     system: FORM_BUILDER_SYSTEM,
     messages,

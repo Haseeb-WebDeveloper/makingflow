@@ -20,6 +20,7 @@
     "test:db:down": "docker compose -f docker-compose.test.yml down -v"
   },
   "dependencies": {
+    "@ai-sdk/deepseek": "^2.0.59",
     "@ai-sdk/google": "^3.0.80",
     "@ai-sdk/react": "^3.0.203",
     "@base-ui/react": "^1.5.0",

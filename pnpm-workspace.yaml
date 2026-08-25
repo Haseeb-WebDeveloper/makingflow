@@ -7,3 +7,6 @@ allowBuilds:
 ignoredBuiltDependencies:
   - sharp
   - unrs-resolver
+minimumReleaseAgeExclude:
+  - '@ai-sdk/deepseek@2.0.59'
+  - '@ai-sdk/provider-utils@4.0.48'

@@ -1,7 +1,7 @@
 "use server"
 
 import { generateObject, type ModelMessage } from "ai"
-import { geminiEditModel, geminiModel } from "@/lib/ai/provider"
+import { aiEditModel, aiModel, isAiConfigured } from "@/lib/ai/provider"
 import {
   aiEditSchema,
   aiVerifySchema,
@@ -40,7 +40,7 @@ export async function aiEditForm(input: {
 }): Promise<AiEditSuccess | { error: string }> {
   const user = await getOptionalUser()
   if (!user) return { error: "unauthorized" }
-  if (!process.env.GEMINI_API_KEY) return { error: "ai_unavailable" }
+  if (!isAiConfigured()) return { error: "ai_unavailable" }
 
   const { context, refs } = toEditContext(input.current)
   const debug = process.env.NODE_ENV === "development"
@@ -70,7 +70,7 @@ export async function aiEditForm(input: {
   try {
     // ── Pass 1: plan + operations ────────────────────────────────────────
     const { object } = await generateObject({
-      model: geminiEditModel,
+      model: aiEditModel,
       schema: aiEditSchema,
       system: FORM_EDIT_SYSTEM,
       messages,
@@ -129,7 +129,7 @@ async function verifyAndRepair(
   try {
     const { context, refs } = toEditContext(form)
     const { object } = await generateObject({
-      model: geminiModel,
+      model: aiModel,
       schema: aiVerifySchema,
       system: FORM_VERIFY_SYSTEM,
       temperature: 0.15,

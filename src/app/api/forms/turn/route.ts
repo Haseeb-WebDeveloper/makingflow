@@ -2,7 +2,7 @@ import { after } from "next/server"
 import { generateObject, streamText, type ModelMessage } from "ai"
 import { type AnswerValue } from "@/lib/db/schema"
 import { loadFormDef, type PublicField } from "@/lib/data/public-form"
-import { geminiFastModel } from "@/lib/ai/provider"
+import { aiFastModel, isAiConfigured } from "@/lib/ai/provider"
 import { nextAnswerableField, isEmpty } from "@/lib/builder/logic"
 import {
   parseSchema,
@@ -62,7 +62,7 @@ function turnResponse(
   messages.push({ role: "user", content: buildTurnDirective(situation) })
 
   const result = streamText({
-    model: geminiFastModel,
+    model: aiFastModel,
     system: buildTurnSystem(persona, baseLanguage),
     messages,
   })
@@ -78,7 +78,7 @@ function turnResponse(
  * returns 503 so the client gracefully degrades to the classic runtime.
  */
 export async function POST(request: Request) {
-  if (!process.env.GEMINI_API_KEY) {
+  if (!isAiConfigured()) {
     return Response.json({ error: "ai_unavailable" }, { status: 503 })
   }
 
@@ -120,7 +120,7 @@ export async function POST(request: Request) {
           parsedValue = prev.pillValue
         } else if (typeof prev.reply === "string" && prev.reply.trim()) {
           const r = await generateObject({
-            model: geminiFastModel,
+            model: aiFastModel,
             schema: parseSchema,
             system: buildParseSystem(baseLanguage),
             prompt: buildParsePrompt(toPromptField(field), prev.reply),
