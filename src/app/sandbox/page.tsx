@@ -89,7 +89,7 @@ export default function SandboxPage() {
               Got it. And roughly how many people are on your team right now?
             </AssistantBubble>
             <div className="flex justify-end">
-              <div className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-md bg-foreground px-3.5 py-2 text-sm text-background">
+              <div className="max-w-[85%] whitespace-pre-wrap rounded-sm rounded-br bg-foreground px-3.5 py-2 text-sm text-background">
                 We are about twelve, growing to twenty by the end of the year.
               </div>
             </div>
@@ -189,7 +189,7 @@ function Section({
 function AssistantBubble({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex justify-start">
-      <div className="max-w-[90%] whitespace-pre-wrap rounded-2xl rounded-bl-md bg-muted px-3.5 py-2.5 text-sm text-foreground">
+      <div className="max-w-[90%] whitespace-pre-wrap rounded-sm rounded-bl bg-muted px-3.5 py-2.5 text-sm text-foreground">
         {children}
       </div>
     </div>

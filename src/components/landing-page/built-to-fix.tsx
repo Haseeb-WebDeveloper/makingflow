@@ -68,12 +68,12 @@ export function BuiltToFix() {
               {/* adaptive conversation snippet */}
               <div className="space-y-2 rounded-lg border border-border bg-background p-4">
                 <div className="flex justify-start">
-                  <span className="max-w-[85%] rounded-2xl rounded-bl-md bg-muted px-3 py-1.5 text-xs text-foreground">
+                  <span className="max-w-[85%] rounded-sm rounded-bl-md bg-muted px-3 py-1.5 text-xs text-foreground">
                     What could we improve?
                   </span>
                 </div>
                 <div className="flex justify-end">
-                  <span className="max-w-[85%] rounded-2xl rounded-br-md bg-foreground px-3 py-1.5 text-xs text-background">
+                  <span className="max-w-[85%]rounded-sm rounded-br bg-foreground px-3 py-1.5 text-xs text-background">
                     Faster onboarding for new hires.
                   </span>
                 </div>
