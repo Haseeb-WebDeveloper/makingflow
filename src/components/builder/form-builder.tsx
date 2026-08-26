@@ -25,6 +25,7 @@ import {
   matchSimpleEdit,
   newField,
   isBlankForm,
+  isRebuildRequest,
 } from "@/lib/builder/form-model";
 import { aiEditForm } from "@/lib/actions/ai-edit";
 import { useCreateForm } from "@/lib/forms/use-create-form";
@@ -178,6 +179,9 @@ export function FormBuilder({
     coverImageUrl: initialSettings?.coverImageUrl ?? undefined,
   });
   const themeSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // The attachment upload in flight, so send() can wait on it rather than
+  // handing the model a data URL it can't store.
+  const uploadRef = useRef<{ url: string; promise: Promise<string | null> } | null>(null);
   // Post-submit success page — same debounced settings lane as branding.
   const [successPage, setSuccessPage] = useState<SuccessPage>({
     title: initialSettings?.thankYouMessage ?? "",
@@ -348,6 +352,27 @@ export function FormBuilder({
     return out;
   }
 
+  function themeFromOps(ops: AiOperation[]): BuilderTheme | null {
+    let out: BuilderTheme | null = null;
+    for (const op of ops) {
+      if (op.op === "set_theme" && op.theme) out = { ...(out ?? {}), ...op.theme };
+    }
+    return out;
+  }
+
+  /** Apply an AI branding change through the SAME lane as the inline logo/banner
+   *  controls, so the two writers can't clobber each other. An empty string from
+   *  the model is a deliberate removal. */
+  function applyThemeFromEdit(changed: BuilderTheme) {
+    onThemeChange({
+      ...theme,
+      ...(changed.logoUrl !== undefined ? { logoUrl: changed.logoUrl || undefined } : {}),
+      ...(changed.coverImageUrl !== undefined
+        ? { coverImageUrl: changed.coverImageUrl || undefined }
+        : {}),
+    });
+  }
+
   // Persist an AI/fast-path settings change through the SAME lane the Settings
   // tab and the on-canvas success-page editor use (updateFormSettings), and
   // reflect it live in the success-page editor. Keeping one writer avoids the
@@ -369,6 +394,9 @@ export function FormBuilder({
     if (changed.submitButtonLabel !== undefined)
       patch.submitButtonLabel = changed.submitButtonLabel || null;
     if (changed.redirectUrl !== undefined) patch.redirectUrl = changed.redirectUrl || null;
+    if (changed.showProgressBar !== undefined) patch.showProgressBar = changed.showProgressBar;
+    if (changed.chooserStyle !== undefined) patch.chooserStyle = changed.chooserStyle;
+    if (changed.renderMode !== undefined) patch.renderMode = changed.renderMode;
     if (Object.keys(patch).length === 0) return;
     void updateFormSettings(id, patch).then((res) => {
       if (!res.success) showToast(res.error ?? "Couldn't update settings", { type: "error" });
@@ -590,13 +618,22 @@ export function FormBuilder({
     persistMessage("assistant", text);
   }
 
-  function send() {
+  /** The attachment's hosted URL, waiting on the upload if it's still running. */
+  async function hostedUrlFor(img: ComposerImage | null): Promise<string | null> {
+    if (!img) return null;
+    if (img.hostedUrl) return img.hostedUrl;
+    const pending = uploadRef.current;
+    return pending && pending.url === img.url ? await pending.promise : null;
+  }
+
+  async function send() {
     if (busy) return;
     const text = draft.trim();
     if (!text && !image) return;
 
     const transcript = chat.map((m) => ({ role: m.role, text: m.text }));
     const userText = text || "Recreate this form from the reference image.";
+    const attachment = image;
     setChat((prev) => [
       ...prev,
       {
@@ -604,24 +641,30 @@ export function FormBuilder({
         role: "user",
         text: userText,
         // Preview uses the local data URL; history uses the uploaded copy.
-        image: image?.hostedUrl ?? image?.url,
+        image: attachment?.hostedUrl ?? attachment?.url,
         authorId: viewerId ?? null,
       },
     ]);
-    persistMessage("user", userText, image?.hostedUrl ?? null);
     setDraft("");
     setImage(null);
 
+    // The upload starts on attach and is normally done by the time the prompt
+    // is typed, so this usually resolves instantly.
+    const hostedUrl = await hostedUrlFor(attachment);
+    persistMessage("user", userText, hostedUrl);
+
     // Editing an existing form = operation-based edit (deterministic, can't drop
-    // unrelated fields/options). A first build or an image (re)build still uses
-    // the streaming full-form generation so the canvas builds in live.
-    if (!firstBuild && !image && text) {
-      void runEdit(text, transcript);
+    // unrelated fields/options). Only a FIRST build, or an explicit ask to
+    // rebuild from the picture, goes to streaming full-form generation — an
+    // attachment alone used to force it, so "use this as the logo" rebuilt the
+    // whole form from a picture of a logo.
+    if (!firstBuild && text && !isRebuildRequest(text)) {
+      void runEdit(text, transcript, hostedUrl ?? undefined);
       return;
     }
     submit({
       instruction: text,
-      image: image?.url,
+      image: attachment?.url,
       current: currentForm ? editorToAi(currentForm) : undefined,
       transcript,
     });
@@ -633,6 +676,7 @@ export function FormBuilder({
   async function runEdit(
     instruction: string,
     transcript: { role: "user" | "assistant"; text: string }[],
+    imageUrl?: string,
   ) {
     const base = currentFormRef.current;
     if (!base) return;
@@ -648,11 +692,24 @@ export function FormBuilder({
         setCurrentForm(updated);
         const changed = settingsFromOps(simple.operations);
         if (changed) applySettingsFromEdit(changed);
+        const branding = themeFromOps(simple.operations);
+        if (branding) applyThemeFromEdit(branding);
         pushAssistant(simple.summary);
         scheduleAutosave(updated);
         return;
       }
-      const result = await aiEditForm({ instruction, current: base, transcript });
+      const result = await aiEditForm({
+        instruction,
+        current: base,
+        transcript,
+        imageUrl,
+        // The share link is computed here and nowhere else — without it the
+        // model has nothing to answer "what's the form link?" with but a guess.
+        facts: {
+          shareUrl: publicId ? shareUrl : null,
+          status: published ? "published" : initialStatus ?? "draft",
+        },
+      });
       if ("error" in result) {
         pushAssistant("Sorry, I couldn't apply that change. Please try rephrasing it.");
         return;
@@ -664,12 +721,21 @@ export function FormBuilder({
       // the verify-and-repair pass, and newly-added fields keep the ids the
       // repair pass targeted (re-applying here would mint different ids). Fall
       // back to a local apply only if the server didn't return a form.
+      // A question ("what's the form link?") is answered with zero operations.
+      // Nothing changed, so don't touch the form or kick off a save that would
+      // flash "Saving…" over an unmodified canvas.
+      if (result.operations.length === 0) {
+        pushAssistant(result.summary?.trim() || "I don't have an answer for that.");
+        return;
+      }
       const updated =
         result.form ?? applyOperations(currentFormRef.current ?? base, result.operations);
       currentFormRef.current = updated;
       setCurrentForm(updated);
       const changed = settingsFromOps(result.operations);
       if (changed) applySettingsFromEdit(changed);
+      const branding = themeFromOps(result.operations);
+      if (branding) applyThemeFromEdit(branding);
       const summary = result.summary?.trim();
       pushAssistant(summary || "Done. Updated the form.");
       scheduleAutosave(updated);
@@ -712,17 +778,24 @@ export function FormBuilder({
     // here rather than on send keeps send latency unchanged — by the time the
     // user has typed their prompt the URL is normally ready.
     setImage({ url, name: file.name });
-    try {
-      const { secureUrl } = await uploadToCloudinary(file, "formAssets");
-      setImage((prev) =>
-        // Guard against the user having removed or replaced it mid-upload.
-        prev && prev.url === url ? { ...prev, hostedUrl: secureUrl } : prev
-      );
-    } catch {
-      // Non-fatal: the AI still gets the image, it just won't appear in the
-      // saved history. Silent — the user asked to attach, not to upload.
-      console.warn("[form-builder] reference image upload failed");
-    }
+    const upload = uploadToCloudinary(file, "formAssets")
+      .then(({ secureUrl }) => {
+        setImage((prev) =>
+          // Guard against the user having removed or replaced it mid-upload.
+          prev && prev.url === url ? { ...prev, hostedUrl: secureUrl } : prev
+        );
+        return secureUrl;
+      })
+      .catch(() => {
+        // Non-fatal: the AI still gets the image, it just won't appear in the
+        // saved history. Silent — the user asked to attach, not to upload.
+        console.warn("[form-builder] reference image upload failed");
+        return null;
+      });
+    // Held so a fast sender can await it — the editor needs the hosted URL to
+    // set a logo, and a data URL is no use to it.
+    uploadRef.current = { url, promise: upload };
+    await upload;
   }
 
   // Start a blank form by hand — the no-AI path, so a form can always be built
@@ -751,7 +824,7 @@ export function FormBuilder({
           <Composer
             value={draft}
             onChange={setDraft}
-            onSubmit={send}
+            onSubmit={() => void send()}
             placeholder="Describe your form, or attach a screenshot to recreate (e.g. a job application with a portfolio link and availability)…"
             image={image}
             onRemoveImage={() => setImage(null)}
@@ -814,7 +887,7 @@ export function FormBuilder({
           <Composer
             value={draft}
             onChange={setDraft}
-            onSubmit={send}
+            onSubmit={() => void send()}
             placeholder="Ask for changes (e.g. add a phone number, make email required)…"
             image={image}
             onRemoveImage={() => setImage(null)}

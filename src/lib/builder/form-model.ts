@@ -21,14 +21,42 @@ export type EditorField = {
   config?: FieldConfig
 }
 
-/** Post-submit / response settings the AI (and the fast path) can edit inline —
- *  the same values otherwise set in the Settings tab. A subset of the full
- *  FormSettings: only the text knobs that make sense to change by instruction. */
+/** Form settings the AI (and the fast path) can edit inline — the same values
+ *  otherwise set in the Settings tab. A subset of the full FormSettings: the
+ *  knobs that make sense to change by instruction. `captchaEnabled` is
+ *  deliberately absent — spam protection shouldn't turn off on a misread. */
 export type EditorSettings = {
   thankYouMessage?: string
   successBody?: string
   redirectUrl?: string
   submitButtonLabel?: string
+  showProgressBar?: boolean
+  chooserStyle?: "list" | "cards"
+  renderMode?: "classic" | "conversational"
+}
+
+/** The branding the AI can set. Mirrors the two FormTheme keys that are
+ *  actually rendered (see field-control.tsx) — the colour/font/radius keys on
+ *  FormTheme have no consumer anywhere, so there is nothing to point them at. */
+export type EditorTheme = {
+  logoUrl?: string
+  coverImageUrl?: string
+}
+
+/**
+ * Read-only facts about the form that aren't part of its content, supplied so
+ * the model can ANSWER questions about it instead of guessing.
+ *
+ * The share link is the motivating case: asked "what's the form link?", a model
+ * given no link and told to always report something specific will invent a
+ * plausible one, and a fabricated URL is worse than "I don't know" — it gets
+ * pasted to a respondent. These are never editable; edits go through the
+ * publish dialog.
+ */
+export type FormFacts = {
+  /** The live public link. Null when the form has never been published. */
+  shareUrl?: string | null
+  status?: string
 }
 
 export type EditorForm = {
@@ -36,6 +64,8 @@ export type EditorForm = {
   fields: EditorField[]
   /** Present when loaded for editing; carried through AI/fast-path edits + save. */
   settings?: EditorSettings
+  /** Logo + banner. Carried through edits the same way settings are. */
+  theme?: EditorTheme
 }
 
 export const genId = () => crypto.randomUUID()
@@ -169,6 +199,7 @@ export function aiToEditor(ai: AiForm): EditorForm {
     placeholder: f.placeholder,
     required: f.required ?? false,
     options: f.options?.map((label) => ({ id: genId(), label })),
+    config: f.config ? { ...f.config } : undefined,
   }))
   // Second pass: now that every field has an id, resolve logic by label.
   const labelToId = labelIdMap(fields)
@@ -224,8 +255,10 @@ export function mergeAiIntoEditor(ai: AiForm, prev: EditorForm | null): EditorFo
             CHOICE_TYPES.has(af.type)
             ? match?.options
             : undefined,
-      // The AI spec carries no config — keep the matched field's (heading level, …).
-      config: match?.config,
+      // Preserve-on-omission, as above: the model now CAN send config, so merge
+      // what it sent over the matched field's rather than replacing outright —
+      // sending ratingMax must not drop the ratingIcon beside it.
+      config: af.config ? { ...(match?.config ?? {}), ...af.config } : match?.config,
     }
     return { field, af, match }
   })
@@ -238,8 +271,13 @@ export function mergeAiIntoEditor(ai: AiForm, prev: EditorForm | null): EditorFo
     b.field.logic = b.af.logic ? compileAiLogic(b.af.logic, labelToId) : b.match?.logic
   }
 
-  // The AI spec carries no settings — keep whatever the form already had.
-  return { title: ai.title ?? prev.title ?? "Untitled form", fields, settings: prev.settings }
+  // The AI spec carries no settings or branding — keep whatever the form had.
+  return {
+    title: ai.title ?? prev.title ?? "Untitled form",
+    fields,
+    settings: prev.settings,
+    theme: prev.theme,
+  }
 }
 
 export function editorToAi(form: EditorForm): AiForm {
@@ -253,6 +291,9 @@ export function editorToAi(form: EditorForm): AiForm {
       placeholder: f.placeholder,
       required: f.required,
       options: f.options?.map((o) => o.label),
+      // Surface config too (rating scale, image source, heading level) so a
+      // regeneration can preserve or change it instead of flattening it.
+      config: f.config,
       // Surface existing logic to the AI by label, so it keeps/edits it sanely.
       logic: f.logic
         ? {
@@ -285,7 +326,7 @@ export function editorToAi(form: EditorForm): AiForm {
 // Returns the compact form `context` the model edits, plus `refs`: a map from
 // each short ref (f1, f1o2, …) back to the real field/option id for translating
 // the model's operations afterwards (see resolveOpRefs).
-export function toEditContext(form: EditorForm) {
+export function toEditContext(form: EditorForm, facts?: FormFacts) {
   const idToLabel = new Map(form.fields.map((f) => [f.id, f.label]))
   const refs: Record<string, string> = {}
 
@@ -311,6 +352,11 @@ export function toEditContext(form: EditorForm) {
       // (update_field set.placeholder); without this an edit to it is blind.
       ...(f.placeholder ? { placeholder: f.placeholder } : {}),
       required: f.required,
+      // Type-specific knobs (rating scale, file limits, heading size, image
+      // source). Without these an edit to them is blind — the model can't say
+      // what the rating is out of, let alone change it relative to now. Omitted
+      // when empty so the context stays small.
+      ...(f.config && Object.keys(f.config).length > 0 ? { config: f.config } : {}),
       ...(options ? { options } : {}),
       ...(f.logic
         ? {
@@ -343,9 +389,54 @@ export function toEditContext(form: EditorForm) {
     submitButtonLabel: form.settings?.submitButtonLabel ?? "",
     redirectUrl: form.settings?.redirectUrl ?? "",
     successBody: form.settings?.successBody ?? "",
+    showProgressBar: form.settings?.showProgressBar ?? false,
+    chooserStyle: form.settings?.chooserStyle ?? "cards",
+    renderMode: form.settings?.renderMode ?? "classic",
   }
 
-  return { context: { title: form.title, settings, fields }, refs }
+  // Always present, so an empty value reads as "no logo yet" rather than being
+  // invisible — the model needs to know whether it's adding or replacing.
+  const theme = {
+    logoUrl: form.theme?.logoUrl ?? "",
+    coverImageUrl: form.theme?.coverImageUrl ?? "",
+  }
+
+  // Read-only. Named so it can't be mistaken for something update_settings
+  // writes, and always present so "not published yet" is legible rather than
+  // absent — an absent key is what invites a guess.
+  const about = {
+    status: facts?.status ?? "draft",
+    shareUrl: facts?.shareUrl ?? "",
+    fieldCount: form.fields.filter((f) => !NON_ANSWER_TYPES.has(f.type)).length,
+    totalBlocks: form.fields.length,
+  }
+
+  return { context: { title: form.title, about, settings, theme, fields }, refs }
+}
+
+/**
+ * Does this instruction ask to REBUILD the form from an attached image, rather
+ * than to use that image within the form?
+ *
+ * An attachment used to force full regeneration unconditionally, so "use this
+ * as the logo" would rebuild an entire form from a picture of a logo. Only an
+ * explicit rebuild should throw the existing form away; everything else is an
+ * edit that happens to have an image to hand.
+ */
+export function isRebuildRequest(text: string): boolean {
+  const t = text.toLowerCase()
+  // "as the logo" / "as a banner" is about placing the image, never rebuilding.
+  // Checked FIRST so it beats the verbs below: "make this the header image"
+  // contains "make this", which would otherwise read as a rebuild.
+  if (/\b(as|for|to be)\s+(the\s+|a\s+|our\s+|my\s+)?(logo|banner|cover|header image)\b/.test(t)) {
+    return false
+  }
+  return (
+    /\b(rebuild|recreate|re-create|replicate|reproduce)\b/.test(t) ||
+    /\bbuild\b[^.]*\bfrom (this|the) (image|screenshot|picture|photo|design|mockup)\b/.test(t) ||
+    /\b(make|create|build)\b[^.]*\b(this|that) (form|questionnaire|survey)\b/.test(t) ||
+    /\bcopy (this|the) (form|screenshot|design)\b/.test(t)
+  )
 }
 
 /** Translate an op's ref-bearing fields from short refs back to real ids; passes
@@ -394,6 +485,8 @@ export function applyOperations(form: EditorForm, ops: AiOperation[]): EditorFor
   let title = form.title
   // Carry settings through untouched unless an update_settings op changes them.
   let settings: EditorSettings | undefined = form.settings ? { ...form.settings } : undefined
+  // Same contract for branding: untouched unless a set_theme op changes it.
+  let theme: EditorTheme | undefined = form.theme ? { ...form.theme } : undefined
   // Deep-copy the parts we mutate (fields + their option arrays).
   const fields: EditorField[] = form.fields.map((f) => ({
     ...f,
@@ -443,6 +536,7 @@ export function applyOperations(form: EditorForm, ops: AiOperation[]): EditorFor
           placeholder: op.field.placeholder,
           required: op.field.required ?? false,
           options: op.field.options?.map((label) => ({ id: genId(), label })),
+          config: op.field.config ? { ...op.field.config } : undefined,
         }
         fields.splice(placeIndex(op), 0, ef)
         if (op.field.logic) ef.logic = compileAiLogic(op.field.logic, labelIdMap(fields))
@@ -481,6 +575,9 @@ export function applyOperations(form: EditorForm, ops: AiOperation[]): EditorFor
         if (set.description != null) f.description = set.description
         if (set.placeholder != null) f.placeholder = set.placeholder
         if (set.required != null) f.required = set.required
+        // MERGE config, never replace: "make it out of 10" sends only ratingMax
+        // and must not wipe the ratingIcon sitting beside it.
+        if (set.config) f.config = { ...(f.config ?? {}), ...set.config }
         if (set.type != null && set.type !== f.type) {
           f.type = set.type
           // Keep options only if the new type still uses them.
@@ -571,12 +668,25 @@ export function applyOperations(form: EditorForm, ops: AiOperation[]): EditorFor
         if (s.successBody != null) settings.successBody = s.successBody
         if (s.redirectUrl != null) settings.redirectUrl = s.redirectUrl
         if (s.submitButtonLabel != null) settings.submitButtonLabel = s.submitButtonLabel
+        if (s.showProgressBar != null) settings.showProgressBar = s.showProgressBar
+        if (s.chooserStyle != null) settings.chooserStyle = s.chooserStyle
+        if (s.renderMode != null) settings.renderMode = s.renderMode
+        break
+      }
+      case "set_theme": {
+        if (!op.theme) break
+        theme = { ...(theme ?? {}) }
+        // Only the keys the model sent change. An empty string is a deliberate
+        // removal — normalised to undefined so the asset is cleared at save.
+        if (op.theme.logoUrl != null) theme.logoUrl = op.theme.logoUrl.trim() || undefined
+        if (op.theme.coverImageUrl != null)
+          theme.coverImageUrl = op.theme.coverImageUrl.trim() || undefined
         break
       }
     }
   }
 
-  return { title, fields, settings }
+  return { title, fields, settings, theme }
 }
 
 // ── Deterministic fast path for trivial edits ─────────────────────────────

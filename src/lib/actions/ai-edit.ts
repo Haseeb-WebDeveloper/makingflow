@@ -14,6 +14,7 @@ import {
   toEditContext,
   resolveOpRefs,
   type EditorForm,
+  type FormFacts,
 } from "@/lib/builder/form-model"
 import { getOptionalUser } from "@/lib/auth/session"
 
@@ -37,12 +38,20 @@ export async function aiEditForm(input: {
   instruction: string
   current: EditorForm
   transcript?: { role: "user" | "assistant"; text: string }[]
+  /** Hosted URL of an image the user attached to THIS turn (Cloudinary). The
+   *  model cannot see the picture on this path and does not need to — it needs
+   *  a URL it can put in set_theme or config.imageUrl, and inventing one is
+   *  the only alternative. */
+  imageUrl?: string
+  /** Read-only facts (share link, publish status) so questions about the form
+   *  can be answered rather than guessed at. */
+  facts?: FormFacts
 }): Promise<AiEditSuccess | { error: string }> {
   const user = await getOptionalUser()
   if (!user) return { error: "unauthorized" }
   if (!isAiConfigured()) return { error: "ai_unavailable" }
 
-  const { context, refs } = toEditContext(input.current)
+  const { context, refs } = toEditContext(input.current, input.facts)
   const debug = process.env.NODE_ENV === "development"
 
   // Diagnostic: print the refs the model can target + the ops it returns.
@@ -60,9 +69,15 @@ export async function aiEditForm(input: {
   for (const turn of input.transcript ?? []) {
     if (turn?.text) messages.push({ role: turn.role, content: turn.text })
   }
+  // Stated as fact in the user turn rather than the system prompt: it is true
+  // of this turn only, and the model has to quote it back verbatim.
+  const attached = input.imageUrl
+    ? `\n\nI attached an image to this message. Its hosted URL is ${input.imageUrl} — use exactly that URL wherever I refer to "this image" (set_theme for a logo or banner, config.imageUrl for an image block).`
+    : ""
+
   messages.push({
     role: "user",
-    content: `${input.instruction.trim()}\n\nThe current form is:\n${JSON.stringify(
+    content: `${input.instruction.trim()}${attached}\n\nThe current form is:\n${JSON.stringify(
       context,
     )}\n\nReturn only the operations needed for my request; leave everything else untouched.`,
   })

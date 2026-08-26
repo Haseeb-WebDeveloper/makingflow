@@ -84,14 +84,23 @@ export async function getFormForEdit(id: string): Promise<EditableForm | null> {
       logic: f.logic ?? undefined,
       config: f.config ?? undefined,
     })),
-    // Post-submit settings the AI/fast-path can edit inline (thank-you message,
-    // success body, submit label, redirect). redirectUrl is a column; the rest
-    // live in the settings jsonb.
+    // Settings the AI/fast-path can edit inline. redirectUrl and renderMode are
+    // columns; the rest live in the settings jsonb. Surfaced here so the model
+    // can READ the current values, not just write new ones.
     settings: {
       thankYouMessage: row.form.settings?.thankYouMessage,
       successBody: row.form.settings?.successBody,
       submitButtonLabel: row.form.settings?.submitButtonLabel,
       redirectUrl: row.form.redirectUrl ?? undefined,
+      showProgressBar: row.form.settings?.showProgressBar,
+      chooserStyle: row.form.settings?.chooserStyle,
+      renderMode: row.form.renderMode,
+    },
+    // Branding. Only the two theme keys that actually render — the colour/font
+    // keys on FormTheme have no consumer anywhere.
+    theme: {
+      logoUrl: row.form.theme?.logoUrl,
+      coverImageUrl: row.form.theme?.coverImageUrl,
     },
   }
 

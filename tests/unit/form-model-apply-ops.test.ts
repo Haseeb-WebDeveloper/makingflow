@@ -4,6 +4,7 @@ import {
   matchSimpleEdit,
   toEditContext,
   resolveOpRefs,
+  isRebuildRequest,
   type EditorForm,
 } from "@/lib/builder/form-model"
 import type { AiOperation } from "@/lib/ai/form-schema"
@@ -497,5 +498,236 @@ describe("short refs (toEditContext + resolveOpRefs)", () => {
       refs,
     )
     expect(op.targets).toEqual(["f-name", "f-confirm"])
+  })
+})
+
+/**
+ * The builder AI could only reach fields, options, logic and four post-submit
+ * settings. Asked to "use this as the logo" it answered "I can't upload files
+ * directly" — truthfully: no operation wrote FormTheme, no operation wrote
+ * FieldConfig, and the attachment's hosted URL was dropped before the model saw
+ * it. These cover the operations added to close that.
+ */
+describe("set_theme", () => {
+  test("sets the logo without disturbing the banner", () => {
+    const form: EditorForm = { ...base(), theme: { coverImageUrl: "https://cdn/banner.png" } }
+    const out = applyOperations(form, [
+      { op: "set_theme", theme: { logoUrl: "https://cdn/logo.png" } },
+    ])
+    expect(out.theme).toEqual({
+      coverImageUrl: "https://cdn/banner.png",
+      logoUrl: "https://cdn/logo.png",
+    })
+  })
+
+  test("an empty string removes an asset", () => {
+    const form: EditorForm = {
+      ...base(),
+      theme: { logoUrl: "https://cdn/logo.png", coverImageUrl: "https://cdn/banner.png" },
+    }
+    const out = applyOperations(form, [{ op: "set_theme", theme: { coverImageUrl: "" } }])
+    expect(out.theme?.coverImageUrl).toBeUndefined()
+    expect(out.theme?.logoUrl).toBe("https://cdn/logo.png")
+  })
+
+  test("branding survives an unrelated edit", () => {
+    const form: EditorForm = { ...base(), theme: { logoUrl: "https://cdn/logo.png" } }
+    const out = applyOperations(form, [
+      { op: "update_field", target: "f-name", set: { label: "Name" } },
+    ])
+    expect(out.theme?.logoUrl).toBe("https://cdn/logo.png")
+  })
+})
+
+describe("field config", () => {
+  test("update_field MERGES config instead of replacing it", () => {
+    const form: EditorForm = {
+      ...base(),
+      fields: [
+        {
+          id: "f-rate",
+          type: "rating",
+          label: "How was it?",
+          required: false,
+          config: { ratingMax: 5, ratingIcon: "star" },
+        },
+      ],
+    }
+    // "make it out of 10" sends only ratingMax — the icon beside it must survive.
+    const out = applyOperations(form, [
+      { op: "update_field", target: "f-rate", set: { config: { ratingMax: 10 } } },
+    ])
+    expect(out.fields[0].config).toEqual({ ratingMax: 10, ratingIcon: "star" })
+  })
+
+  test("add_field carries config through", () => {
+    const out = apply({
+      op: "add_field",
+      field: { type: "heading", label: "Section two", config: { headingLevel: "h1" } },
+      placement: { mode: "top" },
+    })
+    expect(out.fields[0].config).toEqual({ headingLevel: "h1" })
+  })
+
+  test("an edit that touches nothing leaves config intact", () => {
+    const form: EditorForm = {
+      ...base(),
+      fields: [
+        {
+          id: "f-file",
+          type: "file_upload",
+          label: "CV",
+          required: true,
+          config: { allowedFileTypes: ["pdf"], maxFiles: 2 },
+        },
+      ],
+    }
+    const out = applyOperations(form, [
+      { op: "set_required", targets: ["f-file"], set: { required: false } },
+    ])
+    expect(out.fields[0].config).toEqual({ allowedFileTypes: ["pdf"], maxFiles: 2 })
+  })
+
+  test("the model can read current config back", () => {
+    const form: EditorForm = {
+      ...base(),
+      fields: [
+        {
+          id: "f-rate",
+          type: "rating",
+          label: "How was it?",
+          required: false,
+          config: { ratingMax: 5 },
+        },
+        { id: "f-plain", type: "short_text", label: "Name", required: false },
+      ],
+    }
+    const { context } = toEditContext(form)
+    expect(context.fields[0]).toMatchObject({ config: { ratingMax: 5 } })
+    // Omitted when empty, so the context stays small.
+    expect(context.fields[1]).not.toHaveProperty("config")
+  })
+})
+
+describe("update_settings — the newly reachable keys", () => {
+  test("applies progress bar, chooser style and render mode", () => {
+    const out = apply({
+      op: "update_settings",
+      settings: { showProgressBar: true, chooserStyle: "list", renderMode: "conversational" },
+    })
+    expect(out.settings).toMatchObject({
+      showProgressBar: true,
+      chooserStyle: "list",
+      renderMode: "conversational",
+    })
+  })
+
+  test("only the keys sent change", () => {
+    const form: EditorForm = {
+      ...base(),
+      settings: { thankYouMessage: "Thanks!", showProgressBar: true },
+    }
+    const out = applyOperations(form, [
+      { op: "update_settings", settings: { renderMode: "conversational" } },
+    ])
+    expect(out.settings).toEqual({
+      thankYouMessage: "Thanks!",
+      showProgressBar: true,
+      renderMode: "conversational",
+    })
+  })
+
+  test("the current values are visible to the model", () => {
+    const { context } = toEditContext({ ...base(), settings: { showProgressBar: true } })
+    expect(context.settings).toMatchObject({
+      showProgressBar: true,
+      chooserStyle: "cards", // defaulted, so "not set" is legible rather than absent
+      renderMode: "classic",
+    })
+    expect(context.theme).toEqual({ logoUrl: "", coverImageUrl: "" })
+  })
+})
+
+describe("isRebuildRequest", () => {
+  test("placing an image is never a rebuild", () => {
+    // The bug: any attachment forced full regeneration, so this rebuilt the
+    // entire form from a picture of a logo.
+    for (const t of [
+      "upload this as logo",
+      "use this as the logo",
+      "set this as our banner",
+      "add this image as a cover",
+      "make this the header image",
+    ]) {
+      expect(isRebuildRequest(t), t).toBe(false)
+    }
+  })
+
+  test("an explicit rebuild still regenerates", () => {
+    for (const t of [
+      "recreate this form from the screenshot",
+      "rebuild the form from this image",
+      "replicate this design",
+      "copy this form",
+      "build a form from this screenshot",
+    ]) {
+      expect(isRebuildRequest(t), t).toBe(true)
+    }
+  })
+
+  test("ordinary edits are not rebuilds", () => {
+    for (const t of [
+      "make email required",
+      "add a phone number field",
+      "change the thank-you title to Thanks!",
+      "make the rating out of 10",
+    ]) {
+      expect(isRebuildRequest(t), t).toBe(false)
+    }
+  })
+})
+
+/**
+ * Read-only facts in the edit context.
+ *
+ * Asked "what's the form link?" the model had nothing to answer with — the
+ * context carried only title/settings/fields — while its summary instructions
+ * pushed it to always report something specific. That combination invites a
+ * fabricated URL, which is worse than "I don't know" because it gets pasted to
+ * real respondents.
+ */
+describe("toEditContext — about", () => {
+  test("carries the share link and status when published", () => {
+    const { context } = toEditContext(base(), {
+      shareUrl: "https://forms.acme.com/apply",
+      status: "published",
+    })
+    expect(context.about).toMatchObject({
+      shareUrl: "https://forms.acme.com/apply",
+      status: "published",
+    })
+  })
+
+  test("an unpublished form reports no link, rather than omitting the key", () => {
+    // Present-but-empty is the point: an absent key is what invites a guess.
+    const { context } = toEditContext(base())
+    expect(context.about.shareUrl).toBe("")
+    expect(context.about.status).toBe("draft")
+  })
+
+  test("counts answerable questions apart from content blocks", () => {
+    const form: EditorForm = {
+      ...base(),
+      fields: [
+        { id: "h", type: "heading", label: "Welcome", required: false },
+        { id: "p", type: "paragraph", label: "Intro", required: false },
+        { id: "q1", type: "short_text", label: "Name", required: true },
+        { id: "br", type: "page_break", label: "", required: false },
+        { id: "q2", type: "email", label: "Email", required: true },
+      ],
+    }
+    const { context } = toEditContext(form)
+    expect(context.about.fieldCount).toBe(2)
+    expect(context.about.totalBlocks).toBe(5)
   })
 })
