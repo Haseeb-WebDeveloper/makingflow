@@ -88,7 +88,10 @@ export function SyncIntegrationCard({
         );
         router.refresh();
       } else {
-        showToast(res.error ?? "Something went wrong", { type: "error" });
+        showToast(res.error ?? "Something went wrong", {
+          type: "error",
+          duration: 12000,
+        });
       }
     });
   }
@@ -168,8 +171,8 @@ export function SyncIntegrationCard({
           <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 lg:px-6">
             <p className="text-sm text-muted-foreground">
               New submissions to this form are added to its {destinationNoun} as
-              rows, in real time. The {destinationNoun} is created on the first
-              response.
+              rows, in real time. The {destinationNoun} is created when the form
+              is published — you don&apos;t need a response first.
             </p>
 
             <div className="mt-4 flex items-center justify-between gap-3 rounded-lg border border-border p-3">
@@ -190,11 +193,22 @@ export function SyncIntegrationCard({
                 </div>
                 <p className="mt-1 text-xs text-muted-foreground">
                   {status === "pending"
-                    ? `The ${destinationNoun} is created on the first response.`
+                    ? `This form has no ${destinationNoun} yet.`
                     : status === "syncing"
                     ? "Syncing new submissions automatically."
                     : "Sync is paused for this form."}
                 </p>
+                {status === "pending" ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="mt-2"
+                    disabled={pending}
+                    onClick={() => onToggle(true)}
+                  >
+                    Create it now
+                  </Button>
+                ) : null}
               </div>
               <Switch
                 checked={on}

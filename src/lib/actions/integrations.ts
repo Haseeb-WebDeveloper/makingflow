@@ -13,7 +13,11 @@ import {
 import { getDefaultWorkspace } from "@/lib/auth/session"
 import { createFormSheet, refreshFormSheetHeader } from "@/lib/integrations/sheets-provision"
 import { backfillFormSheet } from "@/lib/integrations/sync"
-import { createFormDatabase, TITLE_PROP } from "@/lib/integrations/notion-provision"
+import {
+  createFormDatabase,
+  NotionNoParentPageError,
+  TITLE_PROP,
+} from "@/lib/integrations/notion-provision"
 
 type Result = { success: true } | { success: false; error: string }
 
@@ -223,6 +227,9 @@ export async function enableFormNotion(formId: string): Promise<Result> {
     }
   } catch (err) {
     console.error("[enableFormNotion] failed", err)
+    // "Share a page with the integration" is something only the user can do —
+    // telling them to reconnect sends them round a loop that can't fix it.
+    if (err instanceof NotionNoParentPageError) return { success: false, error: err.message }
     return { success: false, error: "Couldn't set up the Notion database. Reconnect Notion and try again." }
   }
 

@@ -12,7 +12,7 @@ import { decrypt } from "@/lib/integrations/crypto"
 import {
   createDatabase,
   createPage,
-  findAccessiblePage,
+  listCandidateParentPages,
   updateDatabaseProperties,
 } from "@/lib/integrations/notion"
 
@@ -30,6 +30,23 @@ import {
 const NON_ANSWER = new Set(["heading", "paragraph", "image", "embed", "page_break"])
 
 export const TITLE_PROP = "Submission"
+
+/** The workspace-level page every form database is created under. */
+export const PARENT_PAGE_TITLE = "MakingFlow Submissions"
+
+/**
+ * The integration can reach Notion but has no page it may write to. Distinct
+ * from a transport error because the fix is the user's: share a page with the
+ * MakingFlow integration in Notion. Carries a message meant for the UI.
+ */
+export class NotionNoParentPageError extends Error {
+  constructor() {
+    super(
+      "MakingFlow can't see a Notion page it's allowed to write to. Open the page you want submissions under in Notion, then use ••• → Connections → MakingFlow to give it access.",
+    )
+    this.name = "NotionNoParentPageError"
+  }
+}
 
 type Field = { fieldId: string; label: string; type: string }
 
@@ -117,29 +134,41 @@ function schemaFromProperties(properties: Property[]): Record<string, unknown> {
 /**
  * The workspace's "MakingFlow Submissions" parent page (one per workspace),
  * created under a consent-granted page on first use and cached on the
- * connection's metadata. Throws if the integration can't access any page.
+ * connection's metadata.
+ *
+ * Adopts an existing page of that name before creating one. The cached id lives
+ * on a row in OUR database, so anything that resets it — pointing the app at a
+ * different database, a wiped connection — would otherwise strand the real page
+ * in Notion and build a second one beside it.
+ *
+ * Throws {@link NotionNoParentPageError} when the integration has been granted
+ * no page it can write to; that's a user-fixable state, not a bug.
  */
 export async function ensureParentPage(conn: WorkspaceConnection): Promise<string> {
-  const existing = conn.metadata?.notion?.parentPageId
-  if (existing) return existing
+  const cached = conn.metadata?.notion?.parentPageId
+  if (cached) return cached
 
   const token = decrypt(conn.accessToken)
-  const accessible = await findAccessiblePage(token)
-  if (!accessible) {
-    throw new Error("Notion integration has no accessible page to create the parent under")
-  }
-  const page = await createPage(token, accessible, "MakingFlow Submissions")
+  const candidates = await listCandidateParentPages(token)
+  if (candidates.length === 0) throw new NotionNoParentPageError()
+
+  // Reuse the page from a previous run if it's still there; otherwise nest a
+  // fresh one under the best page the user has shared.
+  const adopted = candidates.find((c) => c.title === PARENT_PAGE_TITLE)
+  const parentPageId = adopted
+    ? adopted.id
+    : (await createPage(token, candidates[0].id, PARENT_PAGE_TITLE)).id
 
   const metadata = {
     ...(conn.metadata ?? {}),
-    notion: { ...(conn.metadata?.notion ?? {}), parentPageId: page.id },
+    notion: { ...(conn.metadata?.notion ?? {}), parentPageId },
   }
   await db
     .update(workspaceConnections)
     .set({ metadata })
     .where(eq(workspaceConnections.id, conn.id))
 
-  return page.id
+  return parentPageId
 }
 
 /** Create a fresh Notion database for a form and return its config. */

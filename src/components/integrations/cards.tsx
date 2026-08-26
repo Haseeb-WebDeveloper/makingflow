@@ -14,7 +14,7 @@ export function CardShell({ children }: { children: React.ReactNode }) {
 
 const STATUS_LABEL: Record<FormSyncStatus, string> = {
   syncing: "Syncing",
-  pending: "Pending first response",
+  pending: "Not created yet",
   paused: "Paused",
   inactive: "Inactive",
 };

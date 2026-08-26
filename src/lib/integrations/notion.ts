@@ -105,16 +105,64 @@ async function notionFetch<T>(
   return (await res.json()) as T
 }
 
-type SearchResult = { results: { id: string; object: string }[] }
+export type SearchPage = {
+  id: string
+  object: string
+  archived?: boolean
+  in_trash?: boolean
+  parent?: { type?: string }
+  properties?: Record<string, { type?: string; title?: { plain_text?: string }[] }>
+}
+type SearchResult = { results: SearchPage[] }
 
-/** First page the integration can access (the consent-granted parent), or null. */
-export async function findAccessiblePage(token: string): Promise<string | null> {
+export type CandidatePage = { id: string; title: string; topLevel: boolean }
+
+/** A page's title, from whichever property holds it ("title" for page parents). */
+function pageTitle(page: SearchPage): string {
+  for (const prop of Object.values(page.properties ?? {})) {
+    if (prop?.type === "title" || prop?.title) {
+      return (prop.title ?? []).map((t) => t.plain_text ?? "").join("").trim()
+    }
+  }
+  return ""
+}
+
+/**
+ * Not every page Notion returns from /search can be a parent.
+ *
+ * Rows of a database have `parent.type === 'database_id'`, and some of them —
+ * Person profiles in the built-in People database, most notably — reject child
+ * content outright with "Person profile with ID … cannot have content". Search
+ * returns those first often enough that blindly taking `results[0]` fails on a
+ * perfectly healthy workspace. Regular pages are better parents anyway, so skip
+ * database rows entirely, along with anything archived or in the trash.
+ */
+function canHostContent(page: SearchPage): boolean {
+  if (page.object !== "page") return false
+  if (page.archived || page.in_trash) return false
+  return page.parent?.type !== "database_id"
+}
+
+/**
+ * Pages the integration can access AND write child content to, best candidate
+ * first: top-level pages before nested ones. Empty when the user granted the
+ * integration access to nothing usable.
+ */
+export function selectParentCandidates(results: SearchPage[]): CandidatePage[] {
+  return results
+    .filter(canHostContent)
+    .map((p) => ({ id: p.id, title: pageTitle(p), topLevel: p.parent?.type === "workspace" }))
+    .sort((a, b) => Number(b.topLevel) - Number(a.topLevel))
+}
+
+export async function listCandidateParentPages(token: string): Promise<CandidatePage[]> {
   const data = await notionFetch<SearchResult>(token, "/search", {
     method: "POST",
-    body: { filter: { value: "page", property: "object" }, page_size: 10 },
+    // 10 was easily filled by unusable rows before any real page appeared: a
+    // real workspace returned 22 database rows among its first 26 results.
+    body: { filter: { value: "page", property: "object" }, page_size: 100 },
   })
-  const page = data.results.find((r) => r.object === "page")
-  return page?.id ?? null
+  return selectParentCandidates(data.results)
 }
 
 /** Create a child page under a parent page. Returns its id + url. */

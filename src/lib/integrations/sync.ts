@@ -1,9 +1,10 @@
 import "server-only"
 
-import { and, eq, inArray } from "drizzle-orm"
+import { and, desc, eq, inArray, isNull } from "drizzle-orm"
 import { db } from "@/lib/db"
 import {
   answers,
+  forms,
   formIntegrations,
   submissions,
   workspaceConnections,
@@ -154,6 +155,46 @@ export async function ensureFormSheet(form: {
     console.error("[sync] eager google sheet provisioning failed", err)
   }
 }
+
+
+/**
+ * Provision spreadsheets for every already-published form in a workspace — run once,
+ * just after Google is connected.
+ *
+ * Connecting is the moment the user expects their forms to have somewhere to
+ * land. Without this, a workspace that connects AFTER publishing its forms sees
+ * every one of them sitting at "not created yet" until a response happens to
+ * arrive.
+ *
+ * Serial and capped: Google rate-limits, and each form costs several API
+ * calls. Forms beyond the cap are provisioned on publish or on first response
+ * as before. Best-effort — never throws into the OAuth callback.
+ */
+export async function ensureWorkspaceSheets(workspaceId: string): Promise<void> {
+  try {
+    const rows = await db
+      .select({ id: forms.id, title: forms.title })
+      .from(forms)
+      .where(
+        and(
+          eq(forms.workspaceId, workspaceId),
+          eq(forms.status, "published"),
+          isNull(forms.deletedAt),
+        ),
+      )
+      .orderBy(desc(forms.updatedAt))
+      .limit(MAX_CONNECT_PROVISION)
+
+    for (const f of rows) {
+      await ensureFormSheet({ id: f.id, workspaceId, title: f.title })
+    }
+  } catch (err) {
+    console.error("[sync] workspace sheet provisioning failed", err)
+  }
+}
+
+/** How many published forms to provision when a workspace connects. */
+const MAX_CONNECT_PROVISION = 25
 
 /**
  * Bulk-deliver every completed submission a form already has into its sheet.

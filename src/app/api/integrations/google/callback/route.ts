@@ -1,9 +1,10 @@
-import { NextResponse, type NextRequest } from "next/server"
+import { NextResponse, after, type NextRequest } from "next/server"
 import { and, eq } from "drizzle-orm"
 import { db } from "@/lib/db"
 import { workspaceConnections } from "@/lib/db/schema"
 import { getDefaultWorkspace } from "@/lib/auth/session"
 import { exchangeCode } from "@/lib/integrations/google"
+import { ensureWorkspaceSheets } from "@/lib/integrations/sync"
 import { encrypt, verifyState } from "@/lib/integrations/crypto"
 
 type State = { w: string; r: string; t: number }
@@ -82,6 +83,11 @@ export async function GET(req: NextRequest) {
     console.error("[google callback] failed", err)
     return back(req, returnPath, "error", "exchange_failed")
   }
+
+  // Give every already-published form its destination now, rather than leaving
+  // them empty until someone responds. Deferred with after() so the redirect
+  // back to the app isn't held up by Google's's API.
+  after(() => ensureWorkspaceSheets(workspace.id))
 
   return back(req, returnPath, "connected")
 }
