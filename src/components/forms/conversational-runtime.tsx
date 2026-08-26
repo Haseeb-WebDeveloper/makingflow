@@ -1,7 +1,6 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from "react"
-import dynamic from "next/dynamic"
 import { submitForm } from "@/lib/actions/submissions"
 import type { PublicForm, PublicField } from "@/lib/data/public-form"
 import type { AnswerValue } from "@/lib/db/schema"
@@ -14,12 +13,7 @@ import { FormRuntime } from "@/components/forms/form-runtime"
 import type { Expect, TurnMeta, TurnPrev, TurnRequest } from "@/lib/forms/conversation-types"
 import { cn } from "@/lib/utils"
 import { Thinking } from "@/components/forms/thinking"
-
-// Same animated success check the classic runtime uses, so both submit screens
-// match. Code-split so the Lottie/WASM player never loads during the chat.
-const Lottie = dynamic(() => import("../builder/lottie").then((m) => m.Lottie), {
-  ssr: false,
-})
+import { SuccessMark } from "@/components/forms/success-mark"
 
 // Status lines for the "AI is composing this turn" indicator. Exported so the
 // /sandbox preview shows the real copy.
@@ -391,7 +385,7 @@ export function ConversationalRuntime({ form }: { form: PublicForm }) {
     return (
       <div className="mx-auto flex min-h-[70dvh] w-full max-w-2xl flex-col items-center justify-center text-center">
         <div className="mx-auto mb-4 flex size-14 items-center justify-center rounded-full bg-success/10 text-success">
-          <Lottie name="success" className="size-52" />
+          <SuccessMark className="size-52" />
         </div>
         <h2 className="mt-4 font-sebenta text-2xl font-bold tracking-tight text-foreground">
           {form.thankYou}

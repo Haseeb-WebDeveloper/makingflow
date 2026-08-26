@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import dynamic from "next/dynamic";
 import { submitForm } from "@/lib/actions/submissions";
 import type { PublicForm, PublicField } from "@/lib/data/public-form";
 import type { AnswerValue } from "@/lib/db/schema";
@@ -14,16 +13,8 @@ import {
   OneAtATimePreview,
 } from "@/components/forms/fill-mode-previews";
 import { SuccessContent } from "@/components/forms/success-content";
+import { SuccessMark } from "@/components/forms/success-mark";
 import { collectClientMeta, track } from "@/lib/forms/client-meta";
-
-// The Lottie WASM player only appears on the post-submit success screen — code-
-// split it so it never loads while the respondent is filling the form.
-const Lottie = dynamic(
-  () => import("../builder/lottie").then((m) => m.Lottie),
-  {
-    ssr: false,
-  }
-);
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const URL_RE = /^https?:\/\/\S+\.\S+/i;
@@ -486,7 +477,7 @@ export function FormRuntime({
     return (
       <div className="mx-auto flex min-h-[70dvh] w-full max-w-xl flex-col items-center justify-center text-center">
         <div className="mx-auto mb-4 flex size-14 items-center justify-center rounded-full bg-success/10 text-success">
-          <Lottie name="success" className="size-52" />
+          <SuccessMark className="size-52" />
         </div>
         <h2 className="w-full mt-4 font-sebenta text-2xl font-bold tracking-tight text-foreground">
           {form.thankYou}

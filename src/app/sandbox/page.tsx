@@ -1,21 +1,17 @@
 "use client"
 
 import { useState } from "react"
-import dynamic from "next/dynamic"
 import {
   Pills,
   CONVERSATION_OPENING_PHRASES,
   CONVERSATION_REPLY_PHRASES,
 } from "@/components/forms/conversational-runtime"
 import { Thinking } from "@/components/forms/thinking"
+import { SuccessMark } from "@/components/forms/success-mark"
 import { NewFormButton } from "@/components/dashboard/new-form-button"
 import { SVGIcon } from "@/components/ui/svg-icon"
 import type { PublicField } from "@/lib/data/public-form"
 
-// Same code-split success animation the runtimes use.
-const Lottie = dynamic(() => import("@/components/builder/lottie").then((m) => m.Lottie), {
-  ssr: false,
-})
 
 /**
  * /sandbox — a dev-only gallery of the conversational form states so we can see
@@ -148,10 +144,10 @@ export default function SandboxPage() {
           <p className="text-center text-xs text-muted-foreground">Recording your response…</p>
         </Section>
 
-        <Section title="Success screen" desc="Now matches the classic form's animated check.">
+        <Section title="Success screen" desc="The real one — plays through once, then holds.">
           <div className="flex flex-col items-center justify-center rounded-xl border border-border bg-background py-10 text-center">
             <div className="mx-auto mb-4 flex size-14 items-center justify-center rounded-full bg-success/10 text-success">
-              <Lottie name="success" className="size-52" />
+              <SuccessMark className="size-52" />
             </div>
             <h2 className="mt-4 font-sebenta text-2xl font-bold tracking-tight text-foreground">
               Thanks! Your response has been recorded.
