@@ -1,10 +1,11 @@
 import { notFound } from "next/navigation"
 import { headers } from "next/headers"
 import Link from "next/link"
-import { getDefaultWorkspace } from "@/lib/auth/session"
+import { getDefaultWorkspace, getOptionalUser } from "@/lib/auth/session"
 import { getFormShell, getFormSettings } from "@/lib/data/forms"
 import { getActiveDomains } from "@/lib/data/domains"
 import { getWorkspaceFolders } from "@/lib/data/folders"
+import { getFormChat } from "@/lib/data/form-chat"
 import { FormDetailTabs } from "@/components/forms/form-detail-tabs"
 import { FormAssistant } from "@/components/forms/form-assistant"
 import { FormPublishButton } from "@/components/forms/form-publish-button"
@@ -29,11 +30,16 @@ export default async function FormManageLayout({
   const { id } = await params
   const workspace = await getDefaultWorkspace()
   if (!workspace) notFound()
-  const [shell, domains, settings, folders] = await Promise.all([
+  const [shell, domains, settings, folders, chat, viewer] = await Promise.all([
     getFormShell(id, workspace.id),
     getActiveDomains(workspace.id),
     getFormSettings(id, workspace.id),
     getWorkspaceFolders(workspace.id),
+    // The Ask-AI thread is shared across the workspace, so it loads with the
+    // chrome rather than on first open — the sheet has history the moment it
+    // slides in.
+    getFormChat(id, "insights"),
+    getOptionalUser(),
   ])
   if (!shell) notFound()
 
@@ -59,7 +65,12 @@ export default async function FormManageLayout({
               </div>
             </div>
             <div className="flex shrink-0 items-center gap-2">
-              <FormAssistant formId={id} formTitle={shell.title || "this form"} />
+              <FormAssistant
+                formId={id}
+                formTitle={shell.title || "this form"}
+                initialChat={chat}
+                viewerId={viewer?.id}
+              />
               <Link
                 href={`/forms/${id}/edit`}
                 className="inline-flex h-9 items-center gap-1.5 rounded-md border border-border bg-background px-3.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"

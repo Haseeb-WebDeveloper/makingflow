@@ -5,6 +5,7 @@ import { and, eq, isNull } from "drizzle-orm"
 import { db } from "@/lib/db"
 import { formChatMessages, forms } from "@/lib/db/schema"
 import { getRequiredUser, getDefaultWorkspace } from "@/lib/auth/session"
+import type { ChatSurface } from "@/lib/data/form-chat"
 
 type AppendResult = { success: true; id: string } | { success: false; error: string }
 
@@ -15,30 +16,38 @@ const MAX_TEXT = 8000
 
 const AppendSchema = z.object({
   formId: z.string().uuid(),
+  // Defaulted, so the builder's existing call sites need no change.
+  surface: z.enum(["builder", "insights"]).default("builder"),
   role: z.enum(["user", "assistant"]),
   text: z.string().max(MAX_TEXT),
   imageUrl: z.string().url().nullish(),
 })
 
 /**
- * Append one turn to a form's shared AI conversation.
+ * Append one turn to one of a form's shared AI conversations.
  *
  * Called from the builder for BOTH sides of the exchange, and from all three
  * response paths (streaming generation, operation-based edit, and the
  * deterministic fast path) — one write path instead of three.
+ *
+ * The insights ("Ask AI") thread writes through the same function, but from the
+ * server: see src/app/api/ai/insights/route.ts. That thread has exactly one
+ * response path, so persisting there — rather than from the client — keeps the
+ * question saved even when the reader navigates away mid-answer.
  *
  * The author is stamped from the session, never taken from the client, so a
  * caller can't attribute a message to someone else.
  */
 export async function appendFormChatMessage(input: {
   formId: string
+  surface?: ChatSurface
   role: "user" | "assistant"
   text: string
   imageUrl?: string | null
 }): Promise<AppendResult> {
   const parsed = AppendSchema.safeParse(input)
   if (!parsed.success) return { success: false, error: "Invalid message" }
-  const { formId, role, text, imageUrl } = parsed.data
+  const { formId, surface, role, text, imageUrl } = parsed.data
 
   // An assistant turn with no text and no image carries nothing — skip rather
   // than persist an empty bubble that would render as a blank row forever.
@@ -68,6 +77,7 @@ export async function appendFormChatMessage(input: {
       .insert(formChatMessages)
       .values({
         formId,
+        surface,
         // Assistant turns have no author — the label would be meaningless.
         userId: role === "user" ? user.id : null,
         role,

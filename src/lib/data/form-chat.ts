@@ -3,6 +3,9 @@ import { db } from "@/lib/db"
 import { formChatMessages, forms, users } from "@/lib/db/schema"
 import { getDefaultWorkspace } from "@/lib/auth/session"
 
+/** Which of a form's two AI threads to read. See `chatSurfaceEnum`. */
+export type ChatSurface = "builder" | "insights"
+
 export type FormChatMessage = {
   id: string
   role: "user" | "assistant"
@@ -15,7 +18,12 @@ export type FormChatMessage = {
 }
 
 /**
- * The shared AI conversation for one form, oldest first.
+ * One of a form's shared AI conversations, oldest first.
+ *
+ * `surface` selects the thread: 'builder' (editing the form) or 'insights'
+ * (asking about its responses). They live in one table but are separate
+ * conversations — never merge them, the model would read one as context for
+ * the other.
  *
  * NOT cached: the thread is mutable, read once per editor open, and scoped to
  * the caller's workspace via cookies — the same dynamic pattern as
@@ -25,7 +33,10 @@ export type FormChatMessage = {
  * Returns [] when the form isn't in the caller's workspace, so a wrong/guessed
  * form id reveals nothing (never distinguish "no messages" from "not yours").
  */
-export async function getFormChat(formId: string): Promise<FormChatMessage[]> {
+export async function getFormChat(
+  formId: string,
+  surface: ChatSurface = "builder",
+): Promise<FormChatMessage[]> {
   const workspace = await getDefaultWorkspace()
   if (!workspace) return []
 
@@ -57,7 +68,9 @@ export async function getFormChat(formId: string): Promise<FormChatMessage[]> {
     })
     .from(formChatMessages)
     .leftJoin(users, eq(users.id, formChatMessages.userId))
-    .where(eq(formChatMessages.formId, formId))
+    .where(
+      and(eq(formChatMessages.formId, formId), eq(formChatMessages.surface, surface)),
+    )
     // seq, not createdAt: see the column comment in schema.ts — same-transaction
     // writes share a timestamp, so ordering by it can invert a question and its
     // answer.

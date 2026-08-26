@@ -1,6 +1,6 @@
 "use client"
 
-import { useRef, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import {
   Sheet,
   SheetContent,
@@ -12,10 +12,17 @@ import {
 import { Composer } from "@/components/builder/composer"
 import { MemoizedMarkdown } from "@/components/forms/memoized-markdown"
 import { Thinking } from "@/components/forms/thinking"
+import type { FormChatMessage } from "@/lib/data/form-chat"
 
 const INSIGHTS_PHRASES = ["Reading your responses…", "Crunching the numbers…", "Writing it up…"]
 
-type Msg = { role: "user" | "assistant"; text: string }
+type Msg = {
+  role: "user" | "assistant"
+  text: string
+  /** Who asked. Null for assistant turns, and for turns seeded before sign-in. */
+  authorId?: string | null
+  authorName?: string | null
+}
 
 /** The MakingFlow mark — brands the assistant as a first-class AI surface
  *  (matches the builder's assistant avatar) instead of a stock chat glyph. */
@@ -34,10 +41,32 @@ const SUGGESTIONS = [
  * Form-scoped AI assistant in a side Sheet. Ask anything about the form or its
  * responses — summaries, counts, aggregates. Streams from /api/ai/insights and
  * renders the answer as memoized markdown so streaming stays smooth.
+ *
+ * The thread is durable and shared with the workspace: the server persists both
+ * sides of every exchange, and `initialChat` seeds it back on load. Teammates
+ * see each other's questions (attributed) after a reload — there is no realtime
+ * sync, so two sheets open at once won't update each other live.
  */
-export function FormAssistant({ formId, formTitle }: { formId: string; formTitle: string }) {
+export function FormAssistant({
+  formId,
+  formTitle,
+  initialChat = [],
+  viewerId,
+}: {
+  formId: string
+  formTitle: string
+  initialChat?: FormChatMessage[]
+  viewerId?: string
+}) {
   const [open, setOpen] = useState(false)
-  const [messages, setMessages] = useState<Msg[]>([])
+  const [messages, setMessages] = useState<Msg[]>(() =>
+    initialChat.map((m) => ({
+      role: m.role,
+      text: m.text,
+      authorId: m.authorId,
+      authorName: m.authorName,
+    })),
+  )
   const [input, setInput] = useState("")
   const [busy, setBusy] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -48,12 +77,21 @@ export function FormAssistant({ formId, formTitle }: { formId: string; formTitle
       if (el) el.scrollTop = el.scrollHeight
     })
 
+  // Radix mounts the sheet's content on open, so a seeded thread starts at the
+  // top — jump to the newest turn, which is what the reader wants to see.
+  useEffect(() => {
+    if (open) scrollToEnd()
+  }, [open])
+
   async function ask(question: string) {
     const q = question.trim()
     if (!q || busy) return
     setInput("")
-    const history = messages
-    setMessages([...history, { role: "user", text: q }, { role: "assistant", text: "" }])
+    setMessages((prev) => [
+      ...prev,
+      { role: "user", text: q, authorId: viewerId ?? null },
+      { role: "assistant", text: "" },
+    ])
     setBusy(true)
     scrollToEnd()
 
@@ -61,7 +99,8 @@ export function FormAssistant({ formId, formTitle }: { formId: string; formTitle
       const res = await fetch("/api/ai/insights", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ formId, question: q, history }),
+        // No history in the body — the server reads the shared thread it owns.
+        body: JSON.stringify({ formId, question: q }),
       })
       if (!res.ok || !res.body) {
         const detail = await res.text().catch(() => "")
@@ -146,7 +185,12 @@ export function FormAssistant({ formId, formTitle }: { formId: string; formTitle
           ) : (
             messages.map((m, i) =>
               m.role === "user" ? (
-                <div key={i} className="flex justify-end">
+                <div key={i} className="flex flex-col items-end gap-1">
+                  {/* Only label other people — naming yourself on every turn is
+                      noise in the common single-person case. */}
+                  {m.authorName && m.authorId !== viewerId ? (
+                    <span className="px-1 text-xs text-muted-foreground">{m.authorName}</span>
+                  ) : null}
                   <div className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-md bg-foreground px-3.5 py-2 text-sm text-background">
                     {m.text}
                   </div>

@@ -1,5 +1,5 @@
 import { cacheLife, cacheTag } from "next/cache"
-import { and, desc, eq, inArray, isNull } from "drizzle-orm"
+import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm"
 import { db } from "@/lib/db"
 import {
   forms,
@@ -335,4 +335,43 @@ export async function getFormSubmissions(
       aiScreenReason: s.aiScreenReason,
     })),
   }
+}
+
+export type FormSubmissionCounts = {
+  /** Finished submissions. */
+  completed: number
+  /** Started and abandoned — excluded from `getFormSubmissions`. */
+  partial: number
+}
+
+/**
+ * True submission totals for a form, independent of any row limit.
+ *
+ * `getFormSubmissions` caps its result (200 by default), so `rows.length` is a
+ * page size, NOT a total — reporting it as one tells a form with 5,000
+ * responses that it has 200. Anything that states a count to a human (or to a
+ * model) needs these numbers instead.
+ *
+ * Both counts are served by `submissions_form_status_created_idx`.
+ */
+export async function getFormSubmissionCounts(
+  id: string,
+  workspaceId: string,
+): Promise<FormSubmissionCounts | null> {
+  const [owned] = await db
+    .select({ id: forms.id })
+    .from(forms)
+    .where(and(eq(forms.id, id), eq(forms.workspaceId, workspaceId), isNull(forms.deletedAt)))
+    .limit(1)
+  if (!owned) return null
+
+  const [row] = await db
+    .select({
+      completed: sql<number>`count(*) filter (where ${submissions.status} = 'completed')::int`,
+      partial: sql<number>`count(*) filter (where ${submissions.status} = 'partial')::int`,
+    })
+    .from(submissions)
+    .where(eq(submissions.formId, id))
+
+  return { completed: row?.completed ?? 0, partial: row?.partial ?? 0 }
 }

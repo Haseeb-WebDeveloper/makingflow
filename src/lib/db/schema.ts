@@ -108,8 +108,13 @@ export const fieldTypeEnum = pgEnum('field_type', [
   'page_break',
 ])
 
-// Author side of a builder AI conversation turn.
+// Author side of an AI conversation turn.
 export const chatRoleEnum = pgEnum('chat_role', ['user', 'assistant'])
+
+// Which AI surface a conversation turn belongs to. Both threads hang off a
+// form, but they are about different things and must never interleave:
+// 'builder' is about CHANGING the form, 'insights' is about its RESPONSES.
+export const chatSurfaceEnum = pgEnum('chat_surface', ['builder', 'insights'])
 
 export const submissionStatusEnum = pgEnum('submission_status', [
   'partial', // respondent started, hasn't finished — basis for drop-off analytics
@@ -632,15 +637,20 @@ export const formTranslations = pgTable(
   (table) => [primaryKey({ columns: [table.formId, table.language] })],
 )
 
-// The builder's AI conversation for a form — ONE shared thread per form, not
-// one per person. Every workspace member editing the form sees the same history
-// (with author attribution), so the record of *why* a form looks the way it does
-// travels with the form rather than living in one person's browser.
+// A form's AI conversations — ONE shared thread per form per surface, not one
+// per person. Every workspace member sees the same history (with author
+// attribution), so the record of *why* a form looks the way it does, and of
+// what was already asked about its responses, travels with the form rather than
+// living in one person's browser.
+//
+// Two threads share this table, kept apart by `surface`:
+//   'builder'  — the form-editing conversation (src/components/builder)
+//   'insights' — the Ask-AI sheet over submissions (src/components/forms)
 //
 // This is a durable log, not prompt state: the model is still given the
-// transcript as context per request (see src/app/api/ai/form/route.ts and
-// src/lib/actions/ai-edit.ts) — these rows are what survive a reload, a new
-// device, or a teammate opening the form.
+// transcript as context per request (see src/app/api/ai/form/route.ts,
+// src/app/api/ai/insights/route.ts and src/lib/actions/ai-edit.ts) — these rows
+// are what survive a reload, a new device, or a teammate opening the form.
 export const formChatMessages = pgTable(
   'form_chat_messages',
   {
@@ -659,6 +669,10 @@ export const formChatMessages = pgTable(
     // author's account is later removed — the thread outlives the person.
     userId: uuid('user_id').references(() => users.id, { onDelete: 'set null' }),
     role: chatRoleEnum('role').notNull(),
+    // Which thread this turn belongs to. Defaults to 'builder' so the rows
+    // written before the insights assistant existed keep their meaning without
+    // a backfill.
+    surface: chatSurfaceEnum('surface').notNull().default('builder'),
     text: text('text').notNull().default(''),
     // Cloudinary secure_url of a reference screenshot attached to the turn. The
     // data URL sent to the model is NOT stored — it would be megabytes per row.
@@ -666,8 +680,12 @@ export const formChatMessages = pgTable(
     ...timestamps,
   },
   (table) => [
-    // Read path is always "the whole thread for one form, in order".
-    index('form_chat_messages_form_seq_idx').on(table.formId, table.seq),
+    // Read path is always "one form's thread, for one surface, in order".
+    index('form_chat_messages_form_surface_seq_idx').on(
+      table.formId,
+      table.surface,
+      table.seq,
+    ),
   ],
 )
 
