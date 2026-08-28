@@ -151,6 +151,11 @@ export async function ensureFormSheet(form: {
       enabled: true,
       config,
     })
+    // Creating the sheet here PRE-EMPTS the lazy branch above, which was the
+    // only path that ever carried existing responses across — without this, a
+    // workspace that connects after collecting responses gets an empty sheet
+    // and rows only from the next submission on.
+    await backfillFormSheet(conn, config, form.id)
   } catch (err) {
     console.error("[sync] eager google sheet provisioning failed", err)
   }
@@ -197,6 +202,16 @@ export async function ensureWorkspaceSheets(workspaceId: string): Promise<void> 
 const MAX_CONNECT_PROVISION = 25
 
 /**
+ * Historical rows one backfill will write for a single form. Sheets takes them
+ * in bulk, so this bounds memory and request size rather than wall-clock — it
+ * sits far above the Notion cap for that reason. Re-running picks up the rest.
+ */
+const MAX_SHEET_BACKFILL = 5000
+
+/** Rows per append call — one 5,000-row request risks Sheets' payload limit. */
+const BACKFILL_CHUNK = 500
+
+/**
  * Bulk-deliver every completed submission a form already has into its sheet.
  * Runs when Sheets is connected/enabled AFTER responses exist, so the sheet
  * shows the full history rather than only rows that arrive from then on.
@@ -232,8 +247,16 @@ export async function backfillFormSheet(
       .where(and(eq(submissions.formId, formId), eq(submissions.status, "completed")))
       .orderBy(submissions.createdAt)
 
-    const pending = subs.filter((s) => !present.has(s.id))
-    if (pending.length === 0) return 0
+    // Oldest first (the query orders by createdAt), so a capped run leaves a
+    // contiguous gap at the recent end that the next run fills.
+    const missing = subs.filter((s) => !present.has(s.id))
+    if (missing.length === 0) return 0
+    const pending = missing.slice(0, MAX_SHEET_BACKFILL)
+    if (missing.length > pending.length) {
+      console.warn(
+        `[sync] sheet backfill capped at ${pending.length} of ${missing.length} responses for form ${formId}; re-run to continue`,
+      )
+    }
 
     // Load all answers for the pending submissions in one query, indexed by
     // submission → field. AI follow-ups (null fieldId) have no column, so skip.
@@ -261,7 +284,9 @@ export async function backfillFormSheet(
       return [s.id, submittedAt, ...columns.map((c) => cell(byField.get(c.fieldId)))]
     })
 
-    await appendRows(accessToken, config.spreadsheetId, sheetName, values)
+    for (let i = 0; i < values.length; i += BACKFILL_CHUNK) {
+      await appendRows(accessToken, config.spreadsheetId, sheetName, values.slice(i, i + BACKFILL_CHUNK))
+    }
     return values.length
   } catch (err) {
     console.error("[sync] google sheets backfill failed", err)

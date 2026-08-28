@@ -2,6 +2,7 @@
 
 import { and, eq, isNull } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
+import { after } from "next/server"
 import { db } from "@/lib/db"
 import {
   forms,
@@ -13,9 +14,11 @@ import {
 import { getDefaultWorkspace } from "@/lib/auth/session"
 import { createFormSheet, refreshFormSheetHeader } from "@/lib/integrations/sheets-provision"
 import { backfillFormSheet } from "@/lib/integrations/sync"
+import { backfillFormNotionDatabase } from "@/lib/integrations/notion-sync"
 import {
   createFormDatabase,
   NotionNoParentPageError,
+  reconcileFormDatabase,
   TITLE_PROP,
 } from "@/lib/integrations/notion-provision"
 
@@ -91,8 +94,12 @@ export async function enableFormSheet(formId: string): Promise<Result> {
   }
 
   // Pull any responses that predate this sync into the sheet (idempotent — skips
-  // rows already present). Best-effort: the sheet itself is already set up.
-  await backfillFormSheet(conn, config, formId)
+  // rows already present). Deferred: the sheet is already set up, and a long
+  // history is more rows than a server action's budget wants to sit through.
+  after(async () => {
+    await backfillFormSheet(conn, config, formId)
+    revalidatePath(`/forms/${formId}/integrations`)
+  })
 
   revalidatePath(`/forms/${formId}/integrations`)
   revalidatePath("/integrations")
@@ -207,9 +214,17 @@ export async function enableFormNotion(formId: string): Promise<Result> {
     .where(and(eq(formIntegrations.formId, formId), eq(formIntegrations.type, "notion")))
     .limit(1)
 
+  let config: NotionIntegrationConfig
   try {
     const prev = existing?.config as NotionIntegrationConfig | undefined
-    const config = prev?.databaseId ? prev : await createFormDatabase(conn, formId, form.title)
+    // Reconcile before reusing: the form may have gained questions while this
+    // was paused, and the backfill below writes only the properties the config
+    // knows about. Pages are never revisited, so a stale config would leave
+    // those answers permanently missing from the history it writes.
+    // (The Sheets branch above gets this from refreshFormSheetHeader.)
+    config = prev?.databaseId
+      ? (await reconcileFormDatabase(conn, prev, formId)).config
+      : await createFormDatabase(conn, formId, form.title)
 
     if (existing) {
       await db
@@ -232,6 +247,14 @@ export async function enableFormNotion(formId: string): Promise<Result> {
     if (err instanceof NotionNoParentPageError) return { success: false, error: err.message }
     return { success: false, error: "Couldn't set up the Notion database. Reconnect Notion and try again." }
   }
+
+  // Pull any responses that predate this sync into the database (idempotent —
+  // skips pages already present). Deferred because Notion takes one request per
+  // page, paced: a few hundred responses is minutes, not milliseconds.
+  after(async () => {
+    await backfillFormNotionDatabase(conn, config, formId)
+    revalidatePath(`/forms/${formId}/integrations`)
+  })
 
   revalidatePath(`/forms/${formId}/integrations`)
   revalidatePath("/integrations")

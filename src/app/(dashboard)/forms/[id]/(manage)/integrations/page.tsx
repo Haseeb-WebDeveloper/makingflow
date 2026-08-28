@@ -6,6 +6,12 @@ import { getGoogleSheetsState, getFormWebhooks, getFormEmail, getFormDiscord, ge
 import { getRequiredUser } from "@/lib/auth/session"
 
 export const metadata: Metadata = { title: "Integrations · MakingFlow" }
+/**
+ * The enable toggle on this page defers a Sheets/Notion backfill to after(),
+ * which runs on the invoking page's budget — not the action's own.
+ */
+export const maxDuration = 60
+
 
 export default async function FormIntegrationsPage({
   params,

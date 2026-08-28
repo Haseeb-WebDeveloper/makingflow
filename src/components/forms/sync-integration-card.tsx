@@ -112,7 +112,7 @@ export function SyncIntegrationCard({
         <h3 className="mt-3 text-sm font-semibold text-foreground">{name}</h3>
         <p className="mt-1 flex-1 text-sm text-muted-foreground">
           {connected
-            ? `New submissions are added to this form's ${destinationNoun} as rows, in real time.`
+            ? `Every response lands in this form's ${destinationNoun} — the ones already collected, and new ones in real time.`
             : `Connect ${name} once for the whole workspace, and every form syncs automatically.`}
         </p>
 
@@ -172,7 +172,9 @@ export function SyncIntegrationCard({
             <p className="text-sm text-muted-foreground">
               New submissions to this form are added to its {destinationNoun} as
               rows, in real time. The {destinationNoun} is created when the form
-              is published — you don&apos;t need a response first.
+              is published — you don&apos;t need a response first — and responses
+              collected before you turned this on are copied across in the
+              background, so nothing is left behind.
             </p>
 
             <div className="mt-4 flex items-center justify-between gap-3 rounded-lg border border-border p-3">

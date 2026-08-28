@@ -229,6 +229,53 @@ export async function archivePage(token: string, pageId: string): Promise<void> 
   })
 }
 
+type DatabaseRow = {
+  id: string
+  properties?: Record<string, { title?: { plain_text?: string }[] }>
+}
+type QueryResult = {
+  results: DatabaseRow[]
+  next_cursor?: string | null
+  has_more?: boolean
+}
+
+/**
+ * Every title value already present in a database — i.e. every submission id we
+ * have synced — so a backfill can skip what it already wrote.
+ *
+ * One paged scan instead of a per-submission lookup: `queryDatabaseByTitle` is
+ * an API call each, which would double the cost of a backfill and burn the
+ * rate-limit budget on rows we then decide not to write. `maxPages` bounds a
+ * database somebody has grown by hand; hitting it only risks re-writing a page,
+ * never losing one.
+ */
+export async function listDatabaseTitles(
+  token: string,
+  databaseId: string,
+  titleProp: string,
+  maxPages = 20,
+): Promise<Set<string>> {
+  const seen = new Set<string>()
+  let cursor: string | undefined
+  for (let page = 0; page < maxPages; page += 1) {
+    const data = await notionFetch<QueryResult>(token, `/databases/${databaseId}/query`, {
+      method: "POST",
+      // start_cursor is dropped from the body when undefined (first page).
+      body: { page_size: 100, start_cursor: cursor },
+    })
+    for (const row of data.results) {
+      const text = (row.properties?.[titleProp]?.title ?? [])
+        .map((t) => t.plain_text ?? "")
+        .join("")
+        .trim()
+      if (text) seen.add(text)
+    }
+    if (!data.has_more || !data.next_cursor) break
+    cursor = data.next_cursor
+  }
+  return seen
+}
+
 /** Find a page in a database by its title property value (returns page id). */
 export async function queryDatabaseByTitle(
   token: string,

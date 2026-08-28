@@ -7,6 +7,13 @@ import { exchangeCode } from "@/lib/integrations/google"
 import { ensureWorkspaceSheets } from "@/lib/integrations/sync"
 import { encrypt, verifyState } from "@/lib/integrations/crypto"
 
+/**
+ * A Sheets backfill runs in after() when this connects, and it is bounded by
+ * this route's budget rather than the request it followed.
+ */
+export const maxDuration = 60
+
+
 type State = { w: string; r: string; t: number }
 
 function back(req: NextRequest, path: string, status: "connected" | "error", reason?: string) {

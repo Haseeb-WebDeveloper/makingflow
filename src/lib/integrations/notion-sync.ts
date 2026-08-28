@@ -1,22 +1,62 @@
 import "server-only"
 
-import { and, desc, eq, isNull } from "drizzle-orm"
+import { and, desc, eq, inArray, isNull } from "drizzle-orm"
 import { db } from "@/lib/db"
 import {
+  answers,
   forms,
   formIntegrations,
+  submissions,
   workspaceConnections,
   type AnswerValue,
   type NotionIntegrationConfig,
   type WorkspaceConnection,
 } from "@/lib/db/schema"
 import { decrypt } from "@/lib/integrations/crypto"
-import { archivePage, createDatabasePage, queryDatabaseByTitle } from "@/lib/integrations/notion"
+import {
+  archivePage,
+  createDatabasePage,
+  listDatabaseTitles,
+  queryDatabaseByTitle,
+} from "@/lib/integrations/notion"
 import { createFormDatabase, reconcileFormDatabase } from "@/lib/integrations/notion-provision"
 import { answerFiles, answerToCell } from "@/lib/submissions/answer-format"
 
 /** How many published forms to provision when a workspace connects. */
 const MAX_CONNECT_PROVISION = 25
+
+/**
+ * Historical pages one backfill will write for a single form.
+ *
+ * Notion has no bulk-create — every page is its own request — so unlike the
+ * Sheets backfill (one `appendRows` call) this is bounded by wall-clock, not by
+ * payload size. A form past the cap keeps its oldest responses out of Notion;
+ * re-running the per-form toggle picks up where this left off, since the
+ * backfill skips what's already there.
+ *
+ * Sized to finish inside the 60s maxDuration set on the routes that trigger it:
+ * at ~3 requests/second this is ~42s of writing plus the scan that precedes it.
+ */
+const MAX_FORM_BACKFILL = 120
+
+/**
+ * Historical pages one workspace-connect sweep will write across ALL its forms.
+ * Without it, 25 forms × the per-form cap is sequential requests measured in
+ * hours — the run would be killed mid-way with nobody told.
+ */
+const MAX_CONNECT_BACKFILL = 120
+
+/**
+ * Notion allows roughly 3 requests/second per integration and answers a burst
+ * with 429s. Pacing below that keeps a long backfill from getting itself
+ * throttled — the run is already in the background, so the wall-clock is free.
+ */
+const BACKFILL_INTERVAL_MS = 350
+
+/** Consecutive page failures that mean the run is broken (429, revoked token). */
+const BACKFILL_ABORT_AFTER = 5
+
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 /** Notion's per-option / text length limits. */
 const MAX_TEXT = 2000
@@ -114,6 +154,7 @@ export async function syncSubmissionToNotion(
     let config = row?.config as NotionIntegrationConfig | undefined
 
     if (!config) {
+      // First response since the workspace connected — provision now and store it.
       config = await createFormDatabase(conn, form.id, form.title)
       await db.insert(formIntegrations).values({
         formId: form.id,
@@ -122,15 +163,23 @@ export async function syncSubmissionToNotion(
         enabled: true,
         config,
       })
-    } else {
-      const reconciled = await reconcileFormDatabase(conn, config, form.id)
-      config = reconciled.config
-      if (reconciled.changed && row) {
-        await db
-          .update(formIntegrations)
-          .set({ config })
-          .where(eq(formIntegrations.id, row.id))
-      }
+      // The database is brand-new. Write EVERY completed response (this one
+      // included, as it is already committed) so connecting Notion after
+      // responses exist brings the history across — not just pages from now on.
+      // Returning here matters: falling through would write this submission a
+      // second time.
+      await backfillFormNotionDatabase(conn, config, form.id)
+      return
+    }
+
+    // Grow properties for any newly added fields.
+    const reconciled = await reconcileFormDatabase(conn, config, form.id)
+    config = reconciled.config
+    if (reconciled.changed && row) {
+      await db
+        .update(formIntegrations)
+        .set({ config })
+        .where(eq(formIntegrations.id, row.id))
     }
 
     const token = decrypt(conn.accessToken)
@@ -149,6 +198,107 @@ export async function syncSubmissionToNotion(
 }
 
 /**
+ * Bulk-deliver every completed submission a form already has into its Notion
+ * database. Runs whenever Notion becomes the destination for a form that already
+ * had responses — on connect, on publish, on un-pause — so the database shows the
+ * full history rather than only what arrives from then on.
+ *
+ * Idempotent: submission ids already present in the title property are skipped,
+ * so re-running (e.g. to pick up what a cap cut short) never duplicates a page.
+ *
+ * Deliberately unlike the Sheets backfill in two ways, both forced by the API:
+ * pages are created one request at a time rather than in a single append, and
+ * the run is paced and capped. Returns how many pages it wrote; never throws
+ * into the caller.
+ */
+export async function backfillFormNotionDatabase(
+  conn: WorkspaceConnection,
+  config: NotionIntegrationConfig,
+  formId: string,
+  limit = MAX_FORM_BACKFILL,
+): Promise<number> {
+  try {
+    if (!config.databaseId || limit <= 0) return 0
+    const token = decrypt(conn.accessToken)
+
+    // One paged scan of what's already there, rather than a lookup per row.
+    const present = await listDatabaseTitles(token, config.databaseId, config.titlePropertyName)
+
+    const subs = await db
+      .select({ id: submissions.id })
+      .from(submissions)
+      .where(and(eq(submissions.formId, formId), eq(submissions.status, "completed")))
+      .orderBy(submissions.createdAt)
+
+    const missing = subs.filter((sub) => !present.has(sub.id))
+    if (missing.length === 0) return 0
+
+    // Oldest first, so a capped run leaves a contiguous gap at the recent end
+    // that the next run fills — rather than holes scattered through the history.
+    const pending = missing.slice(0, limit)
+    if (missing.length > pending.length) {
+      console.warn(
+        `[notion] backfill capped at ${pending.length} of ${missing.length} responses for form ${formId}; re-run to continue`,
+      )
+    }
+
+    // All answers for the pending submissions in one query, indexed by
+    // submission → field. AI follow-ups (null fieldId) have no property, so skip.
+    const answerRows = await db
+      .select({
+        submissionId: answers.submissionId,
+        fieldId: answers.fieldId,
+        value: answers.value,
+      })
+      .from(answers)
+      .where(inArray(answers.submissionId, pending.map((sub) => sub.id)))
+
+    const bySubmission = new Map<string, Map<string, AnswerValue>>()
+    for (const a of answerRows) {
+      if (!a.fieldId) continue
+      let fields = bySubmission.get(a.submissionId)
+      if (!fields) bySubmission.set(a.submissionId, (fields = new Map()))
+      fields.set(a.fieldId, a.value)
+    }
+
+    let written = 0
+    let consecutiveFailures = 0
+    for (const [i, sub] of pending.entries()) {
+      const byField = bySubmission.get(sub.id) ?? new Map<string, AnswerValue>()
+      const properties: Record<string, unknown> = {
+        [config.titlePropertyName]: { title: [{ text: { content: sub.id } }] },
+      }
+      for (const prop of config.properties) {
+        properties[prop.name] = toNotionValue(prop.type, byField.get(prop.fieldId))
+      }
+
+      try {
+        await createDatabasePage(token, config.databaseId, properties)
+        written += 1
+        consecutiveFailures = 0
+      } catch (err) {
+        // One malformed answer shouldn't cost the whole history, but a token
+        // that's been revoked (or a rate limit we're not respecting) fails every
+        // page — stop rather than grind through hundreds of certain failures.
+        consecutiveFailures += 1
+        console.error(`[notion] backfill page failed for submission ${sub.id}`, err)
+        if (consecutiveFailures >= BACKFILL_ABORT_AFTER) {
+          console.error("[notion] backfill aborted after repeated failures")
+          break
+        }
+      }
+
+      if (i < pending.length - 1) await wait(BACKFILL_INTERVAL_MS)
+    }
+
+    return written
+  } catch (err) {
+    console.error("[notion] backfill failed", err)
+    return 0
+  }
+}
+
+/**
  * Eagerly create a form's Notion database so it exists BEFORE any response
  * arrives — the mirror of `ensureFormSheet`. Under the global model the
  * database is otherwise provisioned lazily on the first submission, which left
@@ -159,18 +309,20 @@ export async function syncSubmissionToNotion(
  * has a Notion row (provisioned, or explicitly paused — never override the
  * user's choice). Best-effort: never throws, so it's safe to call off the
  * response path.
+ *
+ * Returns how many historical pages the backfill wrote, so a caller provisioning
+ * several forms can spend one shared budget across them.
  */
-export async function ensureFormNotionDatabase(form: {
-  id: string
-  workspaceId: string
-  title: string
-}): Promise<void> {
+export async function ensureFormNotionDatabase(
+  form: { id: string; workspaceId: string; title: string },
+  backfillLimit = MAX_FORM_BACKFILL,
+): Promise<number> {
   try {
     const conn = await notionConnection(form.workspaceId)
-    if (!conn) return // Notion not connected for this workspace — nothing to do.
+    if (!conn) return 0 // Notion not connected for this workspace — nothing to do.
 
     const row = await notionIntegration(form.id)
-    if (row) return // already has a database (or is paused) — leave it as-is.
+    if (row) return 0 // already has a database (or is paused) — leave it as-is.
 
     const config = await createFormDatabase(conn, form.id, form.title)
     await db.insert(formIntegrations).values({
@@ -180,8 +332,14 @@ export async function ensureFormNotionDatabase(form: {
       enabled: true,
       config,
     })
+    // Provisioning eagerly used to PRE-EMPT the lazy path above, which was the
+    // only thing that ever moved existing responses across: the database was
+    // created empty and the next submission appended a single page. Backfill
+    // here so eager and lazy provisioning agree on what a new database holds.
+    return await backfillFormNotionDatabase(conn, config, form.id, backfillLimit)
   } catch (err) {
     console.error("[notion] eager database provisioning failed", err)
+    return 0
   }
 }
 
@@ -198,6 +356,9 @@ export async function ensureFormNotionDatabase(form: {
  * Serial and capped: Notion rate-limits, and each form costs several API
  * calls. Forms beyond the cap are provisioned on publish or on first response
  * as before. Best-effort — never throws into the OAuth callback.
+ *
+ * Each form also brings its existing responses across, drawn from one shared
+ * page budget — see MAX_CONNECT_BACKFILL for why that isn't per-form.
  */
 export async function ensureWorkspaceNotionDatabases(workspaceId: string): Promise<void> {
   try {
@@ -214,8 +375,22 @@ export async function ensureWorkspaceNotionDatabases(workspaceId: string): Promi
       .orderBy(desc(forms.updatedAt))
       .limit(MAX_CONNECT_PROVISION)
 
+    // Shared across the sweep: a form that exhausts the budget still gets its
+    // database (limit 0 skips only the backfill), so nothing is left without a
+    // destination — the owner can pull the rest in from the form's toggle.
+    let budget = MAX_CONNECT_BACKFILL
     for (const f of rows) {
-      await ensureFormNotionDatabase({ id: f.id, workspaceId, title: f.title })
+      const written = await ensureFormNotionDatabase(
+        { id: f.id, workspaceId, title: f.title },
+        budget,
+      )
+      budget -= written
+      if (budget <= 0) {
+        console.warn(
+          `[notion] backfill budget of ${MAX_CONNECT_BACKFILL} pages spent; remaining forms provisioned empty`,
+        )
+        budget = 0
+      }
     }
   } catch (err) {
     console.error("[notion] workspace provisioning failed", err)
