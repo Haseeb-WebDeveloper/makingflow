@@ -248,6 +248,10 @@ export type SubmissionMeta = {
   userAgent?: string
   device?: 'mobile' | 'tablet' | 'desktop'
   country?: string
+  // Migrated in from another tool rather than submitted here. `externalId` is
+  // that tool's own submission id, which is what makes a re-run of an import
+  // skip what it already wrote instead of duplicating the history.
+  importedFrom?: { source: 'tally'; externalId?: string }
 }
 
 export type WebhookIntegrationConfig = {

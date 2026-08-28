@@ -13,6 +13,7 @@ import { CountryLeaderboard } from "@/components/dashboard/country-leaderboard";
 import { BreakdownPanel } from "@/components/dashboard/breakdown-panel";
 import { FormsOverviewTable } from "@/components/dashboard/forms-overview-table";
 import { NewFormButton } from "@/components/dashboard/new-form-button";
+import { ImportTallyDialog } from "@/components/forms/import-tally-dialog";
 
 // Code-split the recharts-backed charts (~90KB) into their own chunk — they sit
 // below the stat cards, so deferring them speeds up the dashboard's first paint.
@@ -41,6 +42,7 @@ export default async function FormsPage() {
       <PageHeader
         title="Home"
         description="An overview of your forms and how they're performing."
+        action={<ImportTallyDialog />}
       />
 
       {forms.length === 0 || !totals ? (
@@ -49,7 +51,10 @@ export default async function FormsPage() {
           title="No forms yet"
           description="Describe a form in plain language and MakingFlow will build it for you."
           action={
-            <NewFormButton className="inline-flex h-10 gap-1.5 items-center rounded-md bg-foreground px-4 text-sm font-medium text-background transition-colors hover:bg-foreground/90" />
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              <NewFormButton className="inline-flex h-10 gap-1.5 items-center rounded-md bg-foreground px-4 text-sm font-medium text-background transition-colors hover:bg-foreground/90" />
+              <ImportTallyDialog />
+            </div>
           }
         />
       ) : (
