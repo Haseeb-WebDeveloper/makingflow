@@ -4,6 +4,7 @@ import * as React from "react"
 import { DropdownMenu as DropdownMenuPrimitive } from "radix-ui"
 
 import { cn } from "@/lib/utils"
+import { Switch } from "@/components/ui/switch"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { Tick02Icon, ArrowRight01Icon } from "@hugeicons/core-free-icons"
 
@@ -113,6 +114,50 @@ function DropdownMenuCheckboxItem({
         </DropdownMenuPrimitive.ItemIndicator>
       </span>
       {children}
+    </DropdownMenuPrimitive.CheckboxItem>
+  )
+}
+
+/**
+ * A menu row that toggles something, shown as a switch rather than a tick.
+ *
+ * A tick answers "is this selected?", which is the right question for a choice
+ * among options. These rows answer "is this on?" — and a switch says that at a
+ * glance, including when it is OFF, where a tick can only say nothing.
+ *
+ * Selecting never closes the menu: these settings are usually adjusted in twos
+ * and threes, and re-opening between each one is the kind of friction people
+ * feel without being able to name.
+ */
+function DropdownMenuSwitchItem({
+  className,
+  children,
+  checked,
+  onCheckedChange,
+  ...props
+}: Omit<React.ComponentProps<typeof DropdownMenuPrimitive.CheckboxItem>, "onSelect">) {
+  return (
+    <DropdownMenuPrimitive.CheckboxItem
+      data-slot="dropdown-menu-switch-item"
+      className={cn(
+        "relative flex cursor-pointer items-center justify-between gap-4 rounded lg:rounded-[4px] py-2 lg:py-[8px] pr-2.5 lg:pr-[10px] pl-3 lg:pl-[12px] text-sm lg:text-[14px] outline-hidden select-none focus:bg-accent focus:text-accent-foreground focus:**:text-accent-foreground data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        className
+      )}
+      checked={checked}
+      onCheckedChange={onCheckedChange}
+      onSelect={(e) => e.preventDefault()}
+      {...props}
+    >
+      <span className="flex items-center gap-2.5 lg:gap-[10px]">{children}</span>
+      {/* Presentational: the row itself owns the interaction, so the switch must
+          not be a second tab stop announcing a second control. */}
+      <Switch
+        size="sm"
+        checked={!!checked}
+        tabIndex={-1}
+        aria-hidden
+        className="pointer-events-none"
+      />
     </DropdownMenuPrimitive.CheckboxItem>
   )
 }
@@ -260,6 +305,7 @@ export {
   DropdownMenuLabel,
   DropdownMenuItem,
   DropdownMenuCheckboxItem,
+  DropdownMenuSwitchItem,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuSeparator,

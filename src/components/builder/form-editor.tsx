@@ -39,6 +39,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
+  DropdownMenuSwitchItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
@@ -494,27 +495,25 @@ function Block({
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             {!isContentBlock ? (
-              <DropdownMenuCheckboxItem
+              <DropdownMenuSwitchItem
                 checked={field.required}
                 onCheckedChange={(v) => onChange({ required: v })}
-                onSelect={(e) => e.preventDefault()}
               >
                 Required
-              </DropdownMenuCheckboxItem>
+              </DropdownMenuSwitchItem>
             ) : null}
             {/* A per-question switch rather than a row in the option list,
                 because "Other" is not an option — it stores whatever the
                 respondent types, not the word "Other". */}
             {isChoice(field.type) ? (
-              <DropdownMenuCheckboxItem
+              <DropdownMenuSwitchItem
                 checked={field.config?.allowOther === true}
                 onCheckedChange={(v) =>
                   onChange({ config: { ...field.config, allowOther: v } })
                 }
-                onSelect={(e) => e.preventDefault()}
               >
                 &ldquo;Other&rdquo; option
-              </DropdownMenuCheckboxItem>
+              </DropdownMenuSwitchItem>
             ) : null}
             {field.type === "heading" ? (
               <>
