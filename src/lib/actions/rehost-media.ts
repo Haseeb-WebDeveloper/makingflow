@@ -35,11 +35,21 @@ import { isOurs, isRehostable, rehostFromUrl, type RehostedAsset } from "@/lib/c
  * twice costs two queries and no uploads.
  */
 
-/** Files per call. Cloudinary fetches each one itself, so this is wall-clock. */
-const FILES_PER_CALL = 60
-
-/** Concurrent fetches. Enough to be quick, not enough to look like an attack. */
-const CONCURRENCY = 6
+/**
+ * Files per call, and how many at once.
+ *
+ * Measured against a real migration: Cloudinary takes roughly TEN SECONDS to
+ * pull one file from Tally's storage, so this is entirely bound by their
+ * serving speed, not by us. At 6 concurrent that is ~36 files a minute — six
+ * hours for 13,000 files, and each pass ran to ~100s, well past the 60s route
+ * budget it would get in production.
+ *
+ * 16 at a time over 48 files puts a pass at ~30s: comfortably inside the
+ * budget, and roughly three times the throughput. The work is Cloudinary
+ * fetching from Tally, so the concurrency costs us nothing but sockets.
+ */
+const FILES_PER_CALL = 48
+const CONCURRENCY = 16
 
 export type RehostResult =
   | {
