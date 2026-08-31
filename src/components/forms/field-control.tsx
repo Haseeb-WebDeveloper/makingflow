@@ -47,6 +47,22 @@ const Calendar = dynamic(
  */
 const MAX_SCALE_BUTTONS = 11
 
+/**
+ * Vertical rhythm for a stack of fields.
+ *
+ * Deliberately NOT a uniform `space-y-*`. Given equal room above and below, a
+ * heading floats between two paragraphs and belongs to neither — the reader
+ * cannot tell which text it introduces, which is the one job a heading has. So
+ * a heading takes MORE space above it and gives LESS below, binding it to what
+ * follows.
+ *
+ * The rules rely on plain CSS specificity rather than `!important`: the default
+ * `> * + *` is (0,1,0), the heading rules are (0,1,1) and so win, and
+ * `:first-child` is (0,2,0) so a heading opening the form still gets no margin.
+ */
+export const FIELD_STACK =
+  "[&>*+*]:mt-8 [&>h2]:mt-12 [&>h3]:mt-12 [&>h2+*]:mt-3 [&>h3+*]:mt-3 [&>*:first-child]:mt-0"
+
 export type UploadedFile = {
   storageKey: string
   url: string
@@ -116,11 +132,16 @@ export function Field({
 }) {
   if (field.type === "heading") {
     return field.config?.headingLevel === "h1" ? (
-      <h2 className="pt-2 text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
+      <h2 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
         <InlineMarkdown content={field.label} />
       </h2>
     ) : (
-      <h3 className="pt-2 text-xl font-semibold text-foreground">
+      // 24px on desktop rather than 20: at 20 a subheading sat only 3px above
+      // the semibold question labels beneath it, so it read as a slightly
+      // larger question instead of the start of a section. Mobile stays at 20
+      // because the heading above it is 24 there — matching would flatten the
+      // two into one level on exactly the screen with least room to spare.
+      <h3 className="text-xl font-semibold leading-snug text-foreground sm:text-2xl">
         <InlineMarkdown content={field.label} />
       </h3>
     )

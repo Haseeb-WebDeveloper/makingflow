@@ -572,9 +572,15 @@ function Block({
             value={field.label}
             onChange={(label) => onChange({ label })}
             placeholder={field.config?.headingLevel === "h1" ? "Heading" : "Subheading"}
+            // Kept in step with the runtime's headings (field-control.tsx).
+            // The canvas is meant to be what the respondent sees, and these had
+            // already drifted: 18px here against 20 there, with no responsive
+            // step at all on the large one.
             className={cn(
               "font-semibold text-foreground",
-              field.config?.headingLevel === "h1" ? "text-2xl font-bold tracking-tight" : "text-lg",
+              field.config?.headingLevel === "h1"
+                ? "text-2xl font-bold tracking-tight sm:text-3xl"
+                : "text-xl sm:text-2xl",
             )}
           />
         ) : field.type === "paragraph" ? (
@@ -583,7 +589,8 @@ function Block({
             value={field.label}
             onChange={(label) => onChange({ label })}
             placeholder="Add a line of text…"
-            className="text-sm leading-relaxed text-muted-foreground"
+            // Body copy renders at 16px in the runtime, not 14px muted.
+            className="text-base leading-relaxed text-foreground"
           />
         ) : field.type === "image" ? (
           <ImageBlockEditor

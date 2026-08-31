@@ -7,7 +7,7 @@ import type { PublicForm, PublicField } from "@/lib/data/public-form";
 import type { AnswerValue } from "@/lib/db/schema";
 import { isValidPhoneNumber } from "react-phone-number-input";
 import { isFieldVisible, NON_ANSWER_TYPES, isEmpty } from "@/lib/builder/logic";
-import { Field, FormBranding } from "@/components/forms/field-control";
+import { Field, FIELD_STACK, FormBranding } from "@/components/forms/field-control";
 import {
   AllAtOncePreview,
   OneAtATimePreview,
@@ -692,7 +692,7 @@ export function FormRuntime({
           <motion.div
             key={currentStep.key}
             ref={questionRef}
-            className="space-y-8"
+            className={FIELD_STACK}
             initial={questionMotion.initial}
             animate={questionMotion.animate}
             exit={questionMotion.exit}
@@ -810,7 +810,7 @@ export function FormRuntime({
       <AnimatePresence mode="wait" initial={false}>
         <motion.div
           key={idx}
-          className="space-y-8"
+          className={FIELD_STACK}
           initial={questionMotion.initial}
           animate={questionMotion.animate}
           exit={questionMotion.exit}
