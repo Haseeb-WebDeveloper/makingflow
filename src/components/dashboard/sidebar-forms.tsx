@@ -35,6 +35,17 @@ const UNCATEGORIZED_CAP = 10
 const ROW_CLS =
   "text-sidebar-foreground data-active:bg-sidebar-accent data-active:font-medium"
 
+/**
+ * Form rows reserve no room for their ⋯ menu.
+ *
+ * A row that HAS an action gets 28px of right padding whether or not anything
+ * is showing. On a folder that space holds the count, so it earns itself; on a
+ * form it is empty at rest and reads as a ragged gap down the whole list. The
+ * ⋯ only appears on hover, and it carries its own fill so it covers the tail of
+ * a long title instead of colliding with it.
+ */
+const FORM_ROW_CLS = `${ROW_CLS} group-has-data-[sidebar=menu-action]/menu-item:pr-2`
+
 function Chevron({ open }: { open: boolean }) {
   return (
     <svg
@@ -63,7 +74,7 @@ function FormRow({
 }) {
   return (
     <SidebarMenuItem>
-      <SidebarMenuButton asChild isActive={active} tooltip={form.title || "Untitled form"} className={ROW_CLS}>
+      <SidebarMenuButton asChild isActive={active} tooltip={form.title || "Untitled form"} className={FORM_ROW_CLS}>
         <Link href={`/forms/${form.id}`} prefetch className="flex w-full min-w-0 items-center">
           <span className="min-w-0 flex-1 truncate">{form.title || "Untitled form"}</span>
         </Link>

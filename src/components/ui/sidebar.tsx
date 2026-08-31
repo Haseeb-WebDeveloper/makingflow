@@ -432,7 +432,7 @@ function SidebarGroupAction({
       data-slot="sidebar-group-action"
       data-sidebar="group-action"
       className={cn(
-        "absolute inset-y-0 right-2 lg:right-[8px] my-auto flex size-5 lg:size-[20px] items-center justify-center rounded-md lg:rounded-[8px] p-0 text-sidebar-foreground ring-sidebar-ring outline-hidden transition-transform group-data-[collapsible=icon]:hidden after:absolute after:-inset-2 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-0 md:after:hidden [&>svg]:size-4 [&>svg]:shrink-0",
+        "absolute top-2.5 lg:top-[10px] right-2 lg:right-[8px] flex size-5 lg:size-[20px] items-center justify-center rounded-md lg:rounded-[8px] p-0 text-sidebar-foreground ring-sidebar-ring outline-hidden transition-transform group-data-[collapsible=icon]:hidden after:absolute after:-inset-2 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-0 md:after:hidden [&>svg]:size-4 [&>svg]:shrink-0",
         className
       )}
       {...props}
@@ -566,7 +566,7 @@ function SidebarMenuAction({
       className={cn(
         "absolute inset-y-0 right-1 lg:right-[4px] my-auto flex size-5 lg:size-[20px] items-center justify-center rounded-md lg:rounded-[8px] p-0 text-sidebar-foreground ring-sidebar-ring outline-hidden transition-transform group-data-[collapsible=icon]:hidden peer-hover/menu-button:text-sidebar-accent-foreground after:absolute after:-inset-2 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-0 md:after:hidden [&>svg]:size-4 [&>svg]:shrink-0",
         showOnHover &&
-          "group-focus-within/menu-item:opacity-100 group-hover/menu-item:opacity-100 peer-data-active/menu-button:text-sidebar-accent-foreground aria-expanded:opacity-100 md:opacity-0",
+          "group-focus-within/menu-item:opacity-100 group-focus-within/menu-item:bg-sidebar-accent group-hover/menu-item:opacity-100 group-hover/menu-item:bg-sidebar-accent peer-data-active/menu-button:text-sidebar-accent-foreground aria-expanded:opacity-100 md:opacity-0",
         className
       )}
       {...props}
