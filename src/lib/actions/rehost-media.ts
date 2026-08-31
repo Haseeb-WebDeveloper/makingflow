@@ -50,6 +50,14 @@ import { isOurs, isRehostable, rehostFromUrl, type RehostedAsset } from "@/lib/c
 const FILES_PER_CALL = 150
 const CONCURRENCY = 16
 
+/**
+ * Concurrent answer updates.
+ *
+ * Kept below the pool's `max: 5` connections (src/lib/db) so a pass can't
+ * starve the rest of the request of a connection while it writes.
+ */
+const DB_CONCURRENCY = 4
+
 export type RehostResult =
   | {
       success: true
@@ -263,19 +271,34 @@ async function rehostAnswerFiles(
   }
   await db.insert(uploads).values(uploadRows)
 
+  // Run the updates CONCURRENTLY rather than as one hand-written statement.
+  //
+  // Sequential was the real bottleneck: against a remote database a round trip
+  // is a large fraction of a second, so 150 of them cost far more than the
+  // uploads they record. A single `UPDATE … FROM (VALUES …)` would be faster
+  // still, but binding a JSON string and casting it to jsonb stores a jsonb
+  // STRING, not an object — `jsonb_array_length(value->'files')` comes back
+  // null — which would have quietly destroyed every file answer it touched.
+  // Drizzle's own column mapper gets this right, so this keeps the mapper and
+  // buys the speed from concurrency instead.
   let files = 0
+  const patches: { id: string; value: AnswerValue }[] = []
   for (const [row, replacements] of byRow) {
     const list = lists[row] ?? []
     const nextFiles = list.map((f) => {
       const asset = replacements.get(f.url)
       return asset ? { ...f, url: asset.secureUrl } : f
     })
-    await db
-      .update(answers)
-      .set({ value: { ...(rows[row].value as Record<string, unknown>), files: nextFiles } })
-      .where(eq(answers.id, rows[row].id))
+    patches.push({
+      id: rows[row].id,
+      value: { ...(rows[row].value as Record<string, unknown>), files: nextFiles },
+    })
     files += replacements.size
   }
+
+  await pool(patches, DB_CONCURRENCY, (p) =>
+    db.update(answers).set({ value: p.value }).where(eq(answers.id, p.id)),
+  )
 
   return { files, failed, cursor: nextCursor }
 }
