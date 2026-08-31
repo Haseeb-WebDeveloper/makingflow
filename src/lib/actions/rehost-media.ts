@@ -38,17 +38,16 @@ import { isOurs, isRehostable, rehostFromUrl, type RehostedAsset } from "@/lib/c
 /**
  * Files per call, and how many at once.
  *
- * Measured against a real migration: Cloudinary takes roughly TEN SECONDS to
- * pull one file from Tally's storage, so this is entirely bound by their
- * serving speed, not by us. At 6 concurrent that is ~36 files a minute — six
- * hours for 13,000 files, and each pass ran to ~100s, well past the 60s route
- * budget it would get in production.
+ * Measured on a real migration: one file takes about 1.7s for Cloudinary to
+ * pull from Tally's storage. The waiting is Cloudinary fetching from Tally, so
+ * concurrency costs us sockets and nothing else — 16 at a time gives roughly
+ * nine files a second.
  *
- * 16 at a time over 48 files puts a pass at ~30s: comfortably inside the
- * budget, and roughly three times the throughput. The work is Cloudinary
- * fetching from Tally, so the concurrency costs us nothing but sockets.
+ * 150 per call then puts a pass near 17s, comfortably inside the 60s route
+ * budget it gets in production, while keeping the number of round trips (and
+ * so the number of chances to be interrupted) low.
  */
-const FILES_PER_CALL = 48
+const FILES_PER_CALL = 150
 const CONCURRENCY = 16
 
 export type RehostResult =
@@ -210,43 +209,74 @@ async function rehostAnswerFiles(
 
   if (rows.length === 0) return { files: 0, failed: 0, cursor: null }
 
-  let files = 0
-  let failed = 0
+  // A short page means this was the last one.
+  const nextCursor = rows.length < FILES_PER_CALL ? null : rows[rows.length - 1].id
 
-  for (const row of rows) {
-    const list = fileList(row.value)
-    if (!list) continue
-
-    const pending = list.filter((f) => isRehostable(f.url) && !isOurs(f.url))
-    if (pending.length === 0) continue
-
-    const results = await pool(pending, CONCURRENCY, (f) => rehostFromUrl(f.url, "submissions"))
-
-    const replacements = new Map<string, RehostedAsset>()
-    for (const [i, asset] of results.entries()) {
-      if (asset) replacements.set(pending[i].url, asset)
-      else failed += 1
+  // Flatten every file in the batch into ONE queue before fetching.
+  //
+  // The obvious shape — loop the answers, pool each answer's files — gives a
+  // concurrency of one, because a file_upload answer almost always holds
+  // exactly one file: `min(CONCURRENCY, 1)`. That made the whole sweep strictly
+  // sequential and no amount of raising CONCURRENCY changed it.
+  const lists = rows.map((r) => fileList(r.value))
+  const jobs: { row: number; url: string }[] = []
+  lists.forEach((list, row) => {
+    for (const f of list ?? []) {
+      if (isRehostable(f.url) && !isOurs(f.url)) jobs.push({ row, url: f.url })
     }
-    if (replacements.size === 0) continue
+  })
+  if (jobs.length === 0) return { files: 0, failed: 0, cursor: nextCursor }
 
+  const results = await pool(jobs, CONCURRENCY, (j) => rehostFromUrl(j.url, "submissions"))
+
+  let failed = 0
+  const byRow = new Map<number, Map<string, RehostedAsset>>()
+  results.forEach((asset, i) => {
+    if (!asset) {
+      failed += 1
+      return
+    }
+    const { row, url } = jobs[i]
+    let m = byRow.get(row)
+    if (!m) byRow.set(row, (m = new Map()))
+    m.set(url, asset)
+  })
+  if (byRow.size === 0) return { files: 0, failed, cursor: nextCursor }
+
+  // Record the assets first, in one statement: an uploads row without a
+  // rewritten answer is a harmless orphan, where the reverse would be a file on
+  // our storage that nothing knows about and no quota counts.
+  const uploadRows = []
+  for (const [row, replacements] of byRow) {
+    for (const a of replacements.values()) {
+      uploadRows.push({
+        workspaceId,
+        formId,
+        submissionId: rows[row].submissionId,
+        storageKey: a.publicId,
+        url: a.secureUrl,
+        fileName: a.fileName,
+        mimeType: a.mimeType,
+        bytes: a.bytes,
+      })
+    }
+  }
+  await db.insert(uploads).values(uploadRows)
+
+  let files = 0
+  for (const [row, replacements] of byRow) {
+    const list = lists[row] ?? []
     const nextFiles = list.map((f) => {
       const asset = replacements.get(f.url)
       return asset ? { ...f, url: asset.secureUrl } : f
     })
-
-    for (const asset of replacements.values()) {
-      await recordUpload(asset, workspaceId, formId, row.submissionId)
-    }
     await db
       .update(answers)
-      .set({ value: { ...(row.value as Record<string, unknown>), files: nextFiles } })
-      .where(eq(answers.id, row.id))
-
+      .set({ value: { ...(rows[row].value as Record<string, unknown>), files: nextFiles } })
+      .where(eq(answers.id, rows[row].id))
     files += replacements.size
   }
 
-  // A short page means this was the last one.
-  const nextCursor = rows.length < FILES_PER_CALL ? null : rows[rows.length - 1].id
   return { files, failed, cursor: nextCursor }
 }
 
