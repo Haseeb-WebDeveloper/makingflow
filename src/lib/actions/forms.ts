@@ -4,7 +4,7 @@ import { after } from "next/server"
 import { and, eq, inArray, isNull, notInArray, sql } from "drizzle-orm"
 import { revalidatePath, updateTag } from "next/cache"
 import { db } from "@/lib/db"
-import { forms, formFields, uploads, type FormSettings, type FormAiConfig, type FormTheme, type FieldConfig, type FieldLogic } from "@/lib/db/schema"
+import { folders, forms, formFields, uploads, type FormSettings, type FormAiConfig, type FormTheme, type FieldConfig, type FieldLogic } from "@/lib/db/schema"
 import { getRequiredUser, getDefaultWorkspace } from "@/lib/auth/session"
 import { destroyAssets, assetFromUrl, resourceTypeFromMime, type CloudinaryAsset } from "@/lib/cloudinary/delete"
 import { ensureFormSheet } from "@/lib/integrations/sync"
@@ -40,16 +40,36 @@ function newPublicId(): string {
  * blank draft stays out of the dashboard/sidebar list until it gets real content
  * (`saveAiForm` invalidates then). Abandoned empties are removed by the
  * delete-draft endpoint when the user leaves the editor.
+ *
+ * `folderId` files the draft as it is created — "New form in this folder" from
+ * the sidebar. The folder is stored now but, per the above, the form only
+ * appears under it once it has content, which is also when it stops being an
+ * abandoned empty.
  */
-export async function createDraftForm(): Promise<{ id: string }> {
+export async function createDraftForm(folderId?: string | null): Promise<{ id: string }> {
   const user = await getRequiredUser()
   const workspace = await getDefaultWorkspace()
   if (!workspace) throw new Error("No workspace")
+
+  // The folder id comes from the client, so it is checked rather than trusted:
+  // without this, a form could be filed into another tenant's folder.
+  let folder: string | null = null
+  if (folderId) {
+    const [row] = await db
+      .select({ id: folders.id })
+      .from(folders)
+      .where(and(eq(folders.id, folderId), eq(folders.workspaceId, workspace.id)))
+      .limit(1)
+    if (!row) throw new Error("Folder not found")
+    folder = row.id
+  }
+
   const [created] = await db
     .insert(forms)
     .values({
       workspaceId: workspace.id,
       createdById: user.id,
+      folderId: folder,
       title: DEFAULT_FORM_TITLE,
       publicId: newPublicId(),
     })

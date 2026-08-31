@@ -50,7 +50,7 @@ export function StatCard({
           </span>
         ) : null}
       </div>
-      <p className="mt-3 font-sebenta text-2xl font-bold tracking-tight text-foreground">
+      <p className="mt-3 text-2xl font-bold tracking-tight text-foreground">
         {value}
       </p>
       <p className="mt-0.5 text-xs text-muted-foreground">

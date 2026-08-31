@@ -66,7 +66,7 @@ function NotAvailable({ missing }: { missing: boolean }) {
   return (
     <div className="rounded-lg bg-background p-10 text-center flex flex-col items-center justify-center">
       <Lottie name="not-available" className="size-40" />
-      <h1 className="font-sebenta text-3xl font-bold tracking-tight text-foreground">
+      <h1 className="text-3xl font-bold tracking-tight text-foreground">
         {missing ? "Form not found" : "This form isn't available"}
       </h1>
       <p className="mt-1.5 text-muted-foreground">

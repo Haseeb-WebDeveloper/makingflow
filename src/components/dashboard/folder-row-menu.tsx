@@ -32,14 +32,17 @@ import { Input } from "@/components/ui/input"
 import { Icon } from "@/components/ui/icon"
 import { showToast } from "@/components/ui/toast"
 import { renameFolder, deleteFolder } from "@/lib/actions/folders"
+import { useCreateForm } from "@/lib/forms/use-create-form"
 
-/** Rename / delete actions for a folder row in the sidebar. */
+/** New form / rename / delete actions for a folder row in the sidebar. */
 export function FolderRowMenu({ folderId, name }: { folderId: string; name: string }) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [renameOpen, setRenameOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [newName, setNewName] = useState(name)
+  // Creates the draft already filed in this folder, then opens its editor.
+  const { createForm, creating } = useCreateForm(folderId)
 
   function onRename() {
     startTransition(async () => {
@@ -75,7 +78,21 @@ export function FolderRowMenu({ folderId, name }: { folderId: string; name: stri
             <Icon name="more-circle" />
           </SidebarMenuAction>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-40">
+        <DropdownMenuContent align="end" className="w-44">
+          <DropdownMenuItem
+            disabled={creating}
+            onSelect={(e) => {
+              // Keep the menu mounted while the draft is created — closing it
+              // first unmounts this item mid-transition and the spinner never
+              // shows, so a slow create looks like nothing happened.
+              e.preventDefault()
+              createForm()
+            }}
+          >
+            <Icon name="plus" className="size-4 text-muted-foreground" />
+            {creating ? "Creating…" : "New form"}
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
           <DropdownMenuItem
             onSelect={() => {
               setNewName(name)

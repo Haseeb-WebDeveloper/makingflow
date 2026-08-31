@@ -1,7 +1,12 @@
-import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm"
+import { and, desc, eq, gte, inArray, isNull, sql } from "drizzle-orm"
 import { db } from "@/lib/db"
 import { forms, submissions, formEvents } from "@/lib/db/schema"
 import { getDefaultWorkspace } from "@/lib/auth/session"
+import {
+  DEFAULT_RANGE,
+  rangeBuckets,
+  type DashboardRange,
+} from "@/lib/data/range"
 
 export type FormOverviewRow = {
   id: string
@@ -13,27 +18,36 @@ export type FormOverviewRow = {
   views: number
   lastResponseAt: Date | null
   completionRate: number | null // completes ÷ views, or null when no views
-  spark: number[] // daily submission counts over the last 14 days (zero-filled)
+  /** Submission counts per bucket over the selected range (zero-filled). */
+  spark: number[]
 }
-
-const SPARK_DAYS = 14
 
 /** Canonical marketing channels — always shown (0-filled) so users know the set. */
 export const SOURCE_CHANNELS = ["Direct", "Search", "Social", "Referral", "Email", "Paid"] as const
 
-/** YYYY-MM-DD keys for the last n days (UTC), oldest → newest. */
-export function lastNDayKeys(n: number): string[] {
-  const keys: string[] = []
-  const today = new Date()
-  for (let i = n - 1; i >= 0; i--) {
-    const d = new Date(today)
-    d.setUTCDate(today.getUTCDate() - i)
-    keys.push(d.toISOString().slice(0, 10))
-  }
-  return keys
-}
-
 export type Bucket = { key: string; count: number }
+
+// Re-exported so existing callers (and the range picker) have one import path.
+export {
+  DASHBOARD_RANGES,
+  DEFAULT_RANGE,
+  lastNDayKeys,
+  parseRange,
+  rangeBuckets,
+  type DashboardRange,
+} from "@/lib/data/range"
+
+/**
+ * The three groupings a range can ask for, written out rather than built from
+ * the bucket name. `date_trunc`'s unit cannot be a bind parameter, and writing
+ * all three literally means no part of a query is ever assembled from a value
+ * that reached us through a URL.
+ */
+const BUCKET_EXPR = {
+  day: sql`date_trunc('day', ${submissions.createdAt})`,
+  week: sql`date_trunc('week', ${submissions.createdAt})`,
+  month: sql`date_trunc('month', ${submissions.createdAt})`,
+} as const
 
 // Shared submission-metadata SQL expressions (referrer/UTM → marketing channel),
 // reused by the workspace dashboard and the per-form insights.
@@ -60,8 +74,10 @@ export type FormsDashboard = {
     completes: number
     completionRate: number | null
   }
-  /** Daily completed-submission counts over the last 14 days (sparse — gaps = 0). */
+  /** Completed submissions per bucket over the selected range (zero-filled). */
   series: { day: string; count: number }[]
+  /** Echoed back so the caller can label the axis without re-deriving it. */
+  range: DashboardRange
   /** Respondent breakdowns from submission metadata (captured going forward). */
   breakdowns: {
     devices: Bucket[]
@@ -83,17 +99,20 @@ const EMPTY: FormsDashboard = {
     completionRate: null,
   },
   series: [],
+  range: DEFAULT_RANGE,
   breakdowns: { devices: [], countries: [], sources: [] },
   forms: [],
 }
 
 /**
- * Everything the /forms home page needs: workspace stat cards, a 14-day trend
- * series, and a per-form overview (submissions, views, completion). Submission
+ * Everything the /forms home page needs: workspace stat cards, a trend series
+ * over the requested range, and a per-form overview (submissions, views, completion). Submission
  * counts come from the `submissions` table (source of truth); views/completes
  * from the `form_events` funnel.
  */
-export async function getFormsDashboard(): Promise<FormsDashboard | null> {
+export async function getFormsDashboard(
+  range: DashboardRange = DEFAULT_RANGE,
+): Promise<FormsDashboard | null> {
   const workspace = await getDefaultWorkspace()
   if (!workspace) return null
 
@@ -111,9 +130,34 @@ export async function getFormsDashboard(): Promise<FormsDashboard | null> {
 
   const totalForms = formRows.length
   const activeForms = formRows.filter((f) => f.status === "published").length
-  if (totalForms === 0) return EMPTY
+  // Carry the range through even with nothing to show, so the picker still
+  // reflects what the user chose.
+  if (totalForms === 0) return { ...EMPTY, range }
 
   const formIds = formRows.map((f) => f.id)
+
+  // "All time" is the only range that has to ask where the data starts, so it
+  // is the only one that pays for the extra round trip.
+  const earliest =
+    range === "all"
+      ? ((
+          await db
+            .select({ min: sql<Date | null>`min(${submissions.createdAt})` })
+            .from(submissions)
+            .where(
+              and(
+                eq(submissions.workspaceId, workspace.id),
+                eq(submissions.status, "completed"),
+              ),
+            )
+        )[0]?.min ?? null)
+      : null
+
+  const { keys: bucketKeys, from, bucket } = rangeBuckets(
+    range,
+    earliest ? new Date(earliest) : null,
+  )
+  const bucketExpr = BUCKET_EXPR[bucket]
 
   // Breakdowns are scoped to completed submissions that actually carry metadata,
   // so percentages are computed within the tracked population.
@@ -166,7 +210,7 @@ export async function getFormsDashboard(): Promise<FormsDashboard | null> {
 
     db
       .select({
-        day: sql<string>`to_char(date_trunc('day', ${submissions.createdAt}), 'YYYY-MM-DD')`,
+        day: sql<string>`to_char(${bucketExpr}, 'YYYY-MM-DD')`,
         count: sql<number>`count(*)::int`,
       })
       .from(submissions)
@@ -174,16 +218,16 @@ export async function getFormsDashboard(): Promise<FormsDashboard | null> {
         and(
           eq(submissions.workspaceId, workspace.id),
           eq(submissions.status, "completed"),
-          sql`${submissions.createdAt} >= now() - interval '14 days'`,
+          gte(submissions.createdAt, from),
         ),
       )
-      .groupBy(sql`date_trunc('day', ${submissions.createdAt})`)
-      .orderBy(sql`date_trunc('day', ${submissions.createdAt})`),
+      .groupBy(bucketExpr)
+      .orderBy(bucketExpr),
 
     db
       .select({
         formId: submissions.formId,
-        day: sql<string>`to_char(date_trunc('day', ${submissions.createdAt}), 'YYYY-MM-DD')`,
+        day: sql<string>`to_char(${bucketExpr}, 'YYYY-MM-DD')`,
         count: sql<number>`count(*)::int`,
       })
       .from(submissions)
@@ -191,10 +235,10 @@ export async function getFormsDashboard(): Promise<FormsDashboard | null> {
         and(
           eq(submissions.workspaceId, workspace.id),
           eq(submissions.status, "completed"),
-          sql`${submissions.createdAt} >= now() - interval '14 days'`,
+          gte(submissions.createdAt, from),
         ),
       )
-      .groupBy(submissions.formId, sql`date_trunc('day', ${submissions.createdAt})`),
+      .groupBy(submissions.formId, bucketExpr),
 
     db
       .select({
@@ -227,7 +271,6 @@ export async function getFormsDashboard(): Promise<FormsDashboard | null> {
   const subMap = new Map(subAgg.map((r) => [r.formId, r]))
   const evMap = new Map(evAgg.map((r) => [r.formId, r]))
 
-  const dayKeys = lastNDayKeys(SPARK_DAYS)
   // form id → (day → count)
   const perForm = new Map<string, Map<string, number>>()
   for (const r of perFormSeries) {
@@ -256,13 +299,14 @@ export async function getFormsDashboard(): Promise<FormsDashboard | null> {
       views: v,
       lastResponseAt: s?.last ? new Date(s.last) : null,
       completionRate: v > 0 ? c / v : null,
-      spark: dayKeys.map((d) => fm?.get(d) ?? 0),
+      spark: bucketKeys.map((d) => fm?.get(d) ?? 0),
     }
   })
 
-  // Zero-fill the workspace trend to a continuous 14-day series.
+  // Zero-fill so the line stays continuous: a bucket with no submissions has
+  // no row to group, and joining across the gap would imply activity there.
   const seriesMap = new Map(series.map((r) => [r.day, r.count]))
-  const filledSeries = dayKeys.map((d) => ({ day: d, count: seriesMap.get(d) ?? 0 }))
+  const filledSeries = bucketKeys.map((d) => ({ day: d, count: seriesMap.get(d) ?? 0 }))
 
   // Always surface every channel (0-fill) so users see what we track.
   const srcMap = new Map(sources.map((r) => [r.key, r.count]))
@@ -283,6 +327,7 @@ export async function getFormsDashboard(): Promise<FormsDashboard | null> {
       completionRate: views > 0 ? completes / views : null,
     },
     series: filledSeries,
+    range,
     breakdowns: { devices, countries, sources: filledSources },
     forms: formsOut,
   }

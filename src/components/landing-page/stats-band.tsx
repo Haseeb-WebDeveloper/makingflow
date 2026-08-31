@@ -22,7 +22,7 @@ export function StatsBand() {
           {STATS.map((s, i) => (
             <Reveal key={s.label} delay={i * 80}>
               <div className="text-center lg:text-left">
-                <p className="font-sebenta text-4xl font-bold tracking-tight text-secondary sm:text-5xl">
+                <p className="text-4xl font-bold tracking-tight text-secondary sm:text-5xl">
                   {s.value}
                 </p>
                 <p className="mt-2 text-sm leading-relaxed text-primary-foreground/75">

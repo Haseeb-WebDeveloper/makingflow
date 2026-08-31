@@ -50,10 +50,10 @@ const COMPONENTS: Components = {
   strong: ({ children }) => <strong className="font-semibold text-foreground">{children}</strong>,
   em: ({ children }) => <em className="italic">{children}</em>,
   h1: ({ children, style }) => (
-    <h2 className={cn("font-sebenta text-xl font-bold tracking-tight text-foreground", alignClass(style))}>{children}</h2>
+    <h2 className={cn("text-xl font-bold tracking-tight text-foreground", alignClass(style))}>{children}</h2>
   ),
   h2: ({ children, style }) => (
-    <h3 className={cn("font-sebenta text-lg font-bold tracking-tight text-foreground", alignClass(style))}>{children}</h3>
+    <h3 className={cn("text-lg font-bold tracking-tight text-foreground", alignClass(style))}>{children}</h3>
   ),
   h3: ({ children, style }) => (
     <h4 className={cn("text-base font-semibold text-foreground", alignClass(style))}>{children}</h4>

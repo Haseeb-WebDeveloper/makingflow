@@ -37,7 +37,7 @@ export function IntegrationsSection() {
         <div className="grid gap-x-14 gap-y-8 lg:grid-cols-[1fr_1.1fr] lg:items-start">
           <div>
             <Reveal>
-              <h2 className="max-w-md font-sebenta text-3xl font-bold leading-[1.12] tracking-tight text-foreground sm:text-[2.6rem]">
+              <h2 className="max-w-md text-3xl font-bold leading-[1.12] tracking-tight text-foreground sm:text-[2.6rem]">
                 A few integrations that actually matter.
               </h2>
             </Reveal>

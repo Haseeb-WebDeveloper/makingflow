@@ -14,7 +14,7 @@ export function ConnectScale() {
       <div className="mx-auto max-w-7xl rounded-xl bg-[linear-gradient(180deg,color-mix(in_oklab,var(--primary)_5%,var(--background)),var(--accent))] px-6 py-16 text-center sm:px-12 sm:py-20">
         <Reveal className="mx-auto max-w-2xl">
           <Eyebrow>Integration</Eyebrow>
-          <h2 className="mt-4 font-sebenta text-3xl font-bold leading-[1.12] tracking-tight text-foreground sm:text-[2.6rem]">
+          <h2 className="mt-4 text-3xl font-bold leading-[1.12] tracking-tight text-foreground sm:text-[2.6rem]">
             Connect, automate, and scale.
           </h2>
           <p className="mx-auto mt-4 max-w-[52ch] text-base leading-relaxed text-muted-foreground">
@@ -49,7 +49,7 @@ export function ConnectScale() {
         {/* Testimonial */}
         <Reveal delay={180}>
           <figure className="mx-auto mt-14 max-w-xl">
-            <blockquote className="font-sebenta text-xl font-medium leading-relaxed text-foreground sm:text-2xl">
+            <blockquote className="text-xl font-medium leading-relaxed text-foreground sm:text-2xl">
               “MakingFlow changed how we collect answers. It connects everything,
               so responses just show up where we already work.”
             </blockquote>

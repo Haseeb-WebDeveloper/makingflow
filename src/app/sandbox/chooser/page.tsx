@@ -28,7 +28,7 @@ export default function ChooserSandbox() {
   return (
     <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
       <header className="mb-10">
-        <h1 className="font-sebenta text-2xl font-bold tracking-tight text-foreground">
+        <h1 className="text-2xl font-bold tracking-tight text-foreground">
           Fill-style chooser — versions
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
@@ -120,7 +120,7 @@ function Modal({ children }: { children: React.ReactNode }) {
       <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
         MakingFlow Field Explorer
       </p>
-      <h3 className="mt-1 font-sebenta text-xl font-bold tracking-tight text-foreground sm:text-2xl">
+      <h3 className="mt-1 text-xl font-bold tracking-tight text-foreground sm:text-2xl">
         How would you like to fill this out?
       </h3>
       <p className="mt-1.5 text-sm text-muted-foreground">

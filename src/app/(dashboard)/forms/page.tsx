@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import dynamic from "next/dynamic";
 import { getFormsDashboard } from "@/lib/data/analytics";
+import { parseRange, rangeBuckets } from "@/lib/data/range";
 import { getWorkspaceFolders } from "@/lib/data/folders";
 import { getDefaultWorkspace } from "@/lib/auth/session";
 import {
@@ -14,6 +15,7 @@ import { BreakdownPanel } from "@/components/dashboard/breakdown-panel";
 import { FormsOverviewTable } from "@/components/dashboard/forms-overview-table";
 import { NewFormButton } from "@/components/dashboard/new-form-button";
 import { ImportTallyDialog } from "@/components/forms/import-tally-dialog";
+import { RangePicker } from "@/components/dashboard/range-picker";
 
 // Code-split the recharts-backed charts (~90KB) into their own chunk — they sit
 // below the stat cards, so deferring them speeds up the dashboard's first paint.
@@ -33,10 +35,18 @@ export const metadata: Metadata = { title: "Home · MakingFlow" };
 // inserted responses. The default is too tight for a real migration.
 export const maxDuration = 60;
 
-export default async function FormsPage() {
+export default async function FormsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ range?: string }>;
+}) {
+  // The range lives in the URL because the query that answers it runs on the
+  // server — see RangePicker. Anything unrecognised falls back to the default
+  // rather than erroring, since this is a hand-editable parameter.
+  const range = parseRange((await searchParams).range);
   const workspace = await getDefaultWorkspace();
   const [data, folders] = await Promise.all([
-    getFormsDashboard(),
+    getFormsDashboard(range),
     workspace ? getWorkspaceFolders(workspace.id) : Promise.resolve([]),
   ]);
   const totals = data?.totals;
@@ -105,7 +115,11 @@ export default async function FormsPage() {
             />
           </div>
 
-          <SubmissionsAreaChart data={data!.series} />
+          <SubmissionsAreaChart
+            data={data!.series}
+            bucket={rangeBuckets(range).bucket}
+            toolbar={<RangePicker current={range} />}
+          />
 
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
             <BreakdownPanel

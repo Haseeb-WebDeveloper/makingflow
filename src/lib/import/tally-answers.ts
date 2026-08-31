@@ -36,6 +36,13 @@ export type ApiImportPlan = {
   submissions: ImportedSubmission[]
   /** Questions we could not place — surfaced so nothing goes missing quietly. */
   unmatched: string[]
+  /**
+   * Questions deleted in Tally. Their old answers survive in Tally's history but
+   * the blocks are gone, so there is no question here to hang them on. Reported
+   * apart from `unmatched` because this is not a failure to match — there is
+   * nothing to match — and counting it as one makes a clean import look broken.
+   */
+  deleted: string[]
   /** Responses that answered nothing we kept (a skipped block type, usually). */
   emptyRows: number
 }
@@ -54,7 +61,7 @@ function matchQuestions(
   fields: EditorField[],
   refs: TallyFieldRef[],
   questions: TallyApiQuestion[],
-): { targets: Map<string, Target>; unmatched: string[] } {
+): { targets: Map<string, Target>; unmatched: string[]; deleted: string[] } {
   const fieldById = new Map(fields.map((f) => [f.id, f]))
   const available = new Map<string, TallyFieldRef>()
   for (const ref of refs) {
@@ -73,10 +80,20 @@ function matchQuestions(
 
   const targets = new Map<string, Target>()
   const unmatched: string[] = []
+  const deleted: string[] = []
 
   for (const question of questions) {
     const id = typeof question.id === "string" ? question.id : ""
     if (!id || targets.has(id)) continue
+
+    const title = typeof question.title === "string" ? question.title.trim() : ""
+
+    // Removed from the form in Tally. Its blocks are gone, so there is nothing
+    // here it could match.
+    if (question.isDeleted === true) {
+      if (title) deleted.push(title)
+      continue
+    }
 
     let fieldId: string | undefined
 
@@ -91,15 +108,11 @@ function matchQuestions(
     }
 
     // Then the wording, for a form edited between our two reads.
-    if (!fieldId) {
-      const title = typeof question.title === "string" ? normaliseLabel(question.title) : ""
-      if (title) fieldId = byLabel.get(title)
-    }
+    if (!fieldId && title) fieldId = byLabel.get(normaliseLabel(title))
 
     const ref = fieldId ? available.get(fieldId) : undefined
     const field = fieldId ? fieldById.get(fieldId) : undefined
     if (!ref || !field) {
-      const title = typeof question.title === "string" ? question.title.trim() : ""
       if (title) unmatched.push(title)
       continue
     }
@@ -110,7 +123,7 @@ function matchQuestions(
     byLabel.delete(normaliseLabel(field.label))
   }
 
-  return { targets, unmatched }
+  return { targets, unmatched, deleted }
 }
 
 /**
@@ -126,7 +139,7 @@ export function planApiImport(
   questions: TallyApiQuestion[],
   rows: TallyApiSubmission[],
 ): ApiImportPlan {
-  const { targets, unmatched } = matchQuestions(fields, refs, questions)
+  const { targets, unmatched, deleted } = matchQuestions(fields, refs, questions)
   const submissions: ImportedSubmission[] = []
   let emptyRows = 0
 
@@ -168,7 +181,7 @@ export function planApiImport(
     })
   }
 
-  return { submissions, unmatched, emptyRows }
+  return { submissions, unmatched, deleted, emptyRows }
 }
 
 /**
@@ -176,10 +189,15 @@ export function planApiImport(
  *
  * Tally's schema types `answer` as "string | number | boolean | array | object
  * | null" and the published docs give an example for exactly one of those — a
- * text input. Rather than guess the rest and lose whatever we guessed wrong,
- * anything this doesn't recognise falls through to `formattedAnswer`, which is
- * the same value rendered as Tally itself displays it. An unknown shape
- * degrades to correct human-readable text instead of vanishing.
+ * text input. Checked against a real account, the shapes that actually turn up
+ * are: text and dates as strings, numbers for scales, an array of option LABELS
+ * (not uuids) for choices, and `[{ id, name, url, mimeType, size }]` for
+ * uploads. Every one is handled above.
+ *
+ * `formattedAnswer` is in Tally's published schema but absent from live
+ * responses, so the fallback below is a safety net for a shape we have not met
+ * — not a path anything relies on. An unknown shape degrades to readable text
+ * where one is offered, rather than vanishing.
  */
 export function coerceApiAnswer(
   field: EditorField,

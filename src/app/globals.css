@@ -52,7 +52,6 @@
   --color-sidebar-ring: var(--sidebar-ring);
 
   --font-sans: var(--font-sans);
-  --font-sebenta: var(--font-sebenta);
   --font-mono: var(--font-mono);
 
   --radius-sm: calc(var(--radius) - 4px);
@@ -147,7 +146,6 @@
 
   /* ── Typography ── */
   --font-sans: Inter, system-ui, sans-serif;
-  --font-sebenta: Sebenta, ui-serif, Georgia, serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
   --tracking-normal: -0.01em;
 

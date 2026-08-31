@@ -72,6 +72,24 @@ describe("matching questions to fields", () => {
     expect(plan.emptyRows).toBe(1)
   })
 
+  test("reports a question deleted in Tally apart from one it failed to place", () => {
+    // A real account had exactly one of these, and counting it as "unmatched"
+    // made an otherwise perfect import read as broken. The question no longer
+    // exists in Tally either — there is nothing here that could have matched it.
+    const plan = planApiImport(
+      fields,
+      refs,
+      [
+        question("Q1", "Your name", "g1"),
+        { ...question("Q8", "A question we removed", "gGone"), isDeleted: true },
+      ],
+      [row("s1", [{ questionId: "Q1", answer: "Ada" }])],
+    )
+    expect(plan.unmatched).toEqual([])
+    expect(plan.deleted).toEqual(["A question we removed"])
+    expect(plan.submissions[0].answers).toHaveLength(1)
+  })
+
   test("never lets two questions claim the same field", () => {
     // `answers` is uniquely indexed on (submission_id, field_id) — a double
     // match would abort the insert for the whole chunk, not just be wrong.

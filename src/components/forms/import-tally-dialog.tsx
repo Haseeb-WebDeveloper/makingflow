@@ -30,6 +30,9 @@ import {
 /** A CSV bigger than this is a data migration, not a form move. */
 const MAX_CSV_BYTES = 5_000_000;
 
+/** Resume passes per form — 12 × 1,000 covers any form worth calling a form. */
+const MAX_PASSES = 12;
+
 type Imported = Extract<ImportFormResult, { success: true }>;
 // Derived rather than imported: the type lives in a `server-only` module, and
 // reaching for it through the action's result keeps this file unable to pull
@@ -86,7 +89,12 @@ export function ImportTallyDialog({
         )}
       </DialogTrigger>
 
-      <DialogContent className="sm:max-w-lg">
+      {/* `[&>*]:min-w-0` is load-bearing. DialogContent is a grid, and a grid
+          item's automatic minimum size is its MIN-CONTENT width — which for the
+          `truncate` (white-space: nowrap) form names below is the full
+          unwrapped string. Without this the column grows past max-w-lg and
+          every child stretches with it, spilling out of the panel. */}
+      <DialogContent className="sm:max-w-lg [&>*]:min-w-0">
         <DialogHeader>
           <DialogTitle>Import from Tally</DialogTitle>
           <DialogDescription>
@@ -232,8 +240,8 @@ function LinkImport({ onClose }: { onClose: () => void }) {
     <div className="space-y-4">
       <div className="rounded-lg border border-border p-3">
         <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-          <Icon name="tick-square" className="size-4 text-success" />
-          {imported.title}
+          <Icon name="tick-square" className="size-4 shrink-0 text-success" />
+          <span className="min-w-0 truncate">{imported.title}</span>
         </div>
         <p className="mt-1 text-xs text-muted-foreground">
           {imported.fieldCount} question{imported.fieldCount === 1 ? "" : "s"} imported
@@ -333,8 +341,33 @@ function KeyImport({ onClose }: { onClose: () => void }) {
     const done: Outcome[] = [];
 
     for (const [index, form] of chosen.entries()) {
+      const folderName = form.workspaceName ?? undefined;
       setProgress({ done: index, total: chosen.length, name: form.name });
-      const result = await importTallyFormFromApiKey(apiKey, form.id, withResponses);
+
+      let result = await importTallyFormFromApiKey(apiKey, form.id, withResponses, { folderName });
+
+      // A form with thousands of responses can't be read in one request, so the
+      // server hands back where to resume and we come round again. Each pass
+      // writes what it read, so stopping early loses nothing already imported.
+      for (let pass = 0; pass < MAX_PASSES && result.success && result.nextPage; pass += 1) {
+        setProgress({
+          done: index,
+          total: chosen.length,
+          name: `${form.name} — ${result.imported} responses so far`,
+        });
+        const more = await importTallyFormFromApiKey(apiKey, form.id, true, {
+          folderName,
+          startPage: result.nextPage,
+        });
+        if (!more.success) break;
+        result = {
+          ...more,
+          imported: result.imported + more.imported,
+          duplicates: result.duplicates + more.duplicates,
+          emptyRows: result.emptyRows + more.emptyRows,
+        };
+      }
+
       done.push({ id: form.id, name: form.name, result });
       // Show each one as it lands rather than making a long migration look stuck.
       setOutcomes([...done]);
@@ -431,7 +464,7 @@ function KeyImport({ onClose }: { onClose: () => void }) {
             <label className="flex cursor-pointer items-center gap-2.5 rounded-md px-2 py-1.5 hover:bg-muted">
               <input
                 type="checkbox"
-                className="size-4 accent-primary"
+                className="size-4 shrink-0 accent-primary"
                 checked={selected.has(form.id)}
                 disabled={busy}
                 onChange={(e) => {
@@ -453,7 +486,7 @@ function KeyImport({ onClose }: { onClose: () => void }) {
       <label className="flex cursor-pointer items-center gap-2.5 text-sm text-foreground">
         <input
           type="checkbox"
-          className="size-4 accent-primary"
+          className="size-4 shrink-0 accent-primary"
           checked={withResponses}
           disabled={busy}
           onChange={(e) => setWithResponses(e.target.checked)}
@@ -489,8 +522,8 @@ function OutcomeRow({ outcome }: { outcome: Outcome }) {
     return (
       <>
         <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-          <Icon name="danger-circle" className="size-4 text-destructive" />
-          {name}
+          <Icon name="danger-circle" className="size-4 shrink-0 text-destructive" />
+          <span className="min-w-0 truncate">{name}</span>
         </div>
         <p className="mt-1 text-xs text-muted-foreground">{result.error}</p>
       </>
@@ -500,13 +533,14 @@ function OutcomeRow({ outcome }: { outcome: Outcome }) {
   const parts = [`${result.fieldCount} question${result.fieldCount === 1 ? "" : "s"}`];
   if (result.imported > 0) parts.push(`${result.imported} responses`);
   if (result.duplicates > 0) parts.push(`${result.duplicates} already here`);
-  if (result.moreInTally) parts.push("more left — run it again");
+  if (result.folder) parts.push(`filed in ${result.folder}`);
+  if (result.nextPage) parts.push("more left — run it again");
 
   return (
     <>
       <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-        <Icon name="tick-square" className="size-4 text-success" />
-        {result.title}
+        <Icon name="tick-square" className="size-4 shrink-0 text-success" />
+        <span className="min-w-0 truncate">{result.title}</span>
       </div>
       <p className="mt-1 text-xs text-muted-foreground">{parts.join(" · ")}</p>
       {/* The questions came over and were kept; only the responses failed. */}
@@ -517,6 +551,16 @@ function OutcomeRow({ outcome }: { outcome: Outcome }) {
         <p className="mt-1 text-xs text-muted-foreground">
           Couldn&apos;t place {result.unmatched.length} question
           {result.unmatched.length === 1 ? "" : "s"}: {result.unmatched.slice(0, 3).join(", ")}
+        </p>
+      ) : null}
+      {/* Not a failure — the question no longer exists in Tally either. Said
+          plainly so a clean import doesn't read as a broken one. */}
+      {result.deletedQuestions.length > 0 ? (
+        <p className="mt-1 text-xs text-muted-foreground">
+          {result.deletedQuestions.length} question
+          {result.deletedQuestions.length === 1 ? " was" : "s were"} deleted in Tally, so old
+          answers to {result.deletedQuestions.length === 1 ? "it" : "them"} weren&apos;t brought
+          over.
         </p>
       ) : null}
       <SkippedNote skipped={result.skipped} />

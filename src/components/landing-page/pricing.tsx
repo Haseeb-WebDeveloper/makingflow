@@ -49,7 +49,7 @@ export function Pricing() {
       <div className="mx-auto max-w-7xl px-5 py-20 sm:px-8 sm:py-24">
         <Reveal className="mx-auto max-w-2xl text-center">
           <Eyebrow>Pricing</Eyebrow>
-          <h2 className="mt-4 font-sebenta text-3xl font-bold leading-[1.12] tracking-tight text-foreground sm:text-[2.6rem]">
+          <h2 className="mt-4 text-3xl font-bold leading-[1.12] tracking-tight text-foreground sm:text-[2.6rem]">
             Flexible plans for every business.
           </h2>
           <p className="mx-auto mt-4 max-w-xl text-base leading-relaxed text-muted-foreground">
@@ -78,7 +78,7 @@ export function Pricing() {
                 </div>
 
                 <div className="mt-4 flex items-baseline gap-1">
-                  <span className="font-sebenta text-4xl font-bold tracking-tight text-foreground">
+                  <span className="text-4xl font-bold tracking-tight text-foreground">
                     {p.price}
                   </span>
                   {p.period ? (

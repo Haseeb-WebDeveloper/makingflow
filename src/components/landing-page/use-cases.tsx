@@ -44,7 +44,7 @@ export function UseCases() {
     <section className="border-t border-border bg-background">
       <div className="mx-auto max-w-7xl px-5 py-20 sm:px-8 sm:py-28">
         <Reveal>
-          <h2 className="max-w-2xl font-sebenta text-3xl font-bold leading-[1.12] tracking-tight text-foreground sm:text-[2.6rem]">
+          <h2 className="max-w-2xl text-3xl font-bold leading-[1.12] tracking-tight text-foreground sm:text-[2.6rem]">
             A form is a form. So this works for most of yours.
           </h2>
         </Reveal>

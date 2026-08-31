@@ -24,7 +24,7 @@ export function AnalyticsSection() {
           <Eyebrow>Built-in analytics</Eyebrow>
         </Reveal>
         <Reveal delay={80}>
-          <h2 className="mt-4 max-w-2xl font-sebenta text-3xl font-bold leading-[1.12] tracking-tight text-foreground sm:text-[2.6rem]">
+          <h2 className="mt-4 max-w-2xl text-3xl font-bold leading-[1.12] tracking-tight text-foreground sm:text-[2.6rem]">
             Every form keeps score, so you do not have to guess.
           </h2>
         </Reveal>
@@ -91,7 +91,7 @@ function StatTile({
           </span>
         ) : null}
       </div>
-      <p className="mt-3 font-sebenta text-2xl font-bold tracking-tight text-foreground">{value}</p>
+      <p className="mt-3 text-2xl font-bold tracking-tight text-foreground">{value}</p>
       <p className="mt-0.5 text-xs text-muted-foreground">{label}</p>
     </div>
   )
@@ -112,7 +112,7 @@ function TrendCard() {
       <div className="flex items-baseline justify-between">
         <div>
           <p className="text-xs font-medium text-muted-foreground">Submissions</p>
-          <p className="mt-1 font-sebenta text-2xl font-bold tracking-tight text-foreground">312</p>
+          <p className="mt-1 text-2xl font-bold tracking-tight text-foreground">312</p>
         </div>
         <span className="text-xs text-muted-foreground">Last 14 days</span>
       </div>

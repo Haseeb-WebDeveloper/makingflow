@@ -1,7 +1,7 @@
 import "./globals.css";
 import type { Metadata, Viewport } from "next";
 import { cn } from "@/lib/utils";
-import { inter, sebenta } from "@/style/font";
+import { inter } from "@/style/font";
 import { ThemeProvider } from "@/components/theme-provider";
 import { AnchoredToastProvider, ToastProvider } from "@/components/ui/toast";
 import { Suspense } from "react";
@@ -52,7 +52,6 @@ export default function RootLayout({
       className={cn(
         "scrollbar-thin h-full antialiased font-sans",
         inter.variable,
-        sebenta.variable,
       )}
       suppressHydrationWarning
     >

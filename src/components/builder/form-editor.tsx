@@ -136,7 +136,7 @@ export function FormEditor({
         value={form.title}
         onChange={(e) => setTitle(e.target.value)}
         placeholder="Form title"
-        className="field-sizing-content mb-8 w-full resize-none border-0 bg-transparent py-0 pr-0 font-sebenta text-3xl font-bold tracking-tight text-foreground outline-none placeholder:text-muted-foreground/40"
+        className="field-sizing-content mb-8 w-full resize-none border-0 bg-transparent py-0 pr-0 text-3xl font-bold tracking-tight text-foreground outline-none placeholder:text-muted-foreground/40"
       />
 
       <DndContext id="form-editor-dnd" sensors={sensors} collisionDetection={closestCenter} modifiers={[restrictToVerticalAxis]} onDragEnd={onDragEnd}>
@@ -502,6 +502,20 @@ function Block({
                 Required
               </DropdownMenuCheckboxItem>
             ) : null}
+            {/* A per-question switch rather than a row in the option list,
+                because "Other" is not an option — it stores whatever the
+                respondent types, not the word "Other". */}
+            {isChoice(field.type) ? (
+              <DropdownMenuCheckboxItem
+                checked={field.config?.allowOther === true}
+                onCheckedChange={(v) =>
+                  onChange({ config: { ...field.config, allowOther: v } })
+                }
+                onSelect={(e) => e.preventDefault()}
+              >
+                &ldquo;Other&rdquo; option
+              </DropdownMenuCheckboxItem>
+            ) : null}
             {field.type === "heading" ? (
               <>
                 <DropdownMenuCheckboxItem
@@ -560,7 +574,7 @@ function Block({
             onChange={(label) => onChange({ label })}
             placeholder={field.config?.headingLevel === "h1" ? "Heading" : "Subheading"}
             className={cn(
-              "font-sebenta font-semibold text-foreground",
+              "font-semibold text-foreground",
               field.config?.headingLevel === "h1" ? "text-2xl font-bold tracking-tight" : "text-lg",
             )}
           />
@@ -586,13 +600,13 @@ function Block({
                 value={field.label}
                 onChange={(label) => onChange({ label })}
                 placeholder="Question"
-                className="w-auto min-w-0 flex-1 text-sm font-medium text-foreground"
+                className="w-auto min-w-0 flex-1 text-base font-semibold text-foreground sm:text-[17px]"
               />
               {/* Always-visible required marker — the state otherwise only lives
                   in the ⋯ menu, so a toggle (manual or AI) looked like a no-op. */}
               {field.required ? (
                 <span
-                  className="mt-0.5 shrink-0 select-none text-sm font-medium text-destructive"
+                  className="mt-0.5 shrink-0 select-none text-base font-semibold text-destructive"
                   title="Required"
                   aria-label="Required"
                 >
@@ -635,6 +649,7 @@ function OptionEditor({
   onChange: (patch: Partial<EditorField>) => void
 }) {
   const options = field.options ?? []
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }))
   const marker =
     field.type === "multiple_choice"
       ? "rounded-full"
@@ -652,29 +667,53 @@ function OptionEditor({
     onChange({ options: options.filter((o) => o.id !== id) })
   }
 
+  function reorder(e: DragEndEvent) {
+    const { active, over } = e
+    if (!over || active.id === over.id) return
+    const from = options.findIndex((o) => o.id === active.id)
+    const to = options.findIndex((o) => o.id === over.id)
+    if (from < 0 || to < 0) return
+    onChange({ options: arrayMove(options, from, to) })
+  }
+
+  const allowOther = field.config?.allowOther === true
+
   return (
     <div className="space-y-1.5">
-      {options.map((o, i) => (
-        <div key={o.id} className="group/opt flex items-center gap-2.5">
+      {/* Its own DndContext, nested inside the field list's. dnd-kit routes the
+          pointer to the innermost context, so dragging an option reorders the
+          options rather than picking up the whole question. */}
+      <DndContext
+        id={`option-dnd-${field.id}`}
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        modifiers={[restrictToVerticalAxis]}
+        onDragEnd={reorder}
+      >
+        <SortableContext items={options.map((o) => o.id)} strategy={verticalListSortingStrategy}>
+          {options.map((o, i) => (
+            <SortableOption
+              key={o.id}
+              option={o}
+              index={i}
+              marker={marker}
+              canRemove={options.length > 1}
+              onLabel={(label) => setOpt(o.id, label)}
+              onRemove={() => removeOpt(o.id)}
+            />
+          ))}
+        </SortableContext>
+      </DndContext>
+
+      {/* Shown, not editable: the switch lives in the block's ⋯ menu. Drawing it
+          here too is how the author sees where it will sit for a respondent. */}
+      {allowOther ? (
+        <div className="flex items-center gap-2.5 pl-6 text-sm text-muted-foreground">
           <span className={cn("size-4 shrink-0 border border-muted-foreground/40", marker)} />
-          <input
-            value={o.label}
-            onChange={(e) => setOpt(o.id, e.target.value)}
-            placeholder={`Option ${i + 1}`}
-            className="flex-1 border-0 bg-transparent py-1 text-sm text-foreground outline-none placeholder:text-muted-foreground/60"
-          />
-          {options.length > 1 ? (
-            <button
-              type="button"
-              onClick={() => removeOpt(o.id)}
-              aria-label="Remove option"
-              className="grid size-5 place-items-center rounded text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground group-hover/opt:opacity-100"
-            >
-              <X className="size-3.5" />
-            </button>
-          ) : null}
+          Other…
         </div>
-      ))}
+      ) : null}
+
       <button
         type="button"
         onClick={addOpt}
@@ -683,6 +722,62 @@ function OptionEditor({
         <Plus className="size-3.5" />
         Add option
       </button>
+    </div>
+  )
+}
+
+/** One draggable option row. */
+function SortableOption({
+  option,
+  index,
+  marker,
+  canRemove,
+  onLabel,
+  onRemove,
+}: {
+  option: { id: string; label: string }
+  index: number
+  marker: string
+  canRemove: boolean
+  onLabel: (label: string) => void
+  onRemove: () => void
+}) {
+  const { setNodeRef, attributes, listeners, transform, transition, isDragging } = useSortable({
+    id: option.id,
+  })
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      className={cn("group/opt flex items-center gap-1", isDragging && "z-10 opacity-80")}
+    >
+      <button
+        type="button"
+        {...attributes}
+        {...listeners}
+        aria-label={`Reorder ${option.label || `option ${index + 1}`}`}
+        className="grid size-5 shrink-0 cursor-grab place-items-center rounded text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground group-hover/opt:opacity-100 active:cursor-grabbing"
+      >
+        <Grip className="size-3.5" />
+      </button>
+      <span className={cn("size-4 shrink-0 border border-muted-foreground/40", marker)} />
+      <input
+        value={option.label}
+        onChange={(e) => onLabel(e.target.value)}
+        placeholder={`Option ${index + 1}`}
+        className="ml-1.5 flex-1 border-0 bg-transparent py-1 text-sm text-foreground outline-none placeholder:text-muted-foreground/60"
+      />
+      {canRemove ? (
+        <button
+          type="button"
+          onClick={onRemove}
+          aria-label="Remove option"
+          className="grid size-5 place-items-center rounded text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground group-hover/opt:opacity-100"
+        >
+          <X className="size-3.5" />
+        </button>
+      ) : null}
     </div>
   )
 }
@@ -700,8 +795,8 @@ function ControlPreview({
   field: EditorField
   onChange: (patch: Partial<EditorField>) => void
 }) {
-  const base = "pointer-events-none flex items-center rounded-md border border-input bg-background px-3 text-sm text-muted-foreground"
-  const editBase = "w-full rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground/70 focus-visible:border-foreground/40"
+  const base = "pointer-events-none flex items-center rounded-md border border-input bg-background px-3.5 text-base text-muted-foreground"
+  const editBase = "w-full rounded-md border border-input bg-background px-3.5 text-base text-foreground outline-none transition-colors placeholder:text-muted-foreground/70 focus-visible:border-foreground/40"
   const hint = PLACEHOLDER_HINT[field.type] ?? "Short answer"
   const setPlaceholder = (v: string) => onChange({ placeholder: v || undefined })
 
@@ -746,7 +841,7 @@ function ControlPreview({
       return (
         <div className="flex gap-2">
           {["Yes", "No"].map((o) => (
-            <span key={o} className="inline-flex h-9 items-center rounded-md border border-border px-5 text-sm text-foreground">
+            <span key={o} className="inline-flex h-10 items-center rounded-md border border-border px-5 text-base text-foreground">
               {o}
             </span>
           ))}
@@ -762,13 +857,20 @@ function ControlPreview({
       )
     case "scale":
     case "nps": {
-      const from = field.type === "nps" ? 0 : 1
-      const to = field.type === "nps" ? 10 : 5
+      // Read from config rather than assuming 1–5: a scale set to 1–10 used to
+      // preview as five buttons, so the canvas disagreed with the live form
+      // about what the question even asks.
+      const nps = field.type === "nps"
+      const from = nps ? 0 : (field.config?.min ?? 1)
+      const to = nps ? 10 : (field.config?.max ?? 5)
+      const step = nps ? 1 : Math.max(field.config?.step ?? 1, 1)
+      const points = Math.floor((to - from) / step) + 1
+      if (points < 2 || points > 20) return null
       return (
         <div className="flex flex-wrap gap-1.5">
-          {Array.from({ length: to - from + 1 }, (_, i) => (
+          {Array.from({ length: points }, (_, i) => (
             <span key={i} className="inline-flex size-8 items-center justify-center rounded-md border border-border text-xs text-foreground">
-              {from + i}
+              {from + i * step}
             </span>
           ))}
         </div>

@@ -16,7 +16,7 @@ export function ClosingCta() {
         />
 
         <Reveal className="relative mx-auto max-w-3xl">
-          <h2 className="font-sebenta text-[2.5rem] font-bold leading-[1.05] tracking-tight text-primary-foreground sm:text-6xl">
+          <h2 className="text-[2.5rem] font-bold leading-[1.05] tracking-tight text-primary-foreground sm:text-6xl">
             Describe your first form.
           </h2>
           <p className="mx-auto mt-5 max-w-2xl text-base leading-relaxed text-primary-foreground/80 sm:text-lg">

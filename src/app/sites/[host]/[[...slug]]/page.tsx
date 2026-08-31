@@ -66,7 +66,7 @@ export default async function CustomDomainFormPage({ params }: { params: Params 
 function NotAvailable({ missing }: { missing: boolean }) {
   return (
     <div className="rounded-xl border border-border bg-background p-10 text-center">
-      <h1 className="font-sebenta text-xl font-bold tracking-tight text-foreground">
+      <h1 className="text-xl font-bold tracking-tight text-foreground">
         {missing ? "Form not found" : "This form isn't available"}
       </h1>
       <p className="mt-2 text-sm text-muted-foreground">

@@ -117,10 +117,10 @@ describe("parseTallyBlocks — the real form", () => {
     expect(skipped.map((s) => s.type)).toContain("Calculated fields")
   })
 
-  test("drops conditional logic without reporting it as a loss", () => {
-    // 6 CONDITIONAL_LOGIC blocks in this form. They are page jumps, which have
-    // no target in our show/hide model — but they are not content, so listing
-    // them as "skipped" would read as if questions went missing.
+  test("never reports a logic block as a lost block", () => {
+    // A rule is not content. Whether it translates or not, listing it under
+    // "we couldn't bring these over" would read as if questions went missing —
+    // the untranslatable parts are reported by what they DO, not by block type.
     expect(skipped.some((s) => s.type === "CONDITIONAL_LOGIC")).toBe(false)
   })
 
@@ -162,6 +162,93 @@ describe("parseTallyBlocks — type and config mapping", () => {
   test("lands INPUT_NUMBER on short_text — we have no numeric type", () => {
     const blocks = [block({ type: "INPUT_NUMBER", groupType: "INPUT_NUMBER" })]
     expect(parseTallyBlocks(blocks).form.fields[0].type).toBe("short_text")
+  })
+
+  test("reads allowMultiple as a multi-select, not a single choice", () => {
+    // Tally has no separate multi-select type. Reading only the block type turns
+    // a question that takes several answers into one that takes one — and the
+    // answers still import, so nothing looks wrong until a respondent tries.
+    const blocks: TallyBlock[] = [
+      block({
+        type: "MULTIPLE_CHOICE_OPTION",
+        groupType: "MULTIPLE_CHOICE",
+        groupUuid: "g1",
+        payload: { name: "Skills", allowMultiple: true, text: "Video editing" },
+      }),
+      block({
+        type: "MULTIPLE_CHOICE_OPTION",
+        groupType: "MULTIPLE_CHOICE",
+        groupUuid: "g1",
+        payload: { text: "Motion design" },
+      }),
+    ]
+    const f = parseTallyBlocks(blocks).form.fields[0]
+    expect(f.type).toBe("multi_select")
+    expect(f.options?.map((o) => o.label)).toEqual(["Video editing", "Motion design"])
+  })
+
+  test("stays a single choice without allowMultiple", () => {
+    const blocks = [
+      block({
+        type: "MULTIPLE_CHOICE_OPTION",
+        groupType: "MULTIPLE_CHOICE",
+        payload: { name: "Pick one", text: "Yes" },
+      }),
+    ]
+    expect(parseTallyBlocks(blocks).form.fields[0].type).toBe("multiple_choice")
+  })
+
+  test("finds an image's url where Tally actually keeps it", () => {
+    // It lives in `images[]`. Reading `url`/`src` — which every other block's
+    // shape suggests — yields an image block with no picture in it.
+    const blocks = [
+      block({
+        type: "IMAGE",
+        payload: { images: [{ name: "logo.png", url: "https://storage.tally.so/x/logo.png" }] },
+      }),
+    ]
+    expect(parseTallyBlocks(blocks).form.fields[0].config?.imageUrl).toBe(
+      "https://storage.tally.so/x/logo.png",
+    )
+  })
+
+  test("takes the form logo off the FORM_TITLE block", () => {
+    const blocks = [
+      block({ type: "FORM_TITLE", payload: { title: "Apply", logo: "https://x.test/logo.jpg" } }),
+      block({ type: "INPUT_TEXT", groupType: "INPUT_TEXT", payload: { name: "Name" } }),
+    ]
+    expect(parseTallyBlocks(blocks).form.theme?.logoUrl).toBe("https://x.test/logo.jpg")
+  })
+
+  test("imports a hidden question but never as required", () => {
+    // A question the respondent cannot see, which they must answer to submit,
+    // is a form that cannot be submitted.
+    const blocks = [
+      block({
+        type: "TEXTAREA",
+        groupType: "TEXTAREA",
+        payload: { name: "Internal notes", isRequired: true, isHidden: true },
+      }),
+    ]
+    const f = parseTallyBlocks(blocks).form.fields[0]
+    expect(f.label).toBe("Internal notes")
+    expect(f.required).toBe(false)
+  })
+
+  test("gives the same field the same id on every parse when seeded", () => {
+    // Field ids are what saveAiForm upserts on and answers point at. Random ids
+    // on a re-import would soft-delete every field and orphan its answers.
+    const blocks = [
+      block({ type: "INPUT_TEXT", groupType: "INPUT_TEXT", groupUuid: "g1", payload: { name: "Name" } }),
+    ]
+    const a = parseTallyBlocks(blocks, "F", "form123").form.fields[0].id
+    const b = parseTallyBlocks(blocks, "F", "form123").form.fields[0].id
+    expect(a).toBe(b)
+    expect(a).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-a[0-9a-f]{3}-[0-9a-f]{12}$/)
+    // A different form must not collide with it.
+    expect(parseTallyBlocks(blocks, "F", "form999").form.fields[0].id).not.toBe(a)
+    // Unseeded stays random, so the public-link path is unchanged.
+    expect(parseTallyBlocks(blocks).form.fields[0].id).not.toBe(a)
   })
 
   test("reads scale bounds and labels", () => {
@@ -253,15 +340,39 @@ describe("parseTallyBlocks — type and config mapping", () => {
     })
   })
 
-  test("stops at the thank-you page and says why", () => {
+  test("moves the thank-you page to the success page, not into the form", () => {
+    // Those blocks are a confirmation message. Left in the field list they read
+    // as questions asked after the submit button.
     const blocks: TallyBlock[] = [
       block({ type: "INPUT_TEXT", groupType: "INPUT_TEXT", payload: { name: "Name" } }),
       block({ type: "PAGE_BREAK", payload: { isThankYouPage: true } }),
       block({ type: "HEADING_1", payload: { safeHTMLSchema: [["Thanks for your time!"]] } }),
+      block({ type: "TEXT", payload: { safeHTMLSchema: [["We'll be in touch."]] } }),
     ]
-    const { form, skipped } = parseTallyBlocks(blocks)
+    const { form } = parseTallyBlocks(blocks)
     expect(form.fields.map((f) => f.label)).toEqual(["Name"])
-    expect(skipped.map((s) => s.type)).toContain("PAGE_BREAK")
+    expect(form.settings?.thankYouMessage).toBe("Thanks for your time!")
+    expect(form.settings?.successBody).toBe("<p>We'll be in touch.</p>")
+  })
+
+  test("keeps links in the thank-you page and refuses dangerous ones", () => {
+    const blocks: TallyBlock[] = [
+      block({ type: "INPUT_TEXT", groupType: "INPUT_TEXT", payload: { name: "Name" } }),
+      block({ type: "PAGE_BREAK", payload: { isThankYouPage: true } }),
+      block({
+        type: "TEXT",
+        payload: { safeHTMLSchema: [["byfigmenta", [["href", "https://instagram.com/x"]]]] },
+      }),
+      block({
+        type: "TEXT",
+        payload: { safeHTMLSchema: [["click", [["href", "javascript:alert(1)"]]]] },
+      }),
+    ]
+    const body = parseTallyBlocks(blocks).form.settings?.successBody ?? ""
+    expect(body).toContain('<a href="https://instagram.com/x"')
+    // This is third-party content rendered on our own page.
+    expect(body).not.toContain("javascript:")
+    expect(body).toContain("<p>click</p>")
   })
 
   test("reports an unsupported question under its own name", () => {
@@ -310,5 +421,179 @@ describe("parseTallySettings", () => {
   test("survives junk", () => {
     expect(parseTallySettings(null)).toEqual({})
     expect(parseTallySettings("nope")).toEqual({})
+  })
+})
+
+/**
+ * Conditional logic.
+ *
+ * Tally's rule is a standalone object pointing AT blocks — "if X is Y, show A
+ * and B" — while ours lives on the block being controlled. Importing inverts
+ * the direction, and every test here is really about that inversion landing on
+ * the right field.
+ */
+describe("parseTallyBlocks — conditional logic", () => {
+  const YES = "opt-yes-uuid"
+  const NO = "opt-no-uuid"
+
+  /** A choice question: its TITLE block sits in a different group, as Tally's does. */
+  const source = (): TallyBlock[] => [
+    { uuid: "src-title", type: "TITLE", groupType: "QUESTION", groupUuid: "g-src-title", payload: { safeHTMLSchema: [["Do you drive?"]] } },
+    { uuid: YES, type: "MULTIPLE_CHOICE_OPTION", groupType: "MULTIPLE_CHOICE", groupUuid: "g-src", payload: { text: "Yes" } },
+    { uuid: NO, type: "MULTIPLE_CHOICE_OPTION", groupType: "MULTIPLE_CHOICE", groupUuid: "g-src", payload: { text: "No" } },
+  ]
+
+  /** The controlled question, whose title and input are separate blocks. */
+  const target = (): TallyBlock[] => [
+    { uuid: "tgt-title", type: "TITLE", groupType: "QUESTION", groupUuid: "g-tgt-title", payload: { safeHTMLSchema: [["Licence number"]] } },
+    { uuid: "tgt-input", type: "INPUT_TEXT", groupType: "INPUT_TEXT", groupUuid: "g-tgt", payload: {} },
+  ]
+
+  const rule = (o: {
+    action: "SHOW_BLOCKS" | "HIDE_BLOCKS" | "REQUIRE_ANSWER"
+    targets: string[]
+    comparison?: string
+    value?: unknown
+    operator?: "AND" | "OR"
+    conditionals?: unknown[]
+  }): TallyBlock => ({
+    uuid: `rule-${o.action}-${o.targets.join(",")}`,
+    type: "CONDITIONAL_LOGIC",
+    payload: {
+      logicalOperator: o.operator ?? "AND",
+      conditionals: o.conditionals ?? [
+        {
+          type: "SINGLE",
+          payload: {
+            field: { blockGroupUuid: "g-src" },
+            comparison: o.comparison ?? "IS",
+            value: o.value ?? YES,
+          },
+        },
+      ],
+      actions: [
+        o.action === "REQUIRE_ANSWER"
+          ? { type: "REQUIRE_ANSWER", payload: { requireAnswer: o.targets[0] } }
+          : {
+              type: o.action,
+              payload:
+                o.action === "SHOW_BLOCKS"
+                  ? { showBlocks: o.targets }
+                  : { hideBlocks: o.targets },
+            },
+      ],
+    },
+  })
+
+  test("turns a show rule into logic on the question it points at", () => {
+    const { form } = parseTallyBlocks([
+      ...source(),
+      ...target(),
+      rule({ action: "SHOW_BLOCKS", targets: ["tgt-title", "tgt-input"] }),
+    ])
+    const src = form.fields.find((f) => f.label === "Do you drive?")
+    const tgt = form.fields.find((f) => f.label === "Licence number")
+    expect(tgt?.logic).toEqual({
+      action: "show",
+      match: "all",
+      source: "manual",
+      // The stored value is the option's LABEL, because that is what an answer
+      // to this question is stored as — a uuid would never match at runtime.
+      conditions: [{ fieldId: src?.id, operator: "equals", value: "Yes" }],
+    })
+    expect(src?.logic).toBeUndefined()
+  })
+
+  test("does not mistake one rule's two blocks for two competing rules", () => {
+    // A rule names the title AND the input; both are the same question here.
+    const { form, skipped } = parseTallyBlocks([
+      ...source(),
+      ...target(),
+      rule({ action: "SHOW_BLOCKS", targets: ["tgt-title", "tgt-input"] }),
+    ])
+    expect(form.fields.filter((f) => f.logic)).toHaveLength(1)
+    expect(skipped.some((s) => s.type === "Extra logic rule")).toBe(false)
+  })
+
+  test("maps hide rules, operators and the OR case", () => {
+    const { form } = parseTallyBlocks([
+      ...source(),
+      ...target(),
+      rule({
+        action: "HIDE_BLOCKS",
+        targets: ["tgt-input"],
+        operator: "OR",
+        comparison: "IS_EMPTY",
+      }),
+    ])
+    const tgt = form.fields.find((f) => f.label === "Licence number")
+    expect(tgt?.logic?.action).toBe("hide")
+    expect(tgt?.logic?.match).toBe("any")
+    // An emptiness test carries no value to compare against.
+    expect(tgt?.logic?.conditions[0]).toEqual({
+      fieldId: form.fields.find((f) => f.label === "Do you drive?")?.id,
+      operator: "is_empty",
+    })
+  })
+
+  test("keeps the first rule when two point at the same question, and says so", () => {
+    const { form, skipped } = parseTallyBlocks([
+      ...source(),
+      ...target(),
+      rule({ action: "SHOW_BLOCKS", targets: ["tgt-input"], value: YES }),
+      rule({ action: "HIDE_BLOCKS", targets: ["tgt-input"], value: NO }),
+    ])
+    const tgt = form.fields.find((f) => f.label === "Licence number")
+    // Two rules are an OR that one `match` can't express, so the second is
+    // reported rather than silently overwriting the first.
+    expect(tgt?.logic?.action).toBe("show")
+    expect(skipped.some((s) => s.type === "Extra logic rule")).toBe(true)
+  })
+
+  test("reports a conditional-required rule instead of dropping it silently", () => {
+    const { form, skipped } = parseTallyBlocks([
+      ...source(),
+      ...target(),
+      rule({ action: "REQUIRE_ANSWER", targets: ["tgt-input"] }),
+    ])
+    expect(form.fields.some((f) => f.logic)).toBe(false)
+    expect(skipped).toContainEqual({ type: "Conditional required", label: "Licence number" })
+  })
+
+  test("ignores a rule pointing at a block that no longer exists", () => {
+    // Both REQUIRE_ANSWER rules in the account this was built against are these:
+    // the block was deleted and Tally kept the rule. There is nothing to report.
+    const { form, skipped } = parseTallyBlocks([
+      ...source(),
+      ...target(),
+      rule({ action: "SHOW_BLOCKS", targets: ["deleted-long-ago"] }),
+      rule({ action: "REQUIRE_ANSWER", targets: ["deleted-long-ago"] }),
+    ])
+    expect(form.fields.some((f) => f.logic)).toBe(false)
+    expect(skipped).toEqual([])
+  })
+
+  test("drops a condition it cannot express rather than guessing", () => {
+    const { form } = parseTallyBlocks([
+      ...source(),
+      ...target(),
+      rule({
+        action: "SHOW_BLOCKS",
+        targets: ["tgt-input"],
+        // "is any of" several answers needs an OR inside an AND group.
+        comparison: "IS_ANY_OF",
+        value: [YES, NO],
+      }),
+    ])
+    expect(form.fields.find((f) => f.label === "Licence number")?.logic).toBeUndefined()
+  })
+
+  test("puts logic on a content block a rule points at", () => {
+    const { form } = parseTallyBlocks([
+      ...source(),
+      { uuid: "note", type: "TEXT", payload: { safeHTMLSchema: [["Bring your licence."]] } },
+      rule({ action: "SHOW_BLOCKS", targets: ["note"] }),
+    ])
+    expect(form.fields.find((f) => f.type === "paragraph")?.logic?.action).toBe("show")
   })
 })

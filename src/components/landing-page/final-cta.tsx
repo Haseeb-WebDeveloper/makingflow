@@ -12,7 +12,7 @@ export function FinalCta() {
 
       <div className="mx-auto max-w-7xl px-5 py-24 text-center sm:px-8 sm:py-32">
         <Reveal className="mx-auto max-w-xl">
-          <h2 className="font-sebenta text-[2.5rem] font-bold leading-[1.15] text-foreground sm:text-[50px]">
+          <h2 className="text-[2.5rem] font-bold leading-[1.15] text-foreground sm:text-[50px]">
             Make flow with makingflow
           </h2>
           <p className="mx-auto mt-5 max-w-md text-base leading-relaxed text-muted-foreground sm:text-base">

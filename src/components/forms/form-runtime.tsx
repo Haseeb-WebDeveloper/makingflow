@@ -479,7 +479,7 @@ export function FormRuntime({
         <div className="mx-auto mb-4 flex size-14 items-center justify-center rounded-full bg-success/10 text-success">
           <SuccessMark className="size-52" />
         </div>
-        <h2 className="w-full mt-4 font-sebenta text-2xl font-bold tracking-tight text-foreground">
+        <h2 className="w-full mt-4 text-2xl font-bold tracking-tight text-foreground">
           {form.thankYou}
         </h2>
         <SuccessContent
@@ -518,7 +518,7 @@ export function FormRuntime({
           ) : null}
           <h2
             id="fillmode-title"
-            className="mt-1 font-sebenta text-xl font-bold tracking-tight text-foreground sm:text-2xl"
+            className="mt-1 text-xl font-bold tracking-tight text-foreground sm:text-2xl"
           >
             How would you like to fill this out?
           </h2>
@@ -667,7 +667,7 @@ export function FormRuntime({
         ) : null}
         <FormBranding theme={form.theme} />
         <header className="mb-8">
-          <h1 className="font-sebenta text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
+          <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
             {form.title}
           </h1>
           <p className="mt-3 text-xs text-muted-foreground">
@@ -692,7 +692,7 @@ export function FormRuntime({
           <motion.div
             key={currentStep.key}
             ref={questionRef}
-            className="space-y-7"
+            className="space-y-8"
             initial={questionMotion.initial}
             animate={questionMotion.animate}
             exit={questionMotion.exit}
@@ -735,7 +735,7 @@ export function FormRuntime({
                 type="button"
                 onClick={stepBack}
                 disabled={submitting}
-                className="inline-flex h-10 items-center justify-center rounded-md border border-border lg:px-8 px-5 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-60"
+                className="inline-flex h-11 items-center justify-center rounded-md border border-border lg:px-8 px-5 text-base font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-60"
               >
                 Back
               </button>
@@ -743,7 +743,7 @@ export function FormRuntime({
             <button
               type="submit"
               disabled={submitting}
-              className="inline-flex h-10 flex-1 items-center justify-center rounded-md bg-foreground px-6 lg:px-8 text-sm font-medium text-background transition-colors hover:bg-foreground/90 disabled:opacity-60 sm:flex-none"
+              className="inline-flex h-11 flex-1 items-center justify-center rounded-md bg-foreground px-6 lg:px-8 text-base font-medium text-background transition-colors hover:bg-foreground/90 disabled:opacity-60 sm:flex-none"
             >
               {nextLabel}
             </button>
@@ -784,7 +784,7 @@ export function FormRuntime({
       ) : null}
       <FormBranding theme={form.theme} />
       <header className="mb-8">
-        <h1 className="font-sebenta text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
+        <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
           {form.title}
         </h1>
         {form.showProgressBar && pageCount > 1 ? (
@@ -810,7 +810,7 @@ export function FormRuntime({
       <AnimatePresence mode="wait" initial={false}>
         <motion.div
           key={idx}
-          className="space-y-7"
+          className="space-y-8"
           initial={questionMotion.initial}
           animate={questionMotion.animate}
           exit={questionMotion.exit}
@@ -843,7 +843,7 @@ export function FormRuntime({
             type="button"
             onClick={goBack}
             disabled={submitting}
-            className="inline-flex h-10 items-center justify-center rounded-md border border-border px-6 lg:px-8 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-60"
+            className="inline-flex h-11 items-center justify-center rounded-md border border-border px-6 lg:px-8 text-base font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-60"
           >
             Back
           </button>
@@ -851,7 +851,7 @@ export function FormRuntime({
         <button
           type="submit"
           disabled={submitting}
-          className="inline-flex h-10 flex-1 items-center justify-center rounded-md bg-foreground px-6 lg:px-8 text-sm font-medium text-background transition-colors hover:bg-foreground/90 disabled:opacity-60 sm:flex-none"
+          className="inline-flex h-11 flex-1 items-center justify-center rounded-md bg-foreground px-6 lg:px-8 text-base font-medium text-background transition-colors hover:bg-foreground/90 disabled:opacity-60 sm:flex-none"
         >
           {isLast ? (submitting ? "Submitting…" : form.submitLabel) : "Next"}
         </button>

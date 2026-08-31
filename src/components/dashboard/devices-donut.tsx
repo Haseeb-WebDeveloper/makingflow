@@ -79,7 +79,7 @@ export function DevicesDonut({ items }: { items: Bucket[] }) {
               </PieChart>
             </ResponsiveContainer>
             <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-              <span className="font-sebenta text-2xl font-bold tracking-tight text-foreground">
+              <span className="text-2xl font-bold tracking-tight text-foreground">
                 {total.toLocaleString()}
               </span>
               <span className="text-[10px] uppercase tracking-wide text-muted-foreground">

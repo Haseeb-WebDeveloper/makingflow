@@ -11,7 +11,7 @@ export function Hero() {
       </div>
 
       <div className="mx-auto max-w-7xl px-5 pt-32 text-center sm:px-8 sm:pt-40">
-        <h1 className="lp-rise mx-auto max-w-4xl font-sebenta text-4xl font-bold leading-[1.06] tracking-tight text-foreground sm:text-6xl">
+        <h1 className="lp-rise mx-auto max-w-4xl text-4xl font-bold leading-[1.06] tracking-tight text-foreground sm:text-6xl">
           Your ultimate solution for{" "}
           <span className="text-primary">smarter forms</span>
         </h1>

@@ -30,7 +30,7 @@ export function ThreeSteps() {
               <Eyebrow>How MakingFlow works</Eyebrow>
             </Reveal>
             <Reveal delay={80}>
-              <h2 className="mt-4 max-w-sm font-sebenta text-3xl font-bold leading-[1.12] tracking-tight text-foreground sm:text-[2.6rem]">
+              <h2 className="mt-4 max-w-sm text-3xl font-bold leading-[1.12] tracking-tight text-foreground sm:text-[2.6rem]">
                 Build in 3 steps.
               </h2>
             </Reveal>

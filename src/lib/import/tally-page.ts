@@ -133,9 +133,11 @@ export async function importTallyFormFromUrl(input: string): Promise<{
     throw new TallyImportError("PASSWORD_PROTECTED", TALLY_ERROR_MESSAGES.PASSWORD_PROTECTED)
   }
 
-  const { form, skipped } = parseTallyBlocks(page.blocks, page.title)
+  // Seeded on the form id so importing the same link twice lands on the same
+  // field rows rather than replacing them — see stableId.
+  const { form, skipped } = parseTallyBlocks(page.blocks, page.title, url.split("/").pop())
   return {
-    form: { ...form, settings: page.settings },
+    form: { ...form, settings: { ...form.settings, ...page.settings } },
     skipped,
     sourceUrl: url,
   }

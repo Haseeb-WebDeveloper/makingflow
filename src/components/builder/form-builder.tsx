@@ -812,7 +812,7 @@ export function FormBuilder({
         <div className="w-full max-w-2xl">
           <div className="mb-6 flex flex-col items-center text-center">
             <Lottie name="ai" className="size-32" />
-            <h1 className="mt-2 font-sebenta text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
+            <h1 className="mt-2 text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
               Describe your form
             </h1>
             <p className="mt-3 max-w-md text-muted-foreground">
@@ -933,7 +933,7 @@ export function FormBuilder({
                 <path d="M15 18l-6-6 6-6" />
               </svg>
             </button>
-            <p className="min-w-0 truncate font-sebenta text-sm font-semibold text-foreground">
+            <p className="min-w-0 truncate text-sm font-semibold text-foreground">
               {headerTitle}
             </p>
             {published ? (

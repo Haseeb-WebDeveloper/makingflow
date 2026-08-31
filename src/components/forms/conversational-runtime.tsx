@@ -387,7 +387,7 @@ export function ConversationalRuntime({ form }: { form: PublicForm }) {
         <div className="mx-auto mb-4 flex size-14 items-center justify-center rounded-full bg-success/10 text-success">
           <SuccessMark className="size-52" />
         </div>
-        <h2 className="mt-4 font-sebenta text-2xl font-bold tracking-tight text-foreground">
+        <h2 className="mt-4 text-2xl font-bold tracking-tight text-foreground">
           {form.thankYou}
         </h2>
         <SuccessContent
@@ -413,7 +413,7 @@ export function ConversationalRuntime({ form }: { form: PublicForm }) {
     <div className={cn(showComposer ? "pb-40" : "pb-10")}>
       <header className="pb-3">
         <FormBranding theme={form.theme} />
-        <h1 className="font-sebenta text-lg font-bold tracking-tight text-foreground">
+        <h1 className="text-lg font-bold tracking-tight text-foreground">
           {form.title}
         </h1>
       </header>

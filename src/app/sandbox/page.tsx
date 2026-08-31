@@ -29,7 +29,7 @@ export default function SandboxPage() {
   return (
     <div className="mx-auto max-w-2xl px-4 py-10 sm:px-6">
       <header className="mb-8">
-        <h1 className="font-sebenta text-2xl font-bold tracking-tight text-foreground">
+        <h1 className="text-2xl font-bold tracking-tight text-foreground">
           Conversational states
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
@@ -149,7 +149,7 @@ export default function SandboxPage() {
             <div className="mx-auto mb-4 flex size-14 items-center justify-center rounded-full bg-success/10 text-success">
               <SuccessMark className="size-52" />
             </div>
-            <h2 className="mt-4 font-sebenta text-2xl font-bold tracking-tight text-foreground">
+            <h2 className="mt-4 text-2xl font-bold tracking-tight text-foreground">
               Thanks! Your response has been recorded.
             </h2>
           </div>

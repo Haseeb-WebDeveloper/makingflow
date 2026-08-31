@@ -3,7 +3,7 @@
 import { and, eq, isNull, sql } from "drizzle-orm"
 import { revalidatePath, updateTag } from "next/cache"
 import { db } from "@/lib/db"
-import { answers, formFields, forms, submissions } from "@/lib/db/schema"
+import { answers, folders, formFields, forms, submissions } from "@/lib/db/schema"
 import { getDefaultWorkspace, getRequiredUser } from "@/lib/auth/session"
 import { saveAiForm, updateFormSettings } from "@/lib/actions/forms"
 import { importTallyFormFromUrl } from "@/lib/import/tally-page"
@@ -318,12 +318,89 @@ export type ImportApiResult =
       duplicates: number
       emptyRows: number
       unmatched: string[]
-      /** The form has more responses than one import carries. Run it again. */
-      moreInTally: boolean
+      /** Questions removed in Tally — their old answers have nowhere to go. */
+      deletedQuestions: string[]
+      /** Folder the form was filed under, from its Tally workspace. */
+      folder: string | null
+      /** Ask again with this to continue a form too big for one call. */
+      nextPage: number | null
       /** Set when the questions came over but the responses did not. */
       responsesError?: string
     }
   | { success: false; error: string }
+
+/**
+ * The form we already made for this Tally form, if any.
+ *
+ * Without this, a 68-form import that fails partway can only be retried by
+ * making a second copy of everything that already succeeded.
+ */
+async function findImportedForm(
+  workspaceId: string,
+  tallyFormId: string,
+): Promise<string | null> {
+  const [row] = await db
+    .select({ id: forms.id })
+    .from(forms)
+    .where(
+      and(
+        eq(forms.workspaceId, workspaceId),
+        isNull(forms.deletedAt),
+        sql`${forms.settings}->'importedFrom'->>'source' = 'tally'`,
+        sql`${forms.settings}->'importedFrom'->>'externalId' = ${tallyFormId}`,
+      ),
+    )
+    .limit(1)
+  return row?.id ?? null
+}
+
+/** Get or create the folder mirroring a Tally workspace. Scoped to the tenant. */
+async function ensureFolder(workspaceId: string, name: string): Promise<string | null> {
+  const clean = name.trim().slice(0, 80)
+  if (!clean) return null
+
+  const [existing] = await db
+    .select({ id: folders.id })
+    .from(folders)
+    .where(and(eq(folders.workspaceId, workspaceId), eq(folders.name, clean)))
+    .limit(1)
+  if (existing) return existing.id
+
+  const [created] = await db
+    .insert(folders)
+    .values({ workspaceId, name: clean })
+    .returning({ id: folders.id })
+  return created?.id ?? null
+}
+
+/**
+ * Record where the form came from, and file it.
+ *
+ * The marker is merged into the existing settings rather than written over
+ * them, because `updateFormSettings` has already run by this point.
+ */
+async function markImported(
+  formId: string,
+  tallyFormId: string,
+  folderId: string | null,
+): Promise<void> {
+  const [row] = await db
+    .select({ settings: forms.settings })
+    .from(forms)
+    .where(eq(forms.id, formId))
+    .limit(1)
+
+  await db
+    .update(forms)
+    .set({
+      settings: {
+        ...(row?.settings ?? {}),
+        importedFrom: { source: "tally" as const, externalId: tallyFormId },
+      },
+      ...(folderId ? { folderId } : {}),
+    })
+    .where(eq(forms.id, formId))
+}
 
 /**
  * Import one Tally form, and optionally its responses, using an API key.
@@ -342,6 +419,7 @@ export async function importTallyFormFromApiKey(
   apiKey: string,
   tallyFormId: string,
   withResponses: boolean,
+  options: { folderName?: string; startPage?: number } = {},
 ): Promise<ImportApiResult> {
   await getRequiredUser()
   const workspace = await getDefaultWorkspace()
@@ -366,15 +444,27 @@ export async function importTallyFormFromApiKey(
     }
   }
 
-  const saved = await saveAiForm({ form })
+  // Re-running, or continuing a form whose responses didn't fit in one call,
+  // updates the form we already made. Field ids are seeded on Tally's block
+  // groups (see stableId), so the upsert lands on the existing rows and the
+  // answers already imported against them stay attached.
+  const existingId = await findImportedForm(workspace.id, tallyFormId)
+  const saved = await saveAiForm({ formId: existingId, form })
   if (!saved.success) return { success: false, error: saved.error }
 
-  if (form.settings && Object.keys(form.settings).length > 0) {
-    await updateFormSettings(saved.id, {
-      showProgressBar: form.settings.showProgressBar,
-      redirectUrl: form.settings.redirectUrl ?? null,
-    })
-  }
+  const settings = form.settings ?? {}
+  await updateFormSettings(saved.id, {
+    showProgressBar: settings.showProgressBar,
+    redirectUrl: settings.redirectUrl ?? null,
+    thankYouMessage: settings.thankYouMessage ?? null,
+    successBody: settings.successBody ?? null,
+    logoUrl: form.theme?.logoUrl ?? null,
+  })
+
+  const folderId = options.folderName
+    ? await ensureFolder(workspace.id, options.folderName)
+    : null
+  await markImported(saved.id, tallyFormId, folderId)
 
   const base = {
     success: true as const,
@@ -386,12 +476,19 @@ export async function importTallyFormFromApiKey(
     duplicates: 0,
     emptyRows: 0,
     unmatched: [] as string[],
-    moreInTally: false,
+    deletedQuestions: [] as string[],
+    folder: options.folderName ?? null,
+    nextPage: null as number | null,
   }
-  if (!withResponses) return base
+  if (!withResponses) {
+    revalidatePath("/forms")
+    return base
+  }
 
   try {
-    const page = await fetchTallySubmissions(apiKey, tallyFormId)
+    const page = await fetchTallySubmissions(apiKey, tallyFormId, {
+      startPage: options.startPage,
+    })
     const plan = planApiImport(form.fields, refs, page.questions, page.submissions)
     const written = await writeImportedSubmissions(saved.id, workspace.id, plan.submissions)
     if ("error" in written) return { ...base, responsesError: written.error }
@@ -402,7 +499,8 @@ export async function importTallyFormFromApiKey(
       duplicates: written.duplicates,
       emptyRows: plan.emptyRows,
       unmatched: plan.unmatched,
-      moreInTally: page.truncated,
+      deletedQuestions: plan.deleted,
+      nextPage: page.nextPage,
     }
   } catch (err) {
     if (!(err instanceof TallyImportError)) {

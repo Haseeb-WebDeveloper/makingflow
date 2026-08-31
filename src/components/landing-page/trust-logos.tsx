@@ -17,7 +17,7 @@ export function TrustLogos() {
             {LOGOS.map((l) => (
               <span
                 key={l}
-                className="font-sebenta text-lg font-bold tracking-tight text-muted-foreground"
+                className="text-lg font-bold tracking-tight text-muted-foreground"
               >
                 {l}
               </span>

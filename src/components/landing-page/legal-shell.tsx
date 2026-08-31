@@ -31,7 +31,7 @@ export function LegalShell({
 
       <main className="mx-auto w-full max-w-3xl flex-1 px-5 py-16 sm:px-8 sm:py-20">
         <header className="mb-10">
-          <h1 className="font-sebenta text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
+          <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
             {title}
           </h1>
           <p className="mt-3 text-sm text-muted-foreground">Last updated {updated}</p>

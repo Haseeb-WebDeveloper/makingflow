@@ -29,7 +29,7 @@ export function SiteFooter() {
             <Link href="/" className="flex items-center gap-2.5" aria-label="MakingFlow home">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src="/logo/logo.svg" alt="" className="size-6 rounded" />
-              <span className="font-sebenta text-lg font-bold tracking-tight text-foreground">
+              <span className="text-lg font-bold tracking-tight text-foreground">
                 MakingFlow
               </span>
             </Link>

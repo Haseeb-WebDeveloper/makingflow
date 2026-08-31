@@ -89,7 +89,7 @@ export function SuccessPageEditor({
         value={value.title}
         onChange={(e) => onChange({ ...value, title: e.target.value })}
         placeholder={DEFAULT_TITLE}
-        className="mb-4 w-full rounded-md border border-input bg-input/30 px-3 py-2 font-sebenta text-base font-semibold text-foreground outline-none placeholder:font-sans placeholder:text-sm placeholder:font-normal placeholder:text-muted-foreground focus-visible:border-foreground/40"
+        className="mb-4 w-full rounded-md border border-input bg-input/30 px-3 py-2 text-base font-semibold text-foreground outline-none placeholder:font-sans placeholder:text-sm placeholder:font-normal placeholder:text-muted-foreground focus-visible:border-foreground/40"
       />
 
       <label className="mb-1 block text-xs font-medium text-muted-foreground">Message</label>

@@ -56,7 +56,7 @@ export default async function FormManageLayout({
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
               <div className="flex items-center gap-2.5">
-                <h1 className="truncate font-sebenta text-xl font-bold tracking-tight text-foreground">
+                <h1 className="truncate text-xl font-bold tracking-tight text-foreground">
                   {shell.title || "Untitled form"}
                 </h1>
                 <span className="shrink-0 rounded-full border border-border px-2 py-0.5 text-xs capitalize text-muted-foreground">

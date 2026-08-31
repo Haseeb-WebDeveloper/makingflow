@@ -27,7 +27,7 @@ export function FormPreview({
   return (
     <div className="mx-auto w-full max-w-2xl">
       <header className="mb-8">
-        <h1 className="font-sebenta text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
+        <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
           {form?.title || (building ? "Building…" : "Your form")}
         </h1>
         {form?.description ? (
@@ -61,7 +61,7 @@ function FieldBlock({ field }: { field: PartialField }) {
 
   if (type === "heading") {
     return (
-      <h2 className="pt-2 font-sebenta text-lg font-semibold text-foreground">
+      <h2 className="pt-2 text-lg font-semibold text-foreground">
         {label || "Section"}
       </h2>
     )

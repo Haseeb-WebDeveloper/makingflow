@@ -19,7 +19,7 @@ export function AboutPlatform() {
               <Eyebrow>About MakingFlow</Eyebrow>
             </Reveal>
             <Reveal delay={80}>
-              <h2 className="mt-4 max-w-md font-sebenta text-3xl font-bold leading-[1.12] tracking-tight text-foreground sm:text-[2.6rem]">
+              <h2 className="mt-4 max-w-md text-3xl font-bold leading-[1.12] tracking-tight text-foreground sm:text-[2.6rem]">
                 An AI-native platform designed to build smarter forms.
               </h2>
             </Reveal>
@@ -106,7 +106,7 @@ export function AboutPlatform() {
                     key={s.label}
                     className="rounded-lg border border-border bg-background px-3 py-2.5 text-center"
                   >
-                    <p className="font-sebenta text-lg font-bold tracking-tight text-primary">
+                    <p className="text-lg font-bold tracking-tight text-primary">
                       {s.value}
                     </p>
                     <p className="mt-0.5 text-[11px] leading-tight text-muted-foreground">

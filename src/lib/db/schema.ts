@@ -170,6 +170,10 @@ export type FormSettings = {
   successBody?: string // success-page body, HTML (links, bold, headings, images, alignment); legacy rows may be markdown
   successVideoUrl?: string // optional uploaded video shown on the success page
   captchaEnabled?: boolean
+  // Migrated in from another tool. `externalId` is that tool's form id, which is
+  // what lets a re-run of an interrupted import top up the form it already made
+  // instead of creating a second copy of it.
+  importedFrom?: { source: 'tally'; externalId: string }
 }
 
 export type FormAiConfig = {

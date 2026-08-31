@@ -26,10 +26,10 @@ export default function DashboardError({
       <span className="mb-4 flex size-12 items-center justify-center rounded-xl bg-destructive/10 text-destructive">
         <Icon name="info-square" className="size-6" />
       </span>
-      <h1 className="font-sebenta text-xl font-bold tracking-tight text-foreground">
+      <h1 className="text-xl font-bold tracking-tight text-foreground">
         Something went wrong
       </h1>
-      <p className="mt-1.5 max-w-md text-sm text-muted-foreground">
+      <p className="mt-1.5 max-w-md text-sm text-muted-foreground text-balance">
         We couldn&apos;t load this page. This is usually temporary, so try again in a
         moment.
       </p>

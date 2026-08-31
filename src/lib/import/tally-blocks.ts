@@ -1,6 +1,6 @@
 import { genId, type EditorField, type EditorForm, type EditorSettings } from "@/lib/builder/form-model"
 import type { AiFieldType } from "@/lib/ai/form-schema"
-import type { FieldConfig, FieldOption } from "@/lib/db/schema"
+import type { FieldCondition, FieldConfig, FieldOption } from "@/lib/db/schema"
 
 /**
  * Tally's form model, and how it becomes ours.
@@ -89,6 +89,78 @@ function richTextNode(node: unknown): string {
   return Array.isArray(content) ? content.map(richTextNode).join("") : ""
 }
 
+const esc = (s: string) =>
+  s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c] as string)
+
+/**
+ * The same tree as HTML, keeping links.
+ *
+ * Used only for the thank-you page, which is the one place Tally content is
+ * stored as rich text and read back as rich text (`successBody` is HTML). Real
+ * thank-you pages are mostly a line of thanks plus links to social profiles, so
+ * dropping the hrefs would lose the point of the page.
+ *
+ * Everything is escaped and only `href` survives — this is third-party content
+ * rendered on our own success page, so nothing else from the attrs is trusted.
+ */
+export function richHtml(schema: unknown): string {
+  if (typeof schema === "string") return esc(schema)
+  if (!Array.isArray(schema)) return ""
+  return schema.map(richHtmlNode).join("")
+}
+
+function richHtmlNode(node: unknown): string {
+  if (typeof node === "string") return esc(node)
+  if (!Array.isArray(node)) return ""
+  const [content, attrs] = node
+  const inner =
+    typeof content === "string"
+      ? esc(content)
+      : Array.isArray(content)
+        ? content.map(richHtmlNode).join("")
+        : ""
+  const href = readHref(attrs)
+  // Only http(s): a javascript: or data: href here would be stored XSS.
+  if (!href || !/^https?:\/\//i.test(href)) return inner
+  return `<a href="${esc(href)}" target="_blank" rel="noopener noreferrer">${inner}</a>`
+}
+
+/**
+ * A deterministic uuid from a string — same input, same id, every parse.
+ *
+ * This is what makes importing a form twice safe. Field ids are the primary
+ * keys `saveAiForm` upserts on and `answers.fieldId` points at, so re-parsing
+ * with fresh random ids would soft-delete every existing field and insert
+ * replacements, orphaning the answers already imported against them. Seeded on
+ * Tally's own block-group uuid, a second run lands on the same rows.
+ *
+ * Four 32-bit FNV-1a passes give 128 bits without a crypto dependency. These
+ * are identities, not secrets — unguessability is not a requirement.
+ */
+export function stableId(seed: string): string {
+  const parts: string[] = []
+  for (let salt = 0; salt < 4; salt += 1) {
+    let h = (0x811c9dc5 ^ salt) >>> 0
+    for (let i = 0; i < seed.length; i += 1) {
+      h ^= seed.charCodeAt(i)
+      h = Math.imul(h, 0x01000193) >>> 0
+    }
+    parts.push(h.toString(16).padStart(8, "0"))
+  }
+  const hex = parts.join("")
+  // Shaped as a v4 uuid so it satisfies the uuid columns it becomes.
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-a${hex.slice(17, 20)}-${hex.slice(20, 32)}`
+}
+
+/** Attrs are a list of `[key, value]` pairs. */
+function readHref(attrs: unknown): string | undefined {
+  if (!Array.isArray(attrs)) return undefined
+  for (const pair of attrs) {
+    if (Array.isArray(pair) && pair[0] === "href" && typeof pair[1] === "string") return pair[1]
+  }
+  return undefined
+}
+
 /**
  * The visible text of a block, wherever this block type keeps it.
  *
@@ -175,10 +247,35 @@ const UNSUPPORTED: Record<string, string> = {
 }
 
 /** Structural noise — dropped without troubling the user. */
-const IGNORED = new Set(["DIVIDER", "CONDITIONAL_LOGIC", "CAPTCHA"])
+const IGNORED = new Set(["DIVIDER", "CAPTCHA"])
 
-const questionType = (b: TallyBlock): AiFieldType | undefined =>
-  QUESTION_TYPES[b.groupType ?? ""] ?? QUESTION_TYPES[b.type]
+const questionType = (b: TallyBlock): AiFieldType | undefined => {
+  const base = QUESTION_TYPES[b.groupType ?? ""] ?? QUESTION_TYPES[b.type]
+  // Tally has no separate multi-select type: a MULTIPLE_CHOICE question with
+  // `allowMultiple` IS one. Reading only the block type turns a question that
+  // accepts several answers into one that accepts a single answer — silently,
+  // and the answers still import, so nothing looks wrong until a respondent
+  // can't pick two things.
+  if (base === "multiple_choice" && b.payload?.allowMultiple === true) return "multi_select"
+  return base
+}
+
+/**
+ * An image block's asset.
+ *
+ * Tally keeps it in `images[]`, not on the payload root — reading `url`/`src`
+ * (which is what the shape of every other block suggests) finds nothing, and
+ * the block imports as an image with no picture in it.
+ */
+function imageUrlOf(p: Record<string, unknown>): string | undefined {
+  if (Array.isArray(p.images)) {
+    for (const item of p.images) {
+      const url = (item as { url?: unknown })?.url
+      if (typeof url === "string" && url.trim()) return url.trim()
+    }
+  }
+  return str(p.url) ?? str(p.src)
+}
 
 // ── Payload → config ────────────────────────────────────────────────────────
 
@@ -220,7 +317,7 @@ function readConfig(type: AiFieldType, p: Record<string, unknown>): FieldConfig 
 
   if (p.hasOtherOption === true) c.allowOther = true
   if (p.randomize === true) c.randomizeOptions = true
-  if (type === "image") c.imageUrl = str(p.url) ?? str(p.src)
+  if (type === "image") c.imageUrl = imageUrlOf(p)
 
   // Drop keys that came back undefined so the stored config stays minimal.
   for (const k of Object.keys(c) as (keyof FieldConfig)[]) {
@@ -238,13 +335,29 @@ function readConfig(type: AiFieldType, p: Record<string, unknown>): FieldConfig 
  * block belongs to the question that follows it, and it sits in a DIFFERENT
  * group from that question — so it cannot be found by grouping alone.
  */
-export function parseTallyBlocks(blocks: TallyBlock[], formName?: string): TallyParseResult {
+export function parseTallyBlocks(
+  blocks: TallyBlock[],
+  formName?: string,
+  /** Tally's form id. Given, every field gets a deterministic id — see stableId. */
+  seed?: string,
+): TallyParseResult {
+  const newId = (key: string) => (seed ? stableId(`${seed}:${key}`) : genId())
   const fields: EditorField[] = []
   const skipped: SkippedBlock[] = []
   const refs: TallyFieldRef[] = []
   let title = formName?.trim() ?? ""
   let pendingTitle = ""
   let pendingDescription = ""
+  let logoUrl: string | undefined
+  let thankYou: { thankYouMessage?: string; successBody?: string } = {}
+
+  // Conditional logic is a rule POINTING AT blocks, so it can only be resolved
+  // once every block has become a field. Collected here, applied at the end.
+  const logicBlocks: TallyBlock[] = []
+  /** Every Tally block uuid → the field it ended up in. */
+  const blockToField = new Map<string, string>()
+  let pendingTitleUuid: string | undefined
+  let pendingLabelUuid: string | undefined
 
   const skip = (label: string, type: string) => {
     if (!skipped.some((s) => s.type === type && s.label === label)) {
@@ -258,22 +371,33 @@ export function parseTallyBlocks(blocks: TallyBlock[], formName?: string): Tally
 
     if (b.type === "FORM_TITLE") {
       if (!title) title = blockText(b)
+      // The form's logo hangs off this block, not off settings.
+      if (!logoUrl) logoUrl = str(p.logo)
+      continue
+    }
+    if (b.type === "CONDITIONAL_LOGIC") {
+      logicBlocks.push(b)
       continue
     }
     if (b.type === "TITLE") {
       pendingTitle = blockText(b)
+      // A rule usually points at the TITLE block, not the input under it, so
+      // this uuid has to end up owned by the question it labels.
+      pendingTitleUuid = b.uuid
       continue
     }
     if (b.type === "LABEL") {
       pendingDescription = blockText(b)
+      pendingLabelUuid = b.uuid
       continue
     }
 
-    // Everything past Tally's thank-you page is the post-submit screen, not the
-    // form. Importing it would turn a confirmation message into trailing
-    // questions, so stop here — and say so rather than dropping it quietly.
+    // Everything past Tally's thank-you break is the post-submit screen, not the
+    // form. Importing those blocks as fields would turn a confirmation message
+    // into trailing questions — so they go to the success page instead, which is
+    // where they already belonged.
     if (b.type === "PAGE_BREAK" && p.isThankYouPage === true) {
-      if (i < blocks.length - 1) skip("Thank-you page content", "PAGE_BREAK")
+      thankYou = parseThankYou(blocks.slice(i + 1))
       break
     }
 
@@ -285,15 +409,20 @@ export function parseTallyBlocks(blocks: TallyBlock[], formName?: string): Tally
       const carriesText = content.type === "heading" || content.type === "paragraph"
       if (carriesText && !text.trim()) continue
       const config = { ...(content.config ?? {}), ...readConfig(content.type, p) }
+      const contentId = newId(`content:${b.uuid ?? i}`)
       fields.push({
-        id: genId(),
+        id: contentId,
         type: content.type,
         label: carriesText ? text : "",
         required: false,
         ...(Object.keys(config).length > 0 ? { config } : {}),
       })
+      // Content blocks are legitimate logic targets — "show this paragraph if…".
+      if (b.uuid) blockToField.set(b.uuid, contentId)
       pendingTitle = ""
       pendingDescription = ""
+      pendingTitleUuid = undefined
+      pendingLabelUuid = undefined
       continue
     }
 
@@ -322,13 +451,14 @@ export function parseTallyBlocks(blocks: TallyBlock[], formName?: string): Tally
     //
     // The uuid of each option block is kept alongside its label because that is
     // what an API answer to a choice question contains — a uuid, not the text.
+    const groupKey = b.groupUuid ?? `block:${b.uuid ?? i}`
     const options: FieldOption[] = []
     const optionLabels: Record<string, string> = {}
-    for (const o of group) {
+    for (const [index, o] of group.entries()) {
       if (o.payload?.isOtherOption === true) continue
       const label = str(o.payload?.text)
       if (!label) continue
-      options.push({ id: genId(), label })
+      options.push({ id: newId(`${groupKey}:opt:${o.uuid ?? index}`), label })
       if (o.uuid) optionLabels[o.uuid] = label
     }
 
@@ -340,23 +470,255 @@ export function parseTallyBlocks(blocks: TallyBlock[], formName?: string): Tally
     // without one keeps it in `payload.name` instead.
     const label = pendingTitle || str(p.name) || ""
 
-    const fieldId = genId()
+    const fieldId = newId(groupKey)
     fields.push({
       id: fieldId,
       type,
       label,
-      required: p.isRequired === true,
+      // A block Tally had hidden is imported, because the goal is to lose
+      // nothing — but never as required. A hidden question the respondent
+      // cannot see, which they must answer to submit, is an unsubmittable form.
+      required: p.isRequired === true && p.isHidden !== true,
       ...(pendingDescription ? { description: pendingDescription } : {}),
       ...(str(p.placeholder) ? { placeholder: str(p.placeholder) } : {}),
       ...(options.length > 0 ? { options } : {}),
       ...(Object.keys(config).length > 0 ? { config } : {}),
     })
     refs.push({ fieldId, groupUuid: b.groupUuid, optionLabels })
+
+    // Every block that folded into this question — its title, its help text and
+    // each of its option blocks — so a rule pointing at any of them lands here.
+    for (const uuid of [pendingTitleUuid, pendingLabelUuid, ...group.map((g) => g.uuid)]) {
+      if (uuid) blockToField.set(uuid, fieldId)
+    }
+
     pendingTitle = ""
     pendingDescription = ""
+    pendingTitleUuid = undefined
+    pendingLabelUuid = undefined
   }
 
-  return { form: { title: title || "Imported form", fields }, skipped, refs }
+  applyConditionalLogic(logicBlocks, fields, refs, blockToField, skip)
+
+  return {
+    form: {
+      title: title || "Imported form",
+      fields,
+      ...(Object.keys(thankYou).length > 0 ? { settings: thankYou } : {}),
+      ...(logoUrl ? { theme: { logoUrl } } : {}),
+    },
+    skipped,
+    refs,
+  }
+}
+
+// ── Conditional logic ───────────────────────────────────────────────────────
+
+/**
+ * Tally's comparisons → ours.
+ *
+ * The ANY_OF pair map to the single-value operators because Tally only sends a
+ * list when several answers are offered, and our condition holds one value —
+ * the multi-value case is reported rather than silently narrowed.
+ */
+const COMPARISONS: Record<string, FieldCondition["operator"]> = {
+  IS: "equals",
+  EQUALS: "equals",
+  IS_ANY_OF: "equals",
+  IS_NOT: "not_equals",
+  NOT_EQUALS: "not_equals",
+  IS_NOT_ANY_OF: "not_equals",
+  CONTAINS: "contains",
+  DOES_NOT_CONTAIN: "not_contains",
+  IS_EMPTY: "is_empty",
+  IS_NOT_EMPTY: "is_not_empty",
+  GREATER_THAN: "greater_than",
+  IS_GREATER_THAN: "greater_than",
+  LESS_THAN: "less_than",
+  IS_LESS_THAN: "less_than",
+}
+
+const NO_VALUE = new Set(["is_empty", "is_not_empty"])
+
+/**
+ * Turn Tally's logic rules into per-field visibility.
+ *
+ * The models are the same idea from opposite ends. Tally's rule is a standalone
+ * object — "if question X is Y, show blocks A and B" — while ours lives on the
+ * block being controlled: "show me when question X is Y". So this inverts the
+ * direction, writing one copy of the rule onto each block it pointed at.
+ *
+ * Only SHOW_BLOCKS and HIDE_BLOCKS survive. REQUIRE_ANSWER has no counterpart
+ * — a question here is required or it isn't — and is reported by name so the
+ * author knows which ones to look at rather than finding out from a respondent.
+ */
+function applyConditionalLogic(
+  logicBlocks: TallyBlock[],
+  fields: EditorField[],
+  refs: TallyFieldRef[],
+  blockToField: Map<string, string>,
+  skip: (label: string, type: string) => void,
+): void {
+  if (logicBlocks.length === 0) return
+
+  const fieldById = new Map(fields.map((f) => [f.id, f]))
+  const fieldByGroup = new Map<string, string>()
+  const optionsByField = new Map<string, Record<string, string>>()
+  for (const ref of refs) {
+    if (ref.groupUuid) fieldByGroup.set(ref.groupUuid, ref.fieldId)
+    optionsByField.set(ref.fieldId, ref.optionLabels)
+  }
+
+  for (const rule of logicBlocks) {
+    const p = rule.payload ?? {}
+    const conditions = readConditions(p.conditionals, fieldByGroup, optionsByField)
+    if (conditions.length === 0) continue
+
+    // Tally only ever emits AND across a rule's conditions in practice, but it
+    // names the operator, so read it rather than assume.
+    const match = p.logicalOperator === "OR" ? "any" : "all"
+
+    // One rule names several blocks of the SAME question — its title and its
+    // input — which both resolve here to one field. Without this the rule would
+    // look like it was competing with itself.
+    const touched = new Set<string>()
+
+    for (const raw of Array.isArray(p.actions) ? p.actions : []) {
+      const action = raw as { type?: unknown; payload?: Record<string, unknown> }
+      const kind = action.type
+
+      if (kind === "REQUIRE_ANSWER") {
+        // A single uuid, not a list. A target that no longer exists is a rule
+        // left dangling in Tally, and there is nothing to tell the author.
+        const uuid = action.payload?.requireAnswer
+        const field =
+          typeof uuid === "string" ? fieldById.get(blockToField.get(uuid) ?? "") : undefined
+        if (field) skip(field.label || "a question", "Conditional required")
+        continue
+      }
+
+      const targets =
+        kind === "SHOW_BLOCKS"
+          ? action.payload?.showBlocks
+          : kind === "HIDE_BLOCKS"
+            ? action.payload?.hideBlocks
+            : null
+      if (!targets) continue
+
+      for (const uuid of asStrings(targets)) {
+        const field = fieldById.get(blockToField.get(uuid) ?? "")
+        if (!field || touched.has(field.id)) continue
+        touched.add(field.id)
+
+        // Our model holds one rule per field. Tally allows several rules to
+        // point at one block, and two rules are an OR that a single `match`
+        // cannot express — so the first wins and the rest are reported.
+        if (field.logic) {
+          skip(field.label || "a question", "Extra logic rule")
+          continue
+        }
+        field.logic = {
+          action: kind === "HIDE_BLOCKS" ? "hide" : "show",
+          match,
+          conditions,
+          source: "manual",
+        }
+      }
+    }
+  }
+}
+
+/** Each SINGLE conditional we understand, as one of our conditions. */
+function readConditions(
+  conditionals: unknown,
+  fieldByGroup: Map<string, string>,
+  optionsByField: Map<string, Record<string, string>>,
+): FieldCondition[] {
+  const out: FieldCondition[] = []
+  for (const raw of Array.isArray(conditionals) ? conditionals : []) {
+    const node = raw as { type?: unknown; payload?: Record<string, unknown> }
+    // Nested groups would need a condition tree; we have a flat list.
+    if (node.type !== "SINGLE" || !node.payload) continue
+
+    const source = node.payload.field as { blockGroupUuid?: unknown } | undefined
+    const group = typeof source?.blockGroupUuid === "string" ? source.blockGroupUuid : ""
+    const fieldId = fieldByGroup.get(group)
+    if (!fieldId) continue
+
+    const operator = COMPARISONS[String(node.payload.comparison ?? "")]
+    if (!operator) continue
+
+    if (NO_VALUE.has(operator)) {
+      out.push({ fieldId, operator })
+      continue
+    }
+
+    // The stored value is an option's uuid; our conditions compare labels,
+    // which is also what the answer itself is stored as.
+    const rawValue = node.payload.value
+    if (Array.isArray(rawValue)) {
+      // "is any of" with several choices needs an OR we cannot express here.
+      if (rawValue.length !== 1) continue
+    }
+    const single = Array.isArray(rawValue) ? rawValue[0] : rawValue
+    if (typeof single !== "string" && typeof single !== "number") continue
+
+    const labels = optionsByField.get(fieldId) ?? {}
+    const value = typeof single === "string" ? (labels[single] ?? single) : single
+    if (value === "") continue
+
+    out.push({ fieldId, operator, value })
+  }
+  return out
+}
+
+const asStrings = (v: unknown): string[] =>
+  Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []
+
+/**
+ * Tally's thank-you page as our success page.
+ *
+ * `thankYouMessage` is the success page's heading and `successBody` its HTML
+ * body, which maps onto how these pages are actually written: a short heading,
+ * a paragraph or two, and usually a couple of linked social icons.
+ *
+ * A page with no heading leaves `thankYouMessage` unset rather than promoting
+ * its first sentence — "Thank you for taking the time to share your thoughts
+ * and feedback…" rendered at heading size would look like a mistake.
+ */
+export function parseThankYou(after: TallyBlock[]): {
+  thankYouMessage?: string
+  successBody?: string
+} {
+  let heading = ""
+  const body: string[] = []
+
+  for (const b of after) {
+    const p = b.payload ?? {}
+
+    if (b.type === "IMAGE") {
+      const url = imageUrlOf(p)
+      if (url && /^https?:\/\//i.test(url)) {
+        body.push(`<p><img src="${esc(url)}" alt="" /></p>`)
+      }
+      continue
+    }
+
+    const isHeading = b.type.startsWith("HEADING")
+    const html = richHtml(p.safeHTMLSchema).trim()
+    if (!html) continue
+
+    if (isHeading && !heading) {
+      heading = richText(p.safeHTMLSchema).trim()
+      continue
+    }
+    body.push(isHeading ? `<h2>${html}</h2>` : `<p>${html}</p>`)
+  }
+
+  return {
+    ...(heading ? { thankYouMessage: heading } : {}),
+    ...(body.length > 0 ? { successBody: body.join("\n") } : {}),
+  }
 }
 
 /** Form-level settings Tally exposes that we have somewhere to put. */

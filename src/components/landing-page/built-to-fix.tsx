@@ -36,7 +36,7 @@ export function BuiltToFix() {
     <section className="border-t border-border bg-background">
       <div className="mx-auto max-w-7xl px-5 py-20 sm:px-8 sm:py-28">
         <Reveal className="mx-auto max-w-2xl text-center">
-          <h2 className="font-sebenta text-3xl font-bold leading-[1.12] tracking-tight text-foreground sm:text-[2.6rem]">
+          <h2 className="text-3xl font-bold leading-[1.12] tracking-tight text-foreground sm:text-[2.6rem]">
             MakingFlow is built to fix that.
           </h2>
           <p className="mx-auto mt-4 max-w-[52ch] text-base leading-relaxed text-muted-foreground">

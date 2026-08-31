@@ -11,7 +11,7 @@ export function WhySection() {
               <Eyebrow>Why we built this</Eyebrow>
             </Reveal>
             <Reveal delay={80}>
-              <h2 className="mt-4 max-w-xl font-sebenta text-3xl font-bold leading-[1.12] tracking-tight text-foreground sm:text-[2.6rem]">
+              <h2 className="mt-4 max-w-xl text-3xl font-bold leading-[1.12] tracking-tight text-foreground sm:text-[2.6rem]">
                 Most forms collect answers. They never understand them.
               </h2>
             </Reveal>

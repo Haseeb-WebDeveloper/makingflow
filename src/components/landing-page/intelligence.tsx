@@ -9,7 +9,7 @@ export function Intelligence() {
           <Eyebrow>What “thinking” actually means</Eyebrow>
         </Reveal>
         <Reveal delay={80}>
-          <h2 className="mt-4 max-w-2xl font-sebenta text-3xl font-bold leading-[1.12] tracking-tight text-foreground sm:text-[2.6rem]">
+          <h2 className="mt-4 max-w-2xl text-3xl font-bold leading-[1.12] tracking-tight text-foreground sm:text-[2.6rem]">
             The intelligence shows up while the form is being filled out.
           </h2>
         </Reveal>

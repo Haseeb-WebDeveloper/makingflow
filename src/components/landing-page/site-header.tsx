@@ -22,7 +22,7 @@ export function SiteHeader({ isAuthed = false }: { isAuthed?: boolean }) {
         {/* Wordmark */}
         <Link
           href="/"
-          className="flex items-center gap-1 font-sebenta text-xl font-bold tracking-tight text-foreground"
+          className="flex items-center gap-1 text-xl font-bold tracking-tight text-foreground"
           aria-label="MakingFlow home"
         >
           <SVGIcon

@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import dynamic from "next/dynamic"
 import { format, parse } from "date-fns"
 import ReactMarkdown, { type Components } from "react-markdown"
@@ -38,6 +38,14 @@ const Calendar = dynamic(
   () => import("@/components/ui/calendar").then((m) => m.Calendar),
   { loading: () => <div className="h-[19rem] w-60 animate-pulse rounded-md bg-muted/30" /> },
 )
+
+/**
+ * Points a scale renders as buttons before falling back to a slider.
+ *
+ * 11 keeps every common scale (1-5, 1-7, 0-10) on buttons, which is one tap per
+ * answer; beyond that they stop fitting a phone and the slider wins.
+ */
+const MAX_SCALE_BUTTONS = 11
 
 export type UploadedFile = {
   storageKey: string
@@ -108,18 +116,18 @@ export function Field({
 }) {
   if (field.type === "heading") {
     return field.config?.headingLevel === "h1" ? (
-      <h2 className="pt-2 font-sebenta text-2xl font-bold tracking-tight text-foreground">
+      <h2 className="pt-2 text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
         <InlineMarkdown content={field.label} />
       </h2>
     ) : (
-      <h3 className="pt-2 font-sebenta text-lg font-semibold text-foreground">
+      <h3 className="pt-2 text-xl font-semibold text-foreground">
         <InlineMarkdown content={field.label} />
       </h3>
     )
   }
   if (field.type === "paragraph") {
     return (
-      <div className="space-y-2 text-sm leading-relaxed text-muted-foreground">
+      <div className="space-y-2 leading-relaxed">
         <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]} components={PARAGRAPH_MD}>
           {field.label}
         </ReactMarkdown>
@@ -149,17 +157,20 @@ export function Field({
   const describedBy = [descId, errId].filter(Boolean).join(" ") || undefined
 
   return (
-    <div id={`field-${field.id}`} className="space-y-2">
-      <label id={labelId} className="block text-sm font-medium text-foreground">
+    <div id={`field-${field.id}`} className="space-y-2.5">
+      <label
+        id={labelId}
+        className="block text-base font-semibold leading-snug text-foreground sm:text-[17px]"
+      >
         {field.label}
         {field.required ? (
-          <span className="ml-0.5 text-destructive" aria-hidden="true">
+          <span className="ml-1 text-destructive" aria-hidden="true">
             *
           </span>
         ) : null}
       </label>
       {field.description ? (
-        <p id={descId} className="-mt-1 text-xs text-muted-foreground">
+        <p id={descId} className="-mt-1 text-sm text-muted-foreground">
           {field.description}
         </p>
       ) : null}
@@ -173,7 +184,7 @@ export function Field({
         describedBy={describedBy}
       />
       {error ? (
-        <p id={errId} role="alert" className="text-xs font-medium text-destructive">
+        <p id={errId} role="alert" className="text-sm font-medium text-destructive">
           {error}
         </p>
       ) : null}
@@ -224,8 +235,16 @@ export function FormBranding({ theme }: { theme?: PublicTheme | null }) {
   )
 }
 
+/**
+ * Respondent-facing type scale.
+ *
+ * Deliberately a step larger than the dashboard's. The builder is a dense tool
+ * used by someone who lives in it; a form is read once, often on a phone, by
+ * someone who has never seen it before — so the question is the largest thing
+ * on the row and the controls are comfortably tappable.
+ */
 export const inputBase =
-  "h-11 w-full rounded-md border bg-background px-3 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-foreground/40 focus-visible:ring-2 focus-visible:ring-ring/60"
+  "h-12 w-full rounded-md border bg-background px-3.5 text-base text-foreground outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-foreground/40 focus-visible:ring-2 focus-visible:ring-ring/60"
 
 /** Visible keyboard-focus ring for the custom option buttons (yes/no, choices,
  *  NPS). Replaces the removed native outline so keyboard users never lose their
@@ -311,21 +330,39 @@ export function Control({
     case "time":
       return <input type="time" value={str} onChange={(e) => onChange(e.target.value)} {...inputA11y} className={cn(inputBase, border)} />
 
-    case "dropdown":
+    case "dropdown": {
+      // A value that isn't one of the options came from the Other box, so the
+      // select shows nothing and the box below holds it.
+      const known = opts.some((o) => o.label === str)
       return (
-        <Select value={str || undefined} onValueChange={(v) => onChange(v)}>
-          <SelectTrigger {...inputA11y} className="h-11 w-full bg-background">
-            <SelectValue placeholder="Select an option" />
-          </SelectTrigger>
-          <SelectContent>
-            {opts.map((o) => (
-              <SelectItem key={o.id} value={o.label}>
-                {o.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <div className="space-y-2">
+          <Select
+            value={known ? str : undefined}
+            onValueChange={(v) => onChange(v)}
+          >
+            <SelectTrigger {...inputA11y} className="h-11 w-full bg-background">
+              <SelectValue placeholder="Select an option" />
+            </SelectTrigger>
+            <SelectContent>
+              {opts.map((o) => (
+                <SelectItem key={o.id} value={o.label}>
+                  {o.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {field.config?.allowOther ? (
+            <OtherChoice
+              multi={false}
+              value={value}
+              options={opts}
+              invalid={invalid}
+              onChange={onChange}
+            />
+          ) : null}
+        </div>
       )
+    }
 
     case "yes_no":
       return (
@@ -337,7 +374,7 @@ export function Control({
           className="flex gap-2"
           optionClassName={(selected) =>
             cn(
-              "inline-flex h-11 items-center justify-center rounded-md border px-6 text-sm transition-colors",
+              "inline-flex h-12 items-center justify-center rounded-md border px-7 text-base transition-colors",
               btnFocus,
               selected
                 ? "border-foreground bg-foreground text-background"
@@ -358,7 +395,7 @@ export function Control({
           className="space-y-2"
           optionClassName={(selected) =>
             cn(
-              "flex w-full items-center gap-3 rounded-md border px-3 py-2.5 text-left text-sm transition-colors",
+              "flex w-full items-center gap-3 rounded-md border px-3.5 py-3 text-left text-base transition-colors",
               btnFocus,
               selected ? "border-foreground bg-muted" : cn(border, "hover:bg-muted"),
             )
@@ -374,6 +411,17 @@ export function Control({
               {o.label}
             </>
           )}
+          after={
+            field.config?.allowOther ? (
+              <OtherChoice
+                multi={false}
+                value={value}
+                options={opts}
+                invalid={invalid}
+                onChange={onChange}
+              />
+            ) : null
+          }
         />
       )
 
@@ -387,7 +435,7 @@ export function Control({
               <label
                 key={o.id}
                 className={cn(
-                  "flex w-full cursor-pointer items-center gap-3 rounded-md border px-3 py-2.5 text-left text-sm transition-colors",
+                  "flex w-full cursor-pointer items-center gap-3 rounded-md border px-3.5 py-3 text-left text-base transition-colors",
                   checked ? "border-foreground bg-muted" : cn(border, "hover:bg-muted"),
                 )}
               >
@@ -402,6 +450,15 @@ export function Control({
               </label>
             )
           })}
+          {field.config?.allowOther ? (
+            <OtherChoice
+              multi
+              value={value}
+              options={opts}
+              invalid={invalid}
+              onChange={onChange}
+            />
+          ) : null}
         </div>
       )
 
@@ -424,8 +481,55 @@ export function Control({
     case "scale": {
       const min = field.config?.min ?? 1
       const max = field.config?.max ?? 5
-      const step = field.config?.step ?? 1
+      const step = Math.max(field.config?.step ?? 1, 1)
       const current = typeof value === "number" ? value : null
+      const points = Math.floor((max - min) / step) + 1
+
+      const ends = (
+        <div className="flex justify-between text-xs text-muted-foreground">
+          <span>{field.config?.minLabel || min}</span>
+          <span>{field.config?.maxLabel || max}</span>
+        </div>
+      )
+
+      // A slider makes the respondent aim at a value; on a 1–5 satisfaction
+      // question there are five answers and they should each be one tap. Past
+      // roughly a dozen points the buttons stop fitting and the slider is the
+      // better control, so the range decides rather than the field type.
+      if (points >= 2 && points <= MAX_SCALE_BUTTONS) {
+        return (
+          <div role="group" {...groupA11y} className="space-y-2 pt-1">
+            <div className="flex flex-wrap gap-1.5">
+              {Array.from({ length: points }, (_, i) => {
+                const v = min + i * step
+                const selected = current === v
+                return (
+                  <button
+                    key={v}
+                    type="button"
+                    role="radio"
+                    aria-checked={selected}
+                    aria-label={String(v)}
+                    onClick={() => onChange(v)}
+                    className={cn(
+                      "inline-flex px-3 py-2 font-medium items-center justify-center rounded-md border text-sm transition-colors",
+                      btnFocus,
+                      selected
+                        ? "border-foreground bg-foreground text-background"
+                        : cn(border, "text-foreground hover:bg-muted"),
+                    )}
+                  >
+                    {v}
+                  </button>
+                )
+              })}
+            </div>
+            {/* No need for ends now */}
+            {/* {ends} */}
+          </div>
+        )
+      }
+
       return (
         <div role="group" {...groupA11y} className="space-y-3 pt-1">
           <div className="flex items-center gap-4">
@@ -441,10 +545,7 @@ export function Control({
               {current ?? "—"}
             </span>
           </div>
-          <div className="flex justify-between text-xs text-muted-foreground">
-            <span>{field.config?.minLabel || min}</span>
-            <span>{field.config?.maxLabel || max}</span>
-          </div>
+          {ends}
         </div>
       )
     }
@@ -461,7 +562,7 @@ export function Control({
               onClick={() => onChange(n)}
               aria-pressed={current === n}
               className={cn(
-                "inline-flex size-11 items-center justify-center rounded-md border text-sm transition-colors",
+                "inline-flex size-12 items-center justify-center rounded-md border text-base transition-colors",
                 btnFocus,
                 current === n ? "border-foreground bg-foreground text-background" : cn(border, "text-foreground hover:bg-muted"),
               )}
@@ -496,6 +597,7 @@ function RadioGroupControl({
   className,
   optionClassName,
   renderContent,
+  after,
   "aria-labelledby": ariaLabelledby,
   "aria-describedby": ariaDescribedby,
 }: {
@@ -505,6 +607,9 @@ function RadioGroupControl({
   className?: string
   optionClassName: (selected: boolean) => string
   renderContent: (o: { id: string; label: string }, selected: boolean) => React.ReactNode
+  /** Rendered inside the group, after the options — the "Other" row lives here
+   *  so it sits in the same radiogroup a screen reader announces. */
+  after?: React.ReactNode
   "aria-labelledby"?: string
   "aria-describedby"?: string
 }) {
@@ -552,6 +657,7 @@ function RadioGroupControl({
           </button>
         )
       })}
+      {after}
     </div>
   )
 }
@@ -774,5 +880,123 @@ export function Star({ className, filled }: { className?: string; filled?: boole
     <svg className={className} viewBox="0 0 24 24" fill={filled ? "currentColor" : "none"} stroke="currentColor" strokeWidth={1.5} aria-hidden>
       <path d="M12 3.5l2.6 5.27 5.82.85-4.21 4.1.99 5.79L12 16.77l-5.2 2.74.99-5.79-4.21-4.1 5.82-.85L12 3.5z" />
     </svg>
+  )
+}
+
+/**
+ * Tally-style "Other" — a choice that opens a free-text box.
+ *
+ * The typed text IS the stored answer. Not a marker like `"Other: blue"`, and
+ * not a separate field: an answer of "blue" is the same shape as an answer of
+ * any other choice, so submissions, CSV export, Sheets, Notion, insights and
+ * conditional logic all read it without knowing this option exists. The only
+ * thing that makes it "other" is that it isn't one of the listed labels — which
+ * is exactly what it means.
+ *
+ * That inference is also how the box re-opens on a reload: a stored value not
+ * among the options can only have come from here.
+ */
+function OtherChoice({
+  multi,
+  value,
+  options,
+  invalid,
+  disabled,
+  onChange,
+}: {
+  multi: boolean
+  value: AnswerValue | undefined
+  options: { id: string; label: string }[]
+  invalid: boolean
+  disabled?: boolean
+  onChange: (v: AnswerValue) => void
+}) {
+  const labels = useMemo(() => new Set(options.map((o) => o.label)), [options])
+  const arr = Array.isArray(value) ? (value as string[]) : []
+  const str = typeof value === "string" ? value : ""
+
+  // Whatever is stored that isn't one of the options is this box's content.
+  const stored = multi ? (arr.find((v) => !labels.has(v)) ?? "") : labels.has(str) ? "" : str
+
+  // Chosen but not yet typed into — there is nothing stored to infer that from,
+  // so it needs a flag of its own.
+  const [picked, setPicked] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  // Derived, not synced: picking a real option in a single-choice question puts
+  // Other back down on the next render without an effect writing state back.
+  const knownSelected = !multi && labels.has(str)
+  const active = stored !== "" || (picked && !knownSelected)
+
+  function toggle(next: boolean) {
+    setPicked(next)
+    if (next) {
+      // Selecting Other in a single-choice question clears the radio that was
+      // set, so the two can't both look chosen.
+      if (!multi && labels.has(str)) onChange("")
+      requestAnimationFrame(() => inputRef.current?.focus())
+      return
+    }
+    if (multi) onChange(arr.filter((v) => labels.has(v)))
+    else if (!labels.has(str)) onChange("")
+  }
+
+  function type(text: string) {
+    if (multi) {
+      const kept = arr.filter((v) => labels.has(v))
+      onChange(text.trim() ? [...kept, text] : kept)
+    } else {
+      onChange(text)
+    }
+  }
+
+  const border = invalid ? "border-destructive" : "border-input"
+
+  return (
+    <div className="space-y-2">
+      <label
+        className={cn(
+          "flex w-full cursor-pointer items-center gap-3 rounded-md border px-3.5 py-3 text-left text-base transition-colors",
+          active ? "border-foreground bg-muted" : cn(border, "hover:bg-muted"),
+          disabled && "pointer-events-none opacity-60",
+        )}
+      >
+        <input
+          type={multi ? "checkbox" : "radio"}
+          className="sr-only"
+          checked={active}
+          disabled={disabled}
+          onChange={(e) => toggle(multi ? e.target.checked : true)}
+          onClick={() => {
+            // A radio can't be unticked by clicking it; a second click on an
+            // already-open Other should close it.
+            if (!multi && active) toggle(false)
+          }}
+        />
+        <span
+          aria-hidden
+          className={cn(
+            "size-4 shrink-0 border",
+            multi ? "rounded-[4px]" : "rounded-full",
+            active ? "border-[5px] border-foreground" : "border-muted-foreground/50",
+          )}
+        />
+        Other
+      </label>
+
+      {active ? (
+        <input
+          ref={inputRef}
+          type="text"
+          value={stored}
+          disabled={disabled}
+          aria-label="Other — please specify"
+          aria-invalid={invalid || undefined}
+          placeholder="Please specify"
+          onChange={(e) => type(e.target.value)}
+          className={cn(inputBase, border, "ml-7 w-[calc(100%-1.75rem)]")}
+        />
+      ) : null}
+    </div>
   )
 }

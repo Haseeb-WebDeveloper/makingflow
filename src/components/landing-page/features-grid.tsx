@@ -43,7 +43,7 @@ export function FeaturesGrid() {
       <div className="mx-auto max-w-7xl px-5 py-20 sm:px-8 sm:py-28">
         <Reveal className="mx-auto max-w-2xl text-center">
           <Eyebrow>Features</Eyebrow>
-          <h2 className="mt-4 font-sebenta text-3xl font-bold leading-[1.12] tracking-tight text-foreground sm:text-[2.6rem]">
+          <h2 className="mt-4 text-3xl font-bold leading-[1.12] tracking-tight text-foreground sm:text-[2.6rem]">
             Features that set us apart.
           </h2>
           <p className="mx-auto mt-4 max-w-[52ch] text-base leading-relaxed text-muted-foreground">
@@ -113,7 +113,7 @@ function Visual({ feature }: { feature: Key }) {
       <div className="w-full max-w-[15rem] rounded-lg border border-border bg-background p-3">
         <div className="flex items-end justify-between">
           <div>
-            <p className="font-sebenta text-2xl font-bold tracking-tight text-foreground">312</p>
+            <p className="text-2xl font-bold tracking-tight text-foreground">312</p>
             <p className="text-[11px] text-muted-foreground">Submissions</p>
           </div>
           <span className="rounded-full bg-success/10 px-1.5 py-0.5 text-[10px] font-medium text-success">

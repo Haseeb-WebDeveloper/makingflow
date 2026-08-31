@@ -17,7 +17,7 @@ export function AskAiSection() {
               <Eyebrow>AI summaries</Eyebrow>
             </Reveal>
             <Reveal delay={80}>
-              <h2 className="mt-4 max-w-md font-sebenta text-3xl font-bold leading-[1.12] tracking-tight text-foreground sm:text-[2.6rem]">
+              <h2 className="mt-4 max-w-md text-3xl font-bold leading-[1.12] tracking-tight text-foreground sm:text-[2.6rem]">
                 Ask your responses a question. Get a real answer.
               </h2>
             </Reveal>

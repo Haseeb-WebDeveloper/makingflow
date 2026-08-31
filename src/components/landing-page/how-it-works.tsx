@@ -48,7 +48,7 @@ export function HowItWorks() {
           <Eyebrow>How it works</Eyebrow>
         </Reveal>
         <Reveal delay={80}>
-          <h2 className="mt-4 max-w-2xl font-sebenta text-3xl font-bold leading-[1.12] tracking-tight text-foreground sm:text-[2.6rem]">
+          <h2 className="mt-4 max-w-2xl text-3xl font-bold leading-[1.12] tracking-tight text-foreground sm:text-[2.6rem]">
             From a sentence to a working form, in about a minute.
           </h2>
         </Reveal>
@@ -61,7 +61,7 @@ export function HowItWorks() {
                   <span className={`grid size-11 place-items-center rounded-xl ${s.chip}`}>
                     <StepIcon name={s.icon} />
                   </span>
-                  <span className={`font-sebenta text-3xl font-bold ${s.num}`}>{s.n}</span>
+                  <span className={`text-3xl font-bold ${s.num}`}>{s.n}</span>
                 </div>
                 <h3 className="mt-5 text-lg font-semibold text-foreground">{s.title}</h3>
                 <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{s.body}</p>

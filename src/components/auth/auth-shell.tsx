@@ -19,7 +19,7 @@ export function AuthShell({
         <div className="mb-2 flex justify-center">
           <Link
             href="/"
-            className="font-sebenta text-xl font-bold tracking-tight text-foreground"
+            className="text-xl font-bold tracking-tight text-foreground"
             aria-label="MakingFlow home"
           >
             <SVGIcon

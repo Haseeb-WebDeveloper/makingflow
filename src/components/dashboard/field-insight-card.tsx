@@ -90,14 +90,14 @@ function NumericStat({ field }: { field: FieldInsight }) {
     <div>
       <div className="flex items-baseline gap-5">
         <span>
-          <span className="font-sebenta text-2xl font-bold tracking-tight text-foreground">
+          <span className="text-2xl font-bold tracking-tight text-foreground">
             {n.average.toFixed(1)}
           </span>
           <span className="ml-1 text-xs text-muted-foreground">avg</span>
         </span>
         {n.nps ? (
           <span>
-            <span className="font-sebenta text-2xl font-bold tracking-tight text-foreground">
+            <span className="text-2xl font-bold tracking-tight text-foreground">
               {n.nps.score > 0 ? `+${n.nps.score}` : n.nps.score}
             </span>
             <span className="ml-1 text-xs text-muted-foreground">NPS</span>

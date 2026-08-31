@@ -5,7 +5,7 @@ export function FillModes() {
     <section className="border-t border-border bg-[linear-gradient(180deg,color-mix(in_oklab,var(--primary)_6%,var(--background)),var(--background))]">
       <div className="mx-auto max-w-7xl px-5 py-20 sm:px-8 sm:py-28">
         <Reveal>
-          <h2 className="max-w-2xl font-sebenta text-3xl font-bold leading-[1.12] tracking-tight text-foreground sm:text-[2.6rem]">
+          <h2 className="max-w-2xl text-3xl font-bold leading-[1.12] tracking-tight text-foreground sm:text-[2.6rem]">
             One form. Two ways to fill it.
           </h2>
         </Reveal>
@@ -71,7 +71,7 @@ function ModeCard({
       <span className="inline-flex w-fit items-center rounded-full border border-border px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
         {label}
       </span>
-      <h3 className="mt-3 font-sebenta text-xl font-bold tracking-tight text-foreground">{title}</h3>
+      <h3 className="mt-3 text-xl font-bold tracking-tight text-foreground">{title}</h3>
       <p className="mt-2 max-w-[52ch] text-sm leading-relaxed text-muted-foreground">{body}</p>
       <div className="mt-6">{children}</div>
     </div>
