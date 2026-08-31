@@ -175,10 +175,15 @@ export function SidebarForms({
                     aria-expanded={open}
                     className={ROW_CLS}
                   >
+                    {/* No folder icon: the chevron already says "a group, and
+                        here is its state". A second glyph repeating "folder"
+                        cost title width in a 232px rail to say nothing new. */}
                     <Chevron open={open} />
-                    {/* <Icon name="folder" className="size-3.5 shrink-0 text-sidebar-foreground" /> */}
                     <span className="min-w-0 flex-1 truncate">{folder.name}</span>
-                    <span className="shrink-0 text-[11px] text-sidebar-foreground">
+                    {/* The count and the ⋯ share this slot — count at rest, ⋯ on
+                        hover. Only one is ever wanted, so only one is paid for,
+                        and swapping them shifts nothing. */}
+                    <span className="shrink-0 text-[11px] tabular-nums text-sidebar-foreground transition-opacity group-focus-within/menu-item:opacity-0 group-hover/menu-item:opacity-0">
                       {folderForms.length}
                     </span>
                   </SidebarMenuButton>
