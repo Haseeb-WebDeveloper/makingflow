@@ -176,6 +176,17 @@ describe("listTallyForms", () => {
     ])
   })
 
+  test("asks /workspaces for nothing but the workspaces", async () => {
+    // This endpoint rejects `limit` with a 400 where /forms requires it. The
+    // caller swallows workspace failures, so sending one cost a real migration
+    // its folders and said nothing.
+    const calls = stubJson(WORKSPACES, { items: [], hasMore: false })
+    await listTallyForms(KEY)
+    const ws = calls.find((c) => c.url.includes("/workspaces"))
+    expect(ws).toBeDefined()
+    expect(ws!.url).toBe("https://api.tally.so/workspaces")
+  })
+
   test("prefers the folder over the workspace when a form is filed in one", async () => {
     stubJson(WORKSPACES, {
       items: [{ id: "a", name: "A", workspaceId: "w8AJQk", folderId: "fold1" }],

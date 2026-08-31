@@ -36,10 +36,10 @@ import { isOurs, isRehostable, rehostFromUrl, type RehostedAsset } from "@/lib/c
  */
 
 /** Files per call. Cloudinary fetches each one itself, so this is wall-clock. */
-const FILES_PER_CALL = 40
+const FILES_PER_CALL = 60
 
 /** Concurrent fetches. Enough to be quick, not enough to look like an attack. */
-const CONCURRENCY = 4
+const CONCURRENCY = 6
 
 export type RehostResult =
   | {
@@ -326,4 +326,99 @@ export async function countPendingMedia(formId: string): Promise<PendingMediaRes
   assets += imageFields.filter((f) => isRehostable(f.config?.imageUrl)).length
 
   return { success: true, files: count, assets }
+}
+
+export type PendingMediaForm = {
+  id: string
+  title: string
+  /** Respondent uploads still hosted elsewhere. */
+  files: number
+  /** Logo, cover, inline images and success-page images still hosted elsewhere. */
+  assets: number
+}
+
+export type PendingFormsResult =
+  | { success: true; forms: PendingMediaForm[] }
+  | { success: false; error: string }
+
+/**
+ * Every form in the workspace still pointing at Tally, worst first.
+ *
+ * The per-form sweep is the right unit of work but the wrong unit of effort:
+ * a real migration here left 13,393 files across 68 forms, and asking someone
+ * to visit 68 settings pages before they can close their old account is not an
+ * answer. This is the discovery half — run once, then the caller walks the list
+ * through `rehostFormMedia`, which already knows how to resume.
+ */
+export async function listPendingMediaForms(): Promise<PendingFormsResult> {
+  await getRequiredUser()
+  const workspace = await getDefaultWorkspace()
+  if (!workspace) return { success: false, error: "No workspace" }
+
+  const TALLY = "%tally.so%"
+
+  const [formRows, fileRows, imageRows] = await Promise.all([
+    db
+      .select({
+        id: forms.id,
+        title: forms.title,
+        theme: forms.theme,
+        settings: forms.settings,
+      })
+      .from(forms)
+      .where(and(eq(forms.workspaceId, workspace.id), isNull(forms.deletedAt))),
+
+    // Grouped rather than counted per form: one pass over the uploads instead
+    // of one query per form.
+    db
+      .select({ formId: submissions.formId, n: sql<number>`count(*)::int` })
+      .from(answers)
+      .innerJoin(submissions, eq(answers.submissionId, submissions.id))
+      .where(
+        and(
+          eq(submissions.workspaceId, workspace.id),
+          eq(answers.type, "file_upload"),
+          sql`${answers.value}::text like ${TALLY}`,
+        ),
+      )
+      .groupBy(submissions.formId),
+
+    db
+      .select({ formId: formFields.formId, n: sql<number>`count(*)::int` })
+      .from(formFields)
+      .innerJoin(forms, eq(forms.id, formFields.formId))
+      .where(
+        and(
+          eq(forms.workspaceId, workspace.id),
+          eq(formFields.type, "image"),
+          isNull(formFields.deletedAt),
+          sql`${formFields.config}->>'imageUrl' like ${TALLY}`,
+        ),
+      )
+      .groupBy(formFields.formId),
+  ])
+
+  const fileCount = new Map(fileRows.map((r) => [r.formId, r.n]))
+  const imageCount = new Map(imageRows.map((r) => [r.formId, r.n]))
+
+  const out: PendingMediaForm[] = []
+  for (const f of formRows) {
+    let assets = imageCount.get(f.id) ?? 0
+    if (isRehostable(f.theme?.logoUrl)) assets += 1
+    if (isRehostable(f.theme?.coverImageUrl)) assets += 1
+    if (f.settings?.successBody) {
+      assets += [...f.settings.successBody.matchAll(/src="([^"]+)"/g)].filter((m) =>
+        isRehostable(m[1]),
+      ).length
+    }
+    const files = fileCount.get(f.id) ?? 0
+    if (files + assets > 0) {
+      out.push({ id: f.id, title: f.title, files, assets })
+    }
+  }
+
+  // Biggest first, so the bulk of the risk is gone earliest if the run is
+  // interrupted.
+  out.sort((a, b) => b.files + b.assets - (a.files + a.assets))
+  return { success: true, forms: out }
 }

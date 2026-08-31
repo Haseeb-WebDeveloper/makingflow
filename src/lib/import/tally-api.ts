@@ -205,7 +205,11 @@ export async function listTallyWorkspaces(apiKey: string): Promise<Map<string, s
   const key = requireKey(apiKey)
   const names = new Map<string, string>()
 
-  const data = await tallyGet<{ items?: unknown }>(key, "/workspaces", { limit: PAGE_SIZE })
+  // No `limit` here. Unlike /forms, this endpoint rejects it outright —
+  // `{"message":"\"limit\" is not allowed","errorType":"VALIDATION"}` — and the
+  // 400 was being swallowed by the caller's catch, so every form silently came
+  // back with no workspace name and nothing was ever filed into a folder.
+  const data = await tallyGet<{ items?: unknown }>(key, "/workspaces")
   for (const raw of Array.isArray(data.items) ? data.items : []) {
     const ws = raw as Record<string, unknown>
     if (typeof ws.id !== "string") continue
@@ -229,9 +233,15 @@ export async function listTallyForms(apiKey: string): Promise<TallyFormSummary[]
   let names = new Map<string, string>()
   try {
     names = await listTallyWorkspaces(key)
-  } catch {
-    // A key without workspace scope shouldn't cost the user their form list;
-    // they just lose the folder names.
+  } catch (err) {
+    // A key that can't read workspaces shouldn't cost the user their form list;
+    // they just lose the folder names. But it must not fail SILENTLY — this
+    // catch once hid a bad request for an entire migration, and the only
+    // symptom was that no folders appeared.
+    console.warn(
+      "[tally] could not read workspaces; forms will import unfiled:",
+      err instanceof TallyImportError ? err.code : "unknown",
+    )
   }
 
   const out: TallyFormSummary[] = []
