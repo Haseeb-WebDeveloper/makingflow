@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { provisionUser } from '@/lib/auth/provisioning'
+import { getRequiredUser } from '@/lib/auth/session'
 
 // ============================================================
 // Types & helpers
@@ -293,4 +294,84 @@ export async function signOutAction(): Promise<void> {
   const supabase = await createClient()
   await supabase.auth.signOut()
   redirect('/')
+}
+
+const ChangePasswordSchema = z.object({
+  current: z.string().min(1, 'Enter your current password'),
+  next: z.string().min(8, 'Use at least 8 characters'),
+})
+
+/**
+ * Change the signed-in user's password.
+ *
+ * Distinct from `updatePassword`, which serves the reset-link flow and trusts
+ * the recovery session the callback established. Here the session is an
+ * ordinary one, so the CURRENT password is required and verified first:
+ * without that, anyone who picked up a live session — a shared machine, a
+ * borrowed laptop — could lock the real owner out of their own account.
+ *
+ * Verification is a real sign-in with the old password. Supabase has no
+ * "check this password" call, and re-authenticating is what proves it; it
+ * refreshes the same user's session, so the caller stays signed in either way.
+ */
+export async function changePassword(
+  formData: FormData,
+): Promise<ActionResult<Record<string, never>>> {
+  const user = await getRequiredUser()
+
+  const parsed = ChangePasswordSchema.safeParse({
+    current: formData.get('current'),
+    next: formData.get('next'),
+  })
+  if (!parsed.success) {
+    return {
+      success: false,
+      error: 'Check the fields and try again.',
+      fieldErrors: firstFieldErrors(parsed.error),
+    }
+  }
+  if (parsed.data.current === parsed.data.next) {
+    return { success: false, error: 'That is already your password.' }
+  }
+
+  const supabase = await createClient()
+  const { error: authError } = await supabase.auth.signInWithPassword({
+    email: user.email,
+    password: parsed.data.current,
+  })
+  if (authError) {
+    // An account created through Google has no password to verify against, so
+    // say what to do rather than insisting on one they never set.
+    return {
+      success: false,
+      error:
+        'That current password is not right. If you signed up with Google, use “Forgot password” to set one first.',
+      fieldErrors: { current: 'Incorrect password' },
+    }
+  }
+
+  const { error } = await supabase.auth.updateUser({ password: parsed.data.next })
+  if (error) {
+    return { success: false, error: error.message || 'Could not update your password.' }
+  }
+
+  // Revoke every OTHER session.
+  //
+  // Changing a password is usually a response to something — a shared laptop, a
+  // borrowed phone, a suspicion. Leaving those sessions alive means the new
+  // password protects nothing: whoever holds an old session keeps full access
+  // and never has to know it changed. `scope: 'others'` drops them all and
+  // leaves this one, so the person doing it is not signed out of the tab they
+  // are standing in.
+  //
+  // After the change, not before: a failed update would otherwise sign the user
+  // out of their other devices for nothing.
+  const { error: revokeError } = await supabase.auth.signOut({ scope: 'others' })
+  if (revokeError) {
+    // The password DID change, so this is not a failure to report as one —
+    // the account is already more secure than it was.
+    console.error('[changePassword] could not revoke other sessions', revokeError)
+  }
+
+  return { success: true, data: {} }
 }

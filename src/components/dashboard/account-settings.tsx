@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { showToast } from "@/components/ui/toast"
+import { PasswordSettings } from "@/components/dashboard/password-settings"
 import { updateProfile } from "@/lib/actions/profile"
 
 function initials(nameOrEmail: string): string {
@@ -83,6 +84,15 @@ export function AccountSettings({
         <Button onClick={save} disabled={pending || !dirty || !name.trim()} className="h-9 px-4">
           {pending ? "Saving…" : "Save changes"}
         </Button>
+      </div>
+
+      <div className="max-w-md border-t border-border pt-6">
+        <h2 className="text-sm font-medium text-foreground">Password</h2>
+        <p className="mt-1 mb-3 text-xs text-muted-foreground">
+          You&apos;ll need your current password. Changing it signs you out everywhere
+          else you&apos;re logged in.
+        </p>
+        <PasswordSettings />
       </div>
     </div>
   )
