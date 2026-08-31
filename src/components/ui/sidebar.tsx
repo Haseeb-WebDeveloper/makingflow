@@ -145,7 +145,7 @@ function SidebarProvider({
           // content). The widths are set via inline style above (which beats a
           // normal class), so these overrides must be !important to win. Mobile /
           // tablet keep the fixed rem widths.
-          "lg:[--sidebar-width:256px]! lg:[--sidebar-width-icon:48px]!",
+          "lg:[--sidebar-width:232px]! lg:[--sidebar-width-icon:48px]!",
           className
         )}
         {...props}
@@ -412,7 +412,7 @@ function SidebarGroupLabel({
       data-slot="sidebar-group-label"
       data-sidebar="group-label"
       className={cn(
-        "flex h-8 lg:h-[32px] shrink-0 items-center rounded-md lg:rounded-[8px] px-3 lg:px-[12px]  text-sm text-sidebar-foreground/70 ring-sidebar-ring outline-hidden transition-[margin,opacity] duration-200 ease-linear group-data-[collapsible=icon]:-mt-8 group-data-[collapsible=icon]:opacity-0 focus-visible:ring-0 [&>svg]:size-4 [&>svg]:shrink-0",
+        "flex h-6 lg:h-[24px] shrink-0 items-center rounded-md lg:rounded-[8px] px-2 lg:px-[8px] text-[11px] lg:text-[11px] font-semibold text-sidebar-foreground ring-sidebar-ring outline-hidden transition-[margin,opacity] duration-200 ease-linear group-data-[collapsible=icon]:-mt-8 group-data-[collapsible=icon]:opacity-0 focus-visible:ring-0 [&>svg]:size-4 [&>svg]:shrink-0",
         className
       )}
       {...props}
@@ -477,16 +477,16 @@ function SidebarMenuItem({ className, ...props }: React.ComponentProps<"li">) {
 }
 
 const sidebarMenuButtonVariants = cva(
-  "peer/menu-button group/menu-button flex w-full items-center gap-2 lg:gap-[8px] overflow-hidden rounded-[5px] lg:rounded-[5px] px-3 lg:px-[12px] py-2 lg:py-[8px] text-left text-sm lg:text-[14px] ring-sidebar-ring outline-hidden transition-[width,height,padding] group-has-data-[sidebar=menu-action]/menu-item:pr-8 group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-0 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-open:hover:bg-sidebar-accent data-open:hover:text-sidebar-accent-foreground data-active:bg-sidebar-accent data-active:font-medium data-active:text-sidebar-accent-foreground [&_svg]:size-4 [&_svg]:shrink-0 [&>span:last-child]:truncate",
+  "peer/menu-button group/menu-button flex w-full items-center gap-2 lg:gap-[8px] overflow-hidden rounded-[5px] lg:rounded-[5px] px-2 lg:px-[8px] py-1 lg:py-[4px] text-left text-[13px] lg:text-[13px] ring-sidebar-ring outline-hidden transition-[width,height,padding] group-has-data-[sidebar=menu-action]/menu-item:pr-8 group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground focus-visible:ring-0 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-open:hover:bg-sidebar-accent/60 data-open:hover:text-sidebar-accent-foreground data-active:bg-sidebar-accent data-active:font-medium data-active:text-sidebar-accent-foreground [&_svg]:size-4 [&_svg]:shrink-0 [&>span:last-child]:truncate",
   {
     variants: {
       variant: {
-        default: "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+        default: "hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground",
         outline:
-          "bg-background shadow-none hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:shadow-none",
+          "bg-background shadow-none hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground hover:shadow-none",
       },
       size: {
-        default: "h-9 lg:h-[36px] text-sm lg:text-[14px]",
+        default: "h-7 lg:h-[28px] text-[13px] lg:text-[13px]",
         sm: "h-8 lg:h-[32px] text-xs lg:text-[12px]",
         lg: "h-14 lg:h-[56px] px-3 lg:px-[12px] text-sm lg:text-[14px] group-data-[collapsible=icon]:p-0!",
       },
@@ -635,7 +635,7 @@ function SidebarMenuSub({ className, ...props }: React.ComponentProps<"ul">) {
       data-slot="sidebar-menu-sub"
       data-sidebar="menu-sub"
       className={cn(
-        "mx-3.5 lg:mx-[14px] flex min-w-0 translate-x-px lg:translate-x-[1px] flex-col gap-1 lg:gap-[4px] border-l border-sidebar-border px-2.5 lg:px-[10px] py-0.5 lg:py-[2px] group-data-[collapsible=icon]:hidden",
+        "flex min-w-0 translate-x-px lg:translate-x-[1px] flex-col gap-1 lg:gap-[4px] border-l border-sidebar-border px-2.5 lg:px-[10px] py-0.5 lg:py-[2px] group-data-[collapsible=icon]:hidden",
         className
       )}
       {...props}
@@ -677,7 +677,7 @@ function SidebarMenuSubButton({
       data-size={size}
       data-active={isActive}
       className={cn(
-        "flex h-7 lg:h-[28px] min-w-0 -translate-x-px lg:-translate-x-[1px] items-center gap-2 lg:gap-[8px] overflow-hidden rounded-md lg:rounded-[8px] px-2 lg:px-[8px] text-sidebar-foreground ring-sidebar-ring outline-hidden group-data-[collapsible=icon]:hidden hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-0 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[size=md]:text-sm data-[size=sm]:text-xs data-active:bg-sidebar-accent data-active:text-sidebar-accent-foreground [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 [&>svg]:text-sidebar-accent-foreground",
+        "flex h-7 lg:h-[28px] min-w-0 -translate-x-px lg:-translate-x-[1px] items-center gap-2 lg:gap-[8px] overflow-hidden rounded-md lg:rounded-[8px] px-2 lg:px-[8px] text-[13px] text-sidebar-foreground ring-sidebar-ring outline-hidden group-data-[collapsible=icon]:hidden hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground focus-visible:ring-0 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[size=md]:text-[13px] data-[size=sm]:text-[12px] data-active:bg-sidebar-accent data-active:text-sidebar-accent-foreground [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 [&>svg]:text-sidebar-accent-foreground",
         className
       )}
       {...props}

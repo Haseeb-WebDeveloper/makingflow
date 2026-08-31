@@ -19,6 +19,7 @@ import { showToast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
 import {
   importTallyForm,
+  fileImportedFormsIntoFolders,
   importTallyFormFromApiKey,
   importTallySubmissions,
   listTallyApiForms,
@@ -313,6 +314,7 @@ function KeyImport({ onClose }: { onClose: () => void }) {
   const [progress, setProgress] = React.useState<{ done: number; total: number; name: string } | null>(null);
   const [outcomes, setOutcomes] = React.useState<Outcome[] | null>(null);
   const [error, setError] = React.useState<string | null>(null);
+  const [filed, setFiled] = React.useState<string | null>(null);
 
   async function onConnect(e: React.FormEvent) {
     e.preventDefault();
@@ -409,6 +411,35 @@ function KeyImport({ onClose }: { onClose: () => void }) {
     );
   }
 
+  /**
+   * File the forms we already imported into folders, without re-importing them.
+   *
+   * Not "run the import again with responses off": that path rewrites each
+   * form's logo and success page from Tally's copy, which would undo the media
+   * sweep for exactly the branding that was just moved off Tally.
+   */
+  async function onFileIntoFolders() {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    const result = await fileImportedFormsIntoFolders(apiKey);
+    setBusy(false);
+    if (!result.success) {
+      setError(result.error);
+      return;
+    }
+    const parts: string[] = [];
+    if (result.filed > 0) parts.push(`${result.filed} filed`);
+    if (result.alreadyFiled > 0) parts.push(`${result.alreadyFiled} already in place`);
+    if (result.unmatched > 0) parts.push(`${result.unmatched} had no workspace`);
+    setFiled(
+      result.folders.length > 0
+        ? `${parts.join(" · ")} — ${result.folders.join(", ")}`
+        : "None of these forms belong to a Tally workspace, so there is nothing to file them under.",
+    );
+    router.refresh();
+  }
+
   // Step 3 — results.
   if (outcomes && !busy) {
     const ok = outcomes.filter((o) => o.result.success);
@@ -499,6 +530,26 @@ function KeyImport({ onClose }: { onClose: () => void }) {
           Importing {progress.done + 1} of {progress.total} — {progress.name}
         </p>
       ) : null}
+
+      {/* Filing is a separate action rather than part of the import, because
+          re-importing would overwrite each form's logo and success page with
+          Tally's copies — undoing a media move for forms already carried over. */}
+      <div className="rounded-lg border border-border p-3">
+        <p className="text-xs text-muted-foreground">
+          {filed ?? "Already imported these? File them into folders matching their Tally workspaces, without touching their content."}
+        </p>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="mt-2 gap-1.5"
+          disabled={busy}
+          onClick={onFileIntoFolders}
+        >
+          {busy ? <Loading fill className="size-4" /> : <Icon name="folder" className="size-4" />}
+          {filed ? "Organize again" : "Organize into folders"}
+        </Button>
+      </div>
 
       {error ? <ErrorNote>{error}</ErrorNote> : null}
 

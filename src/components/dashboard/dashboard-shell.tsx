@@ -72,9 +72,9 @@ export function DashboardShell({
     <TooltipProvider delayDuration={300}>
       <SidebarProvider defaultOpen>
         <Sidebar collapsible="icon" variant="sidebar">
-          <SidebarHeader className="h-14 flex-row items-center gap-2 border-b border-border px-4 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0">
-            <SVGIcon src="/logo/logo.svg" preserveColors className="size-6 shrink-0 rounded" />
-            <span className="truncate text-lg font-semibold tracking-tight group-data-[collapsible=icon]:hidden">
+          <SidebarHeader className="h-12 flex-row items-center gap-2 border-b border-border px-3 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0">
+            <SVGIcon src="/logo/logo.svg" preserveColors className="size-5 shrink-0 rounded" />
+            <span className="truncate text-sm font-semibold tracking-tight group-data-[collapsible=icon]:hidden">
               MakingFlow
             </span>
           </SidebarHeader>
@@ -92,13 +92,13 @@ export function DashboardShell({
                       <>
                         <Icon
                           name={item.icon}
-                          className="size-5 shrink-0 group-data-[collapsible=icon]:size-4"
+                          className="size-4 shrink-0"
                         />
                         <span className="min-w-0 flex-1 truncate group-data-[collapsible=icon]:hidden">
                           {item.label}
                         </span>
                         {item.comingSoon ? (
-                          <span className="shrink-0 rounded border border-sidebar-border px-1.5 py-px text-[10px] font-medium uppercase tracking-wide text-muted-foreground group-data-[collapsible=icon]:hidden">
+                          <span className="shrink-0 rounded border border-sidebar-border px-1.5 py-px text-[10px] font-medium uppercase tracking-wide text-sidebar-foreground group-data-[collapsible=icon]:hidden">
                             Soon
                           </span>
                         ) : null}
@@ -115,17 +115,17 @@ export function DashboardShell({
                               ? () => setSearchOpen(true)
                               : undefined
                           }
-                          className="text-sidebar-foreground/70 hover:text-sidebar-foreground data-active:bg-sidebar-accent data-active:font-medium data-active:text-sidebar-foreground"
+                          className="text-sidebar-foreground data-active:bg-sidebar-accent data-active:font-medium"
                         >
                           {item.action ? (
-                            <span className="flex w-full min-w-0 items-center gap-2.5 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-0">
+                            <span className="flex w-full min-w-0 items-center gap-2 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-0">
                               {inner}
                             </span>
                           ) : (
                             <Link
                               href={item.href!}
                               prefetch
-                              className="flex w-full min-w-0 items-center gap-2.5 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-0"
+                              className="flex w-full min-w-0 items-center gap-2 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-0"
                             >
                               {inner}
                             </Link>

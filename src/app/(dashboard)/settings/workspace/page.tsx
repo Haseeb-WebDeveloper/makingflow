@@ -3,6 +3,7 @@ import { notFound } from "next/navigation"
 import { getRequiredUser, getDefaultWorkspace } from "@/lib/auth/session"
 import { getTeam } from "@/lib/data/team"
 import { TeamManager } from "@/components/dashboard/team-manager"
+import { WorkspaceRename } from "@/components/dashboard/workspace-rename"
 
 export const metadata: Metadata = { title: "Workspace · MakingFlow" }
 
@@ -28,9 +29,14 @@ export default async function WorkspaceDetailPage() {
             {workspace.name.slice(0, 1).toUpperCase()}
           </span>
           <div className="min-w-0">
-            <h2 className="truncate text-base font-semibold text-foreground">
-              {workspace.name}
-            </h2>
+            {/* Owners can rename in place; everyone else just reads it. */}
+            {isOwner ? (
+              <WorkspaceRename name={workspace.name} />
+            ) : (
+              <h2 className="truncate text-base font-semibold text-foreground">
+                {workspace.name}
+              </h2>
+            )}
             <p className="truncate text-xs text-muted-foreground">/{workspace.slug}</p>
           </div>
           <div className="ml-auto flex flex-col items-end gap-1 text-xs text-muted-foreground">

@@ -16,7 +16,6 @@ import { FormsOverviewTable } from "@/components/dashboard/forms-overview-table"
 import { NewFormButton } from "@/components/dashboard/new-form-button";
 import { ImportTallyDialog } from "@/components/forms/import-tally-dialog";
 import { RangePicker } from "@/components/dashboard/range-picker";
-import { WorkspaceMediaCard } from "@/components/forms/workspace-media-card";
 
 // Code-split the recharts-backed charts (~90KB) into their own chunk — they sit
 // below the stat cards, so deferring them speeds up the dashboard's first paint.
@@ -115,9 +114,6 @@ export default async function FormsPage({
               }
             />
           </div>
-
-          {/* Only renders when something is still hosted elsewhere. */}
-          <WorkspaceMediaCard />
 
           <SubmissionsAreaChart
             data={data!.series}

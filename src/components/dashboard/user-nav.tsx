@@ -84,22 +84,24 @@ export function UserNav({ user, workspaces, activeWorkspaceId }: UserNavProps) {
           type="button"
           disabled={pending}
           aria-label="Open account menu"
-          className="flex w-full items-center gap-2.5 rounded-md p-1.5 text-left outline-none transition-colors hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-ring group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-0"
+          className="flex w-full items-center gap-2 rounded-md p-1 text-left outline-none transition-colors hover:bg-sidebar-accent/60 focus-visible:ring-2 focus-visible:ring-ring group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-0"
         >
           {avatar}
           <span className="flex min-w-0 flex-1 flex-col group-data-[collapsible=icon]:hidden">
-            <span className="truncate text-sm font-medium text-sidebar-foreground">
+            <span className="truncate text-[13px] font-medium text-sidebar-foreground">
               {user.name || "Your account"}
             </span>
             {activeWorkspace ? (
-              <span className="truncate text-xs text-muted-foreground">
+              // Full contrast, like everything else in the rail — the size and
+              // weight already say it is the secondary line.
+              <span className="truncate text-[11px] text-sidebar-foreground">
                 {activeWorkspace.name}
               </span>
             ) : null}
           </span>
           <Icon
             name="swap"
-            className="size-4 shrink-0 text-muted-foreground group-data-[collapsible=icon]:hidden"
+            className="size-3.5 shrink-0 text-sidebar-foreground group-data-[collapsible=icon]:hidden"
           />
         </button>
       </DropdownMenuTrigger>
@@ -162,7 +164,7 @@ export function UserNav({ user, workspaces, activeWorkspaceId }: UserNavProps) {
                 <span className="flex size-6 shrink-0 items-center justify-center rounded bg-foreground text-[10px] font-semibold text-background">
                   {w.name.slice(0, 1).toUpperCase()}
                 </span>
-                <span className="min-w-0 flex-1 truncate">{w.name}</span>
+                <span className="min-w-0 w-full flex-1 truncate">{w.name}</span>
               </DropdownMenuItem>
             ))}
           </>

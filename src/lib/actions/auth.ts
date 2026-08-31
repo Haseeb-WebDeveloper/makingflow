@@ -102,6 +102,32 @@ export async function loginAction(
     return { success: false, error: 'Wrong email or password.' }
   }
 
+  // Provision here too, not only on signup and the OAuth callback.
+  //
+  // The Supabase auth row and the public.users row can exist independently: an
+  // account made through the admin API never had a signup step, and
+  // `signupAction` logs-and-continues if provisioning throws. Either way the
+  // person authenticates successfully, `getSession` finds no users row, and
+  // `getRequiredUser` redirects them back to the login page — forever, with no
+  // error to explain it, because nothing actually failed. Idempotent by design
+  // (see provisionUser), so returning users pass straight through.
+  try {
+    const meta = data.user.user_metadata ?? {}
+    await provisionUser({
+      userId: data.user.id,
+      email: data.user.email ?? parsed.data.email,
+      name:
+        (meta.name as string | undefined) ??
+        (meta.full_name as string | undefined) ??
+        null,
+      avatarUrl: (meta.avatar_url as string | undefined) ?? null,
+    })
+  } catch (err) {
+    // Don't block a valid sign-in on this; getRequiredUser will bounce them if
+    // the row truly never materialized, same as the callback does.
+    console.error('[loginAction] provisioning failed', err)
+  }
+
   // When the user came from an invite link, land them on the accept page.
   return { success: true, data: { redirectTo: inviteDestination(formData.get('invite')) } }
 }

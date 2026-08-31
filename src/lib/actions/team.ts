@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache"
 import { and, count, eq } from "drizzle-orm"
 import { z } from "zod"
 import { db } from "@/lib/db"
-import { users, workspaceInvitations, workspaceMembers } from "@/lib/db/schema"
+import { users, workspaceInvitations, workspaceMembers, workspaces } from "@/lib/db/schema"
 import { getRequiredUser, ACTIVE_WORKSPACE_COOKIE } from "@/lib/auth/session"
 import { requireOwner } from "@/lib/auth/permissions"
 import { acceptInvitationByToken } from "@/lib/data/team"
@@ -230,6 +230,44 @@ export async function acceptInvitation(token: string): Promise<Result> {
 
   const store = await cookies()
   setActiveWorkspaceCookie(store, res.workspaceId)
+  revalidatePath("/", "layout")
+  return { success: true }
+}
+
+/**
+ * Rename the active workspace. Owner-only.
+ *
+ * The slug is regenerated alongside the name because it is shown directly under
+ * it in Settings, and a workspace called "Figmenta" sitting above
+ * `/haseeb-s-workspace-5748bf` reads as a bug. Nothing routes or looks up on the
+ * slug — it is display only — so changing it breaks no links. The random suffix
+ * is how `provisionUser` avoids a uniqueness round-trip, and it does the same
+ * job here.
+ *
+ * Exists because handing a workspace to someone else is otherwise incomplete:
+ * ownership can move, but the name it was created with cannot, and that name is
+ * the part everyone actually sees.
+ */
+export async function renameWorkspace(nameRaw: string): Promise<Result> {
+  const gate = await requireOwner()
+  if (!gate.workspace) return { success: false, error: gate.error ?? "Not authorized" }
+
+  const name = nameRaw.trim().replace(/\s+/g, " ").slice(0, 60)
+  if (!name) return { success: false, error: "Enter a workspace name." }
+
+  const slugBase =
+    name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 32) || "workspace"
+
+  await db
+    .update(workspaces)
+    .set({ name, slug: `${slugBase}-${crypto.randomUUID().slice(0, 6)}` })
+    .where(eq(workspaces.id, gate.workspace.id))
+
+  // The name shows in the sidebar footer and the account menu on every page.
   revalidatePath("/", "layout")
   return { success: true }
 }

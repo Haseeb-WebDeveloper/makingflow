@@ -33,13 +33,13 @@ import type { WorkspaceFolder } from "@/lib/data/folders"
 const UNCATEGORIZED_CAP = 10
 
 const ROW_CLS =
-  "text-sidebar-foreground/70 hover:text-sidebar-foreground data-active:bg-sidebar-accent data-active:font-medium data-active:text-sidebar-foreground"
+  "text-sidebar-foreground data-active:bg-sidebar-accent data-active:font-medium"
 
 function Chevron({ open }: { open: boolean }) {
   return (
     <svg
       viewBox="0 0 24 24"
-      className={`size-3.5 shrink-0 text-muted-foreground transition-transform ${open ? "rotate-90" : ""}`}
+      className={`size-3.5 shrink-0 text-sidebar-foreground transition-transform ${open ? "rotate-90" : ""}`}
       fill="none"
       stroke="currentColor"
       strokeWidth={2}
@@ -161,7 +161,7 @@ export function SidebarForms({
       <SidebarGroupContent>
         <SidebarMenu>
           {forms.length === 0 ? (
-            <p className="px-2 py-1.5 text-xs text-muted-foreground">No forms yet</p>
+            <p className="px-2 py-1.5 text-[12px] text-sidebar-foreground">No forms yet</p>
           ) : null}
 
           {folders.map((folder) => {
@@ -176,9 +176,9 @@ export function SidebarForms({
                     className={ROW_CLS}
                   >
                     <Chevron open={open} />
-                    <Icon name="folder" className="size-4 shrink-0 text-muted-foreground" />
+                    {/* <Icon name="folder" className="size-3.5 shrink-0 text-sidebar-foreground" /> */}
                     <span className="min-w-0 flex-1 truncate">{folder.name}</span>
-                    <span className="shrink-0 text-xs text-muted-foreground">
+                    <span className="shrink-0 text-[11px] text-sidebar-foreground">
                       {folderForms.length}
                     </span>
                   </SidebarMenuButton>
@@ -190,9 +190,9 @@ export function SidebarForms({
                     them made one hover light up all the ⋯ menus at once. */}
                 {open ? (
                   <li>
-                    <SidebarMenuSub>
+                    <SidebarMenuSub className="">
                       {folderForms.length === 0 ? (
-                        <p className="px-2 py-1 text-xs text-muted-foreground">Empty</p>
+                        <p className="px-2 py-1 text-[12px] text-sidebar-foreground">Empty</p>
                       ) : (
                         folderForms.map((form) => (
                           <FormRow
@@ -224,7 +224,7 @@ export function SidebarForms({
           <button
             type="button"
             onClick={onSearch}
-            className="mt-1 flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
+            className="mt-1 flex w-full items-center gap-2 rounded px-2 py-1 text-[12px] text-sidebar-foreground transition-colors hover:bg-sidebar-accent/60"
           >
             <Icon name="search" className="size-4 shrink-0" />
             <span>Search forms ({forms.length})</span>

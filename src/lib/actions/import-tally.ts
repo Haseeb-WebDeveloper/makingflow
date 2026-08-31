@@ -512,3 +512,95 @@ export async function importTallyFormFromApiKey(
     }
   }
 }
+
+export type FileIntoFoldersResult =
+  | { success: true; filed: number; alreadyFiled: number; unmatched: number; folders: string[] }
+  | { success: false; error: string }
+
+/**
+ * File already-imported forms into folders mirroring their Tally workspaces.
+ *
+ * Separate from the import on purpose, rather than "just run the import
+ * again". A second import would call `updateFormSettings` with the freshly
+ * parsed logo and success page — both of which point at Tally — and so would
+ * quietly undo the media sweep for every form it touched, putting the branding
+ * back on storage the user is about to delete.
+ *
+ * It is also far cheaper: two API calls for the whole account instead of one
+ * per form, because filing needs only each form's workspace, never its blocks.
+ */
+export async function fileImportedFormsIntoFolders(
+  apiKey: string,
+): Promise<FileIntoFoldersResult> {
+  await getRequiredUser()
+  const workspace = await getDefaultWorkspace()
+  if (!workspace) return { success: false, error: "No workspace" }
+
+  let summaries: TallyFormSummary[]
+  try {
+    summaries = await listTallyForms(apiKey)
+  } catch (err) {
+    if (!(err instanceof TallyImportError)) console.error("[fileIntoFolders] failed", err)
+    return {
+      success: false,
+      error: tallyErrorMessage(err, "Couldn't read your Tally forms. Please try again."),
+    }
+  }
+
+  const ours = await db
+    .select({
+      id: forms.id,
+      externalId: sql<string>`${forms.settings}->'importedFrom'->>'externalId'`,
+      folderId: forms.folderId,
+    })
+    .from(forms)
+    .where(
+      and(
+        eq(forms.workspaceId, workspace.id),
+        isNull(forms.deletedAt),
+        sql`${forms.settings}->'importedFrom'->>'source' = 'tally'`,
+      ),
+    )
+  const byExternal = new Map(ours.filter((f) => f.externalId).map((f) => [f.externalId, f]))
+
+  let filed = 0
+  let alreadyFiled = 0
+  let unmatched = 0
+  const folders = new Set<string>()
+  // One folder row per name, however many forms land in it.
+  const folderIds = new Map<string, string | null>()
+
+  for (const summary of summaries) {
+    const form = byExternal.get(summary.id)
+    if (!form) continue // in Tally but never imported here — not our business
+    if (!summary.workspaceName) {
+      unmatched += 1
+      continue
+    }
+
+    let folderId = folderIds.get(summary.workspaceName)
+    if (folderId === undefined) {
+      folderId = await ensureFolder(workspace.id, summary.workspaceName)
+      folderIds.set(summary.workspaceName, folderId)
+    }
+    if (!folderId) {
+      unmatched += 1
+      continue
+    }
+    folders.add(summary.workspaceName)
+
+    if (form.folderId === folderId) {
+      alreadyFiled += 1
+      continue
+    }
+    await db.update(forms).set({ folderId }).where(eq(forms.id, form.id))
+    filed += 1
+  }
+
+  if (filed > 0) {
+    updateTag(`workspace-forms-${workspace.id}`)
+    revalidatePath("/forms")
+  }
+
+  return { success: true, filed, alreadyFiled, unmatched, folders: [...folders].sort() }
+}
