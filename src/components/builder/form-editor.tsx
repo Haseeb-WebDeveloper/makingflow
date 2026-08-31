@@ -512,7 +512,7 @@ function Block({
                   onChange({ config: { ...field.config, allowOther: v } })
                 }
               >
-                &ldquo;Other&rdquo; option
+                Other option
               </DropdownMenuSwitchItem>
             ) : null}
             {field.type === "heading" ? (
