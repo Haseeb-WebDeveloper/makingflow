@@ -42,10 +42,20 @@ export function WorkspaceMediaCard() {
 
   React.useEffect(() => {
     let live = true;
-    listPendingMediaForms().then((r) => {
-      if (!live) return;
-      if (r.success) setPending(r.forms);
-    });
+    listPendingMediaForms()
+      .then((r) => {
+        if (!live) return;
+        if (r.success) setPending(r.forms);
+        else setError(r.error);
+      })
+      // Without this the card renders nothing when discovery fails, and there
+      // is no card, no error and no clue — which is exactly how a whole
+      // migration got reported as "the sweep did nothing".
+      .catch((e) => {
+        if (!live) return;
+        console.error("[media] could not list pending files", e);
+        setError("Couldn't check which files still need moving. Reload to try again.");
+      });
     return () => {
       live = false;
     };
@@ -58,34 +68,58 @@ export function WorkspaceMediaCard() {
     stop.current = false;
     let total = 0;
     let bad = 0;
+    let finished = false;
 
-    for (const [index, form] of pending.entries()) {
-      if (stop.current) break;
-      setAt({ form: form.title, index, total: pending.length });
+    try {
+      for (const [index, form] of pending.entries()) {
+        if (stop.current) break;
+        setAt({ form: form.title, index, total: pending.length });
 
-      let cursor: string | null | undefined = undefined;
-      for (let pass = 0; pass < MAX_PASSES; pass += 1) {
-        const result = await rehostFormMedia(form.id, cursor);
-        if (!result.success) {
-          // One form failing shouldn't abandon the other 67.
-          setError(`${form.title}: ${result.error}`);
-          break;
+        let cursor: string | null | undefined = undefined;
+        for (let pass = 0; pass < MAX_PASSES; pass += 1) {
+          // A rejection here — rather than a returned failure — is the case
+          // that left this button stuck on "Moving…" with nothing to show.
+          let result: Awaited<ReturnType<typeof rehostFormMedia>>;
+          try {
+            result = await rehostFormMedia(form.id, cursor);
+          } catch (e) {
+            console.error("[media] pass failed", form.title, e);
+            setError(
+              `${form.title}: the server didn't respond. ${total} file${total === 1 ? "" : "s"} already moved are saved — press the button again to carry on.`,
+            );
+            return;
+          }
+          if (!result.success) {
+            // One form failing shouldn't abandon the rest.
+            setError(`${form.title}: ${result.error}`);
+            break;
+          }
+          total += result.assets + result.files;
+          bad += result.failed;
+          setMoved(total);
+          setFailed(bad);
+          if (!result.cursor || stop.current) break;
+          cursor = result.cursor;
         }
-        total += result.assets + result.files;
-        bad += result.failed;
-        setMoved(total);
-        setFailed(bad);
-        if (!result.cursor || stop.current) break;
-        cursor = result.cursor;
       }
+      finished = !stop.current;
+    } finally {
+      // Whatever happened, the button must not stay spinning: every pass that
+      // completed is already committed, so stopping here loses nothing.
+      setAt(null);
+      setRunning(false);
+      setDone(finished);
+      router.refresh();
     }
-
-    setAt(null);
-    setRunning(false);
-    setDone(!stop.current);
-    router.refresh();
   }
 
+  if (error && !pending) {
+    return (
+      <p role="alert" className="rounded-lg border border-border p-4 text-sm text-destructive">
+        {error}
+      </p>
+    );
+  }
   if (!pending || pending.length === 0) return null;
 
   const files = pending.reduce((n, f) => n + f.files, 0);

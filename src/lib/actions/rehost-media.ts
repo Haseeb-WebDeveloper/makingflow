@@ -357,6 +357,10 @@ export async function listPendingMediaForms(): Promise<PendingFormsResult> {
 
   const TALLY = "%tally.so%"
 
+  // Wrapped so a failure here reaches the UI as a message. Uncaught, this
+  // rejects the action, the card renders nothing, and a whole migration looks
+  // like it simply did not happen.
+  try {
   const [formRows, fileRows, imageRows] = await Promise.all([
     db
       .select({
@@ -421,4 +425,8 @@ export async function listPendingMediaForms(): Promise<PendingFormsResult> {
   // interrupted.
   out.sort((a, b) => b.files + b.assets - (a.files + a.assets))
   return { success: true, forms: out }
+  } catch (err) {
+    console.error("[listPendingMediaForms] failed", err)
+    return { success: false, error: "Couldn't check which files still need moving." }
+  }
 }
