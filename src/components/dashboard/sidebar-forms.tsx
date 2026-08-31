@@ -36,15 +36,44 @@ const ROW_CLS =
   "text-sidebar-foreground data-active:bg-sidebar-accent data-active:font-medium"
 
 /**
- * Form rows reserve no room for their ⋯ menu.
+ * Form rows: quieter than their folder, and no reserved room for the ⋯.
+ *
+ * Muted deliberately, against the rule that nothing else in the rail is. A
+ * folder and the forms inside it were the same size, weight and colour, so the
+ * only thing separating a parent from its children was indentation — too little
+ * to read at a glance. The selected form goes back to full contrast, because
+ * "where am I" has to beat "what level is this".
  *
  * A row that HAS an action gets 28px of right padding whether or not anything
  * is showing. On a folder that space holds the count, so it earns itself; on a
- * form it is empty at rest and reads as a ragged gap down the whole list. The
- * ⋯ only appears on hover, and it carries its own fill so it covers the tail of
- * a long title instead of colliding with it.
+ * form it is empty at rest and reads as a ragged gutter down the whole list.
  */
-const FORM_ROW_CLS = `${ROW_CLS} group-has-data-[sidebar=menu-action]/menu-item:pr-2`
+const FORM_ROW_CLS = [
+  "text-sidebar-foreground",
+  "data-active:bg-sidebar-accent data-active:font-medium",
+  "group-has-data-[sidebar=menu-action]/menu-item:pr-2",
+].join(" ")
+
+/**
+ * The title's own colour, set on the span rather than the row.
+ *
+ * On the row it competed with the button variant's `hover:text-*`, which is the
+ * same specificity and only matches while the BUTTON is hovered — so reaching
+ * for the ⋯, a sibling, dropped back to the muted resting colour. The span
+ * carries no other colour rule, so the group variant is unopposed and the title
+ * stays lit anywhere in the row.
+ */
+const TITLE_CLS = "text-sidebar-foreground/65 group-hover/menu-item:text-sidebar-foreground"
+
+/**
+ * Fade the tail of a title while the ⋯ is over it.
+ *
+ * The alternative — reserving space so they never overlap — is the gutter this
+ * removed. A mask lets the text run the full width and dissolve only in the
+ * moment something is on top of it, so nothing moves and nothing collides.
+ */
+const TITLE_FADE =
+  "group-hover/menu-item:[mask-image:linear-gradient(to_right,#000_calc(100%-30px),transparent)] group-focus-within/menu-item:[mask-image:linear-gradient(to_right,#000_calc(100%-30px),transparent)]"
 
 function Chevron({ open }: { open: boolean }) {
   return (
@@ -76,7 +105,11 @@ function FormRow({
     <SidebarMenuItem>
       <SidebarMenuButton asChild isActive={active} tooltip={form.title || "Untitled form"} className={FORM_ROW_CLS}>
         <Link href={`/forms/${form.id}`} prefetch className="flex w-full min-w-0 items-center">
-          <span className="min-w-0 flex-1 truncate">{form.title || "Untitled form"}</span>
+          <span
+            className={`min-w-0 flex-1 truncate ${active ? "text-sidebar-foreground" : TITLE_CLS} ${TITLE_FADE}`}
+          >
+            {form.title || "Untitled form"}
+          </span>
         </Link>
       </SidebarMenuButton>
       <FormRowMenu
