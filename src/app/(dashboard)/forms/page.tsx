@@ -28,6 +28,11 @@ const DevicesDonut = dynamic(() =>
 
 export const metadata: Metadata = { title: "Home · MakingFlow" };
 
+// Server Actions inherit the invoking page's time budget, and the Tally import
+// runs from here: one form can mean several API round-trips plus thousands of
+// inserted responses. The default is too tight for a real migration.
+export const maxDuration = 60;
+
 export default async function FormsPage() {
   const workspace = await getDefaultWorkspace();
   const [data, folders] = await Promise.all([

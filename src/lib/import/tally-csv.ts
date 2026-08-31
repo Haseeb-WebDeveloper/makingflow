@@ -107,8 +107,9 @@ export function parseCsv(text: string): string[][] {
 
 // ── Column matching ─────────────────────────────────────────────────────────
 
-/** Fold a header and a label to the same key so they can be compared. */
-const normalise = (s: string) =>
+/** Fold a header and a label to the same key so they can be compared. Shared
+ *  with the API path, which falls back to it when identity matching fails. */
+export const normaliseLabel = (s: string) =>
   s
     .trim()
     .toLowerCase()
@@ -137,7 +138,7 @@ export function planColumns(headers: string[], fields: EditorField[]): ColumnPla
   const answerable = fields.filter((f) => f.label.trim() !== "" && !isContent(f.type))
   const byLabel = new Map<string, EditorField[]>()
   for (const f of answerable) {
-    const key = normalise(f.label)
+    const key = normaliseLabel(f.label)
     const bucket = byLabel.get(key)
     if (bucket) bucket.push(f)
     else byLabel.set(key, [f])
@@ -153,7 +154,7 @@ export function planColumns(headers: string[], fields: EditorField[]): ColumnPla
   const used = new Set<string>()
 
   headers.forEach((header, index) => {
-    const key = normalise(header)
+    const key = normaliseLabel(header)
     const meta = META_HEADERS[key]
     if (meta === "id") {
       plan.idColumn ??= index
@@ -211,7 +212,7 @@ export function coerceAnswer(field: EditorField, raw: string): AnswerValue | nul
   if (field.type === "file_upload") {
     const urls = value.split(",").map((u) => u.trim()).filter(Boolean)
     if (urls.length === 0) return null
-    return { files: urls.map((url) => ({ name: fileName(url), url })) }
+    return { files: urls.map((url) => ({ name: fileNameFromUrl(url), url })) }
   }
 
   return value
@@ -225,7 +226,7 @@ function splitChoices(value: string, field: EditorField): string[] {
 }
 
 /** Last path segment of a URL, for the file's display name. */
-function fileName(url: string): string {
+export function fileNameFromUrl(url: string): string {
   try {
     const last = new URL(url).pathname.split("/").filter(Boolean).pop()
     return last ? decodeURIComponent(last) : "file"
@@ -287,7 +288,7 @@ export function planCsvImport(csv: string, fields: EditorField[]): CsvImportPlan
     }
     submissions.push({
       externalId: plan.idColumn === null ? null : (row[plan.idColumn]?.trim() || null),
-      submittedAt: parseDate(plan.submittedAtColumn === null ? "" : row[plan.submittedAtColumn]),
+      submittedAt: parseImportDate(plan.submittedAtColumn === null ? "" : row[plan.submittedAtColumn]),
       answers,
     })
   }
@@ -305,7 +306,7 @@ export function planCsvImport(csv: string, fields: EditorField[]): CsvImportPlan
  * "now" — an import that silently dated every historical response to today
  * would corrupt the insights charts it feeds.
  */
-function parseDate(raw: string | undefined): Date | null {
+export function parseImportDate(raw: string | undefined): Date | null {
   const value = raw?.trim()
   if (!value) return null
   const parsed = new Date(value)

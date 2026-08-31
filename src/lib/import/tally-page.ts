@@ -2,6 +2,10 @@ import "server-only"
 
 import { parseTallyBlocks, parseTallySettings, type TallyBlock } from "@/lib/import/tally-blocks"
 import type { EditorForm, EditorSettings } from "@/lib/builder/form-model"
+import {
+  TALLY_ERROR_MESSAGES,
+  TallyImportError,
+} from "@/lib/import/tally-error"
 
 /**
  * Reading a Tally form from its public page.
@@ -16,7 +20,7 @@ import type { EditorForm, EditorSettings } from "@/lib/builder/form-model"
  * the App Router, `__NEXT_DATA__` becomes streamed `self.__next_f` chunks and
  * this stops working. It fails loudly (NO_DEFINITION) rather than importing an
  * empty form, and the API-key path — same parser, different fetcher — is the
- * planned answer if that day comes.
+ * answer if that day comes (./tally-api.ts).
  */
 
 /** Hosts we will fetch. */
@@ -25,33 +29,6 @@ const TALLY_HOSTS = new Set(["tally.so", "www.tally.so"])
 /** Enough for a very large form; a cap the response cannot talk us out of. */
 const MAX_BYTES = 5_000_000
 const TIMEOUT_MS = 15_000
-
-export type TallyFetchError =
-  | "INVALID_URL"
-  | "NOT_FOUND"
-  | "PASSWORD_PROTECTED"
-  | "NO_DEFINITION"
-  | "UNREACHABLE"
-
-export class TallyImportError extends Error {
-  constructor(readonly code: TallyFetchError, message: string) {
-    super(message)
-    this.name = "TallyImportError"
-  }
-}
-
-/** User-facing text for each failure. The fix is always the reader's, so say it. */
-export const TALLY_ERROR_MESSAGES: Record<TallyFetchError, string> = {
-  INVALID_URL:
-    "That doesn't look like a Tally form link. Paste the share link, which looks like https://tally.so/r/abc123.",
-  NOT_FOUND:
-    "Tally has no form at that link. Check it's the share link for a form that's still published.",
-  PASSWORD_PROTECTED:
-    "That form is password-protected, so its questions aren't public. Remove the password in Tally and try again.",
-  NO_DEFINITION:
-    "We reached the form but couldn't read its questions. Tally may have changed how its pages are built — please let us know.",
-  UNREACHABLE: "We couldn't reach Tally. Try again in a moment.",
-}
 
 /**
  * Normalise anything a user might paste into a canonical public form URL.

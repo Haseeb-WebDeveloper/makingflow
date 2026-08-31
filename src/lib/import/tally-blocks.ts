@@ -31,9 +31,32 @@ export type TallyBlock = {
 /** A block we understood but cannot render, reported so the import is honest. */
 export type SkippedBlock = { type: string; label: string }
 
+/**
+ * Where a parsed field came from in Tally.
+ *
+ * This exists so API-imported responses can be joined to their question by
+ * IDENTITY rather than by matching label text: Tally's submissions endpoint
+ * keys every answer to a question id, and that question's `fields[]` carry the
+ * `blockGroupUuid` recorded here. Without it the API path would inherit the
+ * CSV path's one weakness — a label edited after the responses were collected
+ * silently stops matching.
+ *
+ * Kept beside the form rather than inside `EditorField` because it is a fact
+ * about the import, not about the form: nothing downstream of the import
+ * should know or care that these questions used to live in Tally.
+ */
+export type TallyFieldRef = {
+  fieldId: string
+  /** The blocks' shared `groupUuid` — Tally's own identity for the question. */
+  groupUuid?: string
+  /** Option block uuid → the label we imported it as. */
+  optionLabels: Record<string, string>
+}
+
 export type TallyParseResult = {
   form: EditorForm
   skipped: SkippedBlock[]
+  refs: TallyFieldRef[]
 }
 
 // ── Rich text ───────────────────────────────────────────────────────────────
@@ -218,6 +241,7 @@ function readConfig(type: AiFieldType, p: Record<string, unknown>): FieldConfig 
 export function parseTallyBlocks(blocks: TallyBlock[], formName?: string): TallyParseResult {
   const fields: EditorField[] = []
   const skipped: SkippedBlock[] = []
+  const refs: TallyFieldRef[] = []
   let title = formName?.trim() ?? ""
   let pendingTitle = ""
   let pendingDescription = ""
@@ -295,11 +319,18 @@ export function parseTallyBlocks(blocks: TallyBlock[], formName?: string): Tally
 
     // The "Other" choice is a marker for a free-text box, not a real option — it
     // becomes config.allowOther rather than an option labelled "Other".
-    const options: FieldOption[] = group
-      .filter((o) => o.payload?.isOtherOption !== true)
-      .map((o) => str(o.payload?.text))
-      .filter((label): label is string => Boolean(label))
-      .map((label) => ({ id: genId(), label }))
+    //
+    // The uuid of each option block is kept alongside its label because that is
+    // what an API answer to a choice question contains — a uuid, not the text.
+    const options: FieldOption[] = []
+    const optionLabels: Record<string, string> = {}
+    for (const o of group) {
+      if (o.payload?.isOtherOption === true) continue
+      const label = str(o.payload?.text)
+      if (!label) continue
+      options.push({ id: genId(), label })
+      if (o.uuid) optionLabels[o.uuid] = label
+    }
 
     const hasOther = group.some((o) => o.payload?.isOtherOption === true)
     const config = readConfig(type, p)
@@ -309,8 +340,9 @@ export function parseTallyBlocks(blocks: TallyBlock[], formName?: string): Tally
     // without one keeps it in `payload.name` instead.
     const label = pendingTitle || str(p.name) || ""
 
+    const fieldId = genId()
     fields.push({
-      id: genId(),
+      id: fieldId,
       type,
       label,
       required: p.isRequired === true,
@@ -319,11 +351,12 @@ export function parseTallyBlocks(blocks: TallyBlock[], formName?: string): Tally
       ...(options.length > 0 ? { options } : {}),
       ...(Object.keys(config).length > 0 ? { config } : {}),
     })
+    refs.push({ fieldId, groupUuid: b.groupUuid, optionLabels })
     pendingTitle = ""
     pendingDescription = ""
   }
 
-  return { form: { title: title || "Imported form", fields }, skipped }
+  return { form: { title: title || "Imported form", fields }, skipped, refs }
 }
 
 /** Form-level settings Tally exposes that we have somewhere to put. */

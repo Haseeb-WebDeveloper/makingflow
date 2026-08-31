@@ -12,8 +12,8 @@ import {
   importTallyFormFromUrl,
   parseTallyUrl,
   readTallyPageProps,
-  TallyImportError,
 } from "@/lib/import/tally-page"
+import { TallyImportError } from "@/lib/import/tally-error"
 import fixture from "../fixtures/tally-form.json"
 
 afterEach(() => vi.unstubAllGlobals())
