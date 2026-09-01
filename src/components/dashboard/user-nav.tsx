@@ -23,8 +23,6 @@ import { showToast } from "@/components/ui/toast"
 import { signOutAction } from "@/lib/actions/auth"
 import { switchWorkspace } from "@/lib/actions/workspaces"
 import { WorkspaceAvatar } from "@/components/dashboard/workspace-avatar"
-import { CreateWorkspaceDialog } from "@/components/dashboard/create-workspace-dialog"
-import { useResetOnNavigate } from "@/lib/hooks/use-reset-on-navigate"
 
 export type NavWorkspace = {
   id: string
@@ -62,11 +60,6 @@ export function UserNav({ user, workspaces, activeWorkspaceId }: UserNavProps) {
 
   const activeWorkspace =
     workspaces.find((w) => w.id === activeWorkspaceId) ?? workspaces[0] ?? null
-  const otherWorkspaces = workspaces.filter((w) => w.id !== activeWorkspace?.id)
-  const [createOpen, setCreateOpen] = React.useState(false)
-  // The nav lives in the layout so it never unmounts; without this the create
-  // dialog would still be open after navigating.
-  useResetOnNavigate(() => setCreateOpen(false))
 
   function select(id: string) {
     if (id === activeWorkspace?.id) return
@@ -91,155 +84,129 @@ export function UserNav({ user, workspaces, activeWorkspaceId }: UserNavProps) {
   )
 
   return (
-    <>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <button
-            type="button"
-            disabled={pending}
-            aria-label="Open account menu"
-            className="flex w-full items-center gap-2 rounded-md p-1 text-left outline-none transition-colors hover:bg-sidebar-accent/60 focus-visible:ring-2 focus-visible:ring-ring group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-0"
-          >
-            {avatar}
-            <span className="flex min-w-0 flex-1 flex-col group-data-[collapsible=icon]:hidden">
-              <span className="truncate text-[13px] font-medium text-sidebar-foreground">
-                {user.name || "Your account"}
-              </span>
-              {activeWorkspace ? (
-                // Full contrast, like everything else in the rail — the size and
-                // weight already say it is the secondary line.
-                <span className="truncate text-[11px] text-sidebar-foreground">
-                  {activeWorkspace.name}
-                </span>
-              ) : null}
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          disabled={pending}
+          aria-label="Open account menu"
+          className="flex w-full items-center gap-2 rounded-md p-1 text-left outline-none transition-colors hover:bg-sidebar-accent/60 focus-visible:ring-2 focus-visible:ring-ring group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-0"
+        >
+          {avatar}
+          <span className="flex min-w-0 flex-1 flex-col group-data-[collapsible=icon]:hidden">
+            <span className="truncate text-[13px] font-medium text-sidebar-foreground">
+              {user.name || "Your account"}
             </span>
-            <Icon
-              name="swap"
-              className="size-3.5 shrink-0 text-sidebar-foreground group-data-[collapsible=icon]:hidden"
-            />
-          </button>
-        </DropdownMenuTrigger>
-  
-        <DropdownMenuContent align="end" side="top" sideOffset={8} className="w-64">
-          <DropdownMenuLabel className="flex items-center gap-2.5 py-2">
-            {avatar}
-            <span className="flex min-w-0 flex-col">
-              <span className="truncate text-sm font-semibold text-foreground">
-                {user.name || "Your account"}
+            {activeWorkspace ? (
+              // Full contrast, like everything else in the rail — the size and
+              // weight already say it is the secondary line.
+              <span className="truncate text-[11px] text-sidebar-foreground">
+                {activeWorkspace.name}
               </span>
-              <span className="truncate text-xs font-normal text-muted-foreground">
-                {user.email}
-              </span>
+            ) : null}
+          </span>
+          <Icon
+            name="swap"
+            className="size-3.5 shrink-0 text-sidebar-foreground group-data-[collapsible=icon]:hidden"
+          />
+        </button>
+      </DropdownMenuTrigger>
+
+      <DropdownMenuContent align="end" side="top" sideOffset={8} className="w-64">
+        <DropdownMenuLabel className="flex items-center gap-2.5 py-2">
+          {avatar}
+          <span className="flex min-w-0 flex-col">
+            <span className="truncate text-sm font-semibold text-foreground">
+              {user.name || "Your account"}
             </span>
-          </DropdownMenuLabel>
-  
-          <DropdownMenuItem asChild>
-            <Link href="/settings/account" className="flex items-center gap-2">
-              <Icon name="setting" className="size-4" />
-              Account settings
-            </Link>
-          </DropdownMenuItem>
-  
-          {activeWorkspace ? (
-            <>
-              <DropdownMenuSeparator />
-              <DropdownMenuLabel className="flex items-center justify-between gap-2 py-1.5 text-xs font-normal text-muted-foreground">
-                <span className="truncate">{activeWorkspace.name}</span>
-                <span className="shrink-0 capitalize">{activeWorkspace.role}</span>
-              </DropdownMenuLabel>
-              <DropdownMenuItem asChild>
-                <Link href="/settings/workspace" className="flex items-center gap-2">
-                  <Icon name="setting" className="size-4" />
-                  Manage workspace
-                </Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Link href="/settings/workspace" className="flex items-center gap-2">
-                  <Icon name="add-user" className="size-4" />
-                  Invite members
-                </Link>
-              </DropdownMenuItem>
-            </>
-          ) : null}
-  
-          <DropdownMenuSeparator />
-          {otherWorkspaces.length > 0 ? (
-            <>
-              <DropdownMenuLabel className="py-1.5 text-xs font-normal text-muted-foreground">
-                Switch workspace
-              </DropdownMenuLabel>
-              {otherWorkspaces.map((w) => (
-                <DropdownMenuItem
+            <span className="truncate text-xs font-normal text-muted-foreground">
+              {user.email}
+            </span>
+          </span>
+        </DropdownMenuLabel>
+
+        <DropdownMenuItem asChild>
+          <Link href="/settings/account" className="flex items-center gap-2">
+            <Icon name="setting" className="size-4" />
+            Account settings
+          </Link>
+        </DropdownMenuItem>
+
+        {workspaces.length > 0 ? (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuLabel className="py-1.5 text-xs font-normal text-muted-foreground">
+              Workspace
+            </DropdownMenuLabel>
+            {/* Every workspace is one row, the active one included, marked by
+                the radio group's tick. Showing the active one as a heading
+                instead made it read as a section label rather than a
+                workspace — and left it looking less like one than the rows
+                underneath it, which had avatars. */}
+            <DropdownMenuRadioGroup
+              value={activeWorkspace?.id ?? ""}
+              onValueChange={select}
+            >
+              {workspaces.map((w) => (
+                <DropdownMenuRadioItem
                   key={w.id}
-                  onSelect={() => select(w.id)}
+                  value={w.id}
                   disabled={pending}
                   className="gap-2"
                 >
                   <WorkspaceAvatar name={w.name} logoUrl={w.logoUrl} size="xs" />
-                  <span className="min-w-0 w-full flex-1 truncate">{w.name}</span>
-                </DropdownMenuItem>
+                  <span className="min-w-0 flex-1 truncate">{w.name}</span>
+                  <span className="shrink-0 text-[10px] capitalize text-muted-foreground">
+                    {w.role}
+                  </span>
+                </DropdownMenuRadioItem>
               ))}
-            </>
-          ) : null}
-          {/* Always offered — someone with a single workspace is exactly who
-              needs this, and they'd never see a "Switch workspace" section. */}
-          <DropdownMenuItem
-            onSelect={(e) => {
-              // The menu unmounts on select; without this it would take the
-              // dialog down with it before it ever opened.
-              e.preventDefault()
-              setCreateOpen(true)
-            }}
-            className="flex items-center gap-2"
-          >
-            <Icon name="plus" className="size-4" />
-            Create workspace
+            </DropdownMenuRadioGroup>
+          </>
+        ) : null}
+
+        <DropdownMenuSeparator />
+
+        <DropdownMenuSub>
+          <DropdownMenuSubTrigger className="flex items-center gap-2">
+            <Icon name={currentTheme === "dark" ? "moon" : "sun"} className="size-4" />
+            Theme
+            {/* <span className="ml-auto text-xs capitalize text-muted-foreground">
+              {currentTheme}
+            </span> */}
+          </DropdownMenuSubTrigger>
+          <DropdownMenuSubContent className="w-44">
+            <DropdownMenuRadioGroup value={currentTheme} onValueChange={setTheme}>
+              <DropdownMenuRadioItem value="light" className="gap-2">
+                <Icon name="sun" className="size-4" />
+                Light
+              </DropdownMenuRadioItem>
+              <DropdownMenuRadioItem value="dark" className="gap-2">
+                <Icon name="moon" className="size-4" />
+                Dark
+              </DropdownMenuRadioItem>
+              <DropdownMenuRadioItem value="system" className="gap-2">
+                <Icon name="monitor" className="size-4" />
+                System
+              </DropdownMenuRadioItem>
+            </DropdownMenuRadioGroup>
+          </DropdownMenuSubContent>
+        </DropdownMenuSub>
+
+        <DropdownMenuSeparator />
+
+        <form action={signOutAction}>
+          <DropdownMenuItem asChild>
+            <button
+              type="submit"
+              className="flex w-full items-center gap-2 text-destructive focus:text-destructive"
+            >
+              <Icon name="logout" className="size-4" />
+              Sign out
+            </button>
           </DropdownMenuItem>
-  
-          <DropdownMenuSeparator />
-  
-          <DropdownMenuSub>
-            <DropdownMenuSubTrigger className="flex items-center gap-2">
-              <Icon name={currentTheme === "dark" ? "moon" : "sun"} className="size-4" />
-              Theme
-              {/* <span className="ml-auto text-xs capitalize text-muted-foreground">
-                {currentTheme}
-              </span> */}
-            </DropdownMenuSubTrigger>
-            <DropdownMenuSubContent className="w-44">
-              <DropdownMenuRadioGroup value={currentTheme} onValueChange={setTheme}>
-                <DropdownMenuRadioItem value="light" className="gap-2">
-                  <Icon name="sun" className="size-4" />
-                  Light
-                </DropdownMenuRadioItem>
-                <DropdownMenuRadioItem value="dark" className="gap-2">
-                  <Icon name="moon" className="size-4" />
-                  Dark
-                </DropdownMenuRadioItem>
-                <DropdownMenuRadioItem value="system" className="gap-2">
-                  <Icon name="monitor" className="size-4" />
-                  System
-                </DropdownMenuRadioItem>
-              </DropdownMenuRadioGroup>
-            </DropdownMenuSubContent>
-          </DropdownMenuSub>
-  
-          <DropdownMenuSeparator />
-  
-          <form action={signOutAction}>
-            <DropdownMenuItem asChild>
-              <button
-                type="submit"
-                className="flex w-full items-center gap-2 text-destructive focus:text-destructive"
-              >
-                <Icon name="logout" className="size-4" />
-                Sign out
-              </button>
-            </DropdownMenuItem>
-          </form>
-        </DropdownMenuContent>
-      </DropdownMenu>
-      <CreateWorkspaceDialog open={createOpen} onOpenChange={setCreateOpen} />
-    </>
+        </form>
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }
