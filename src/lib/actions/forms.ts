@@ -4,7 +4,7 @@ import { after } from "next/server"
 import { and, eq, inArray, isNull, notInArray, sql } from "drizzle-orm"
 import { revalidatePath, updateTag } from "next/cache"
 import { db } from "@/lib/db"
-import { folders, forms, formFields, uploads, type FormSettings, type FormAiConfig, type FormTheme, type FieldConfig, type FieldLogic } from "@/lib/db/schema"
+import { folders, forms, formChatMessages, formFields, uploads, type FormSettings, type FormAiConfig, type FormTheme, type FieldConfig, type FieldLogic } from "@/lib/db/schema"
 import { getRequiredUser, getDefaultWorkspace } from "@/lib/auth/session"
 import { destroyAssets, assetFromUrl, resourceTypeFromMime, type CloudinaryAsset } from "@/lib/cloudinary/delete"
 import { ensureFormSheet } from "@/lib/integrations/sync"
@@ -397,6 +397,13 @@ export async function deleteForm(
     .from(formFields)
     .where(eq(formFields.formId, formId))
 
+  // Reference screenshots attached to the form's AI threads. These rows cascade
+  // away with the form, so their Cloudinary assets orphan unless collected here.
+  const chatImages = await db
+    .select({ imageUrl: formChatMessages.imageUrl })
+    .from(formChatMessages)
+    .where(eq(formChatMessages.formId, formId))
+
   const assets: CloudinaryAsset[] = [
     ...uploadRows.map((u) => ({
       publicId: u.storageKey,
@@ -407,6 +414,9 @@ export async function deleteForm(
       .filter((a): a is CloudinaryAsset => a !== null),
     ...[form.theme?.logoUrl, form.theme?.coverImageUrl]
       .map((url) => assetFromUrl(url))
+      .filter((a): a is CloudinaryAsset => a !== null),
+    ...chatImages
+      .map((c) => assetFromUrl(c.imageUrl))
       .filter((a): a is CloudinaryAsset => a !== null),
     // Success-page media: the uploaded video + any Cloudinary images in the body.
     ...[

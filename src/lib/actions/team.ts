@@ -2,13 +2,14 @@
 
 import { cookies } from "next/headers"
 import { revalidatePath } from "next/cache"
-import { and, count, eq } from "drizzle-orm"
+import { and, eq } from "drizzle-orm"
 import { z } from "zod"
 import { db } from "@/lib/db"
-import { users, workspaceInvitations, workspaceMembers, workspaces } from "@/lib/db/schema"
-import { getRequiredUser, ACTIVE_WORKSPACE_COOKIE } from "@/lib/auth/session"
+import { users, workspaceInvitations, workspaceMembers } from "@/lib/db/schema"
+import { getRequiredUser } from "@/lib/auth/session"
+import { setActiveWorkspaceCookie } from "@/lib/auth/active-workspace"
 import { requireOwner } from "@/lib/auth/permissions"
-import { acceptInvitationByToken } from "@/lib/data/team"
+import { acceptInvitationByToken, getOwnerCount } from "@/lib/data/team"
 import { sendEmail, isEmailConfigured } from "@/lib/email/provider"
 import { inviteEmailHtml } from "@/lib/email/templates"
 
@@ -22,32 +23,6 @@ const emailSchema = z.string().trim().toLowerCase().email()
 
 function siteUrl(): string {
   return process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") || "http://localhost:3000"
-}
-
-function setActiveWorkspaceCookie(store: Awaited<ReturnType<typeof cookies>>, id: string) {
-  store.set(ACTIVE_WORKSPACE_COOKIE, id, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    path: "/",
-    maxAge: 60 * 60 * 24 * 365,
-  })
-}
-
-/** Switch the caller's active workspace (validated against their memberships). */
-export async function switchWorkspace(workspaceId: string): Promise<Result> {
-  const user = await getRequiredUser()
-  const [member] = await db
-    .select({ workspaceId: workspaceMembers.workspaceId })
-    .from(workspaceMembers)
-    .where(and(eq(workspaceMembers.workspaceId, workspaceId), eq(workspaceMembers.userId, user.id)))
-    .limit(1)
-  if (!member) return { success: false, error: "Not a member of that workspace" }
-
-  const store = await cookies()
-  setActiveWorkspaceCookie(store, workspaceId)
-  revalidatePath("/", "layout")
-  return { success: true }
 }
 
 /** Invite someone to the active workspace by email. Owner-only. */
@@ -162,14 +137,6 @@ export async function revokeInvitation(id: string): Promise<Result> {
   return { success: true }
 }
 
-async function ownerCount(workspaceId: string): Promise<number> {
-  const [row] = await db
-    .select({ c: count() })
-    .from(workspaceMembers)
-    .where(and(eq(workspaceMembers.workspaceId, workspaceId), eq(workspaceMembers.role, "owner")))
-  return row?.c ?? 0
-}
-
 /** Remove a member from the active workspace. Owner-only. */
 export async function removeMember(userId: string): Promise<Result> {
   const gate = await requireOwner()
@@ -185,7 +152,7 @@ export async function removeMember(userId: string): Promise<Result> {
     .where(and(eq(workspaceMembers.workspaceId, ws.id), eq(workspaceMembers.userId, userId)))
     .limit(1)
   if (!target) return { success: false, error: "Member not found." }
-  if (target.role === "owner" && (await ownerCount(ws.id)) <= 1)
+  if (target.role === "owner" && (await getOwnerCount(ws.id)) <= 1)
     return { success: false, error: "A workspace must keep at least one owner." }
 
   await db
@@ -211,7 +178,7 @@ export async function changeMemberRole(userId: string, roleRaw: string): Promise
     .where(and(eq(workspaceMembers.workspaceId, ws.id), eq(workspaceMembers.userId, userId)))
     .limit(1)
   if (!target) return { success: false, error: "Member not found." }
-  if (target.role === "owner" && role !== "owner" && (await ownerCount(ws.id)) <= 1)
+  if (target.role === "owner" && role !== "owner" && (await getOwnerCount(ws.id)) <= 1)
     return { success: false, error: "A workspace must keep at least one owner." }
 
   await db
@@ -230,44 +197,6 @@ export async function acceptInvitation(token: string): Promise<Result> {
 
   const store = await cookies()
   setActiveWorkspaceCookie(store, res.workspaceId)
-  revalidatePath("/", "layout")
-  return { success: true }
-}
-
-/**
- * Rename the active workspace. Owner-only.
- *
- * The slug is regenerated alongside the name because it is shown directly under
- * it in Settings, and a workspace called "Figmenta" sitting above
- * `/haseeb-s-workspace-5748bf` reads as a bug. Nothing routes or looks up on the
- * slug — it is display only — so changing it breaks no links. The random suffix
- * is how `provisionUser` avoids a uniqueness round-trip, and it does the same
- * job here.
- *
- * Exists because handing a workspace to someone else is otherwise incomplete:
- * ownership can move, but the name it was created with cannot, and that name is
- * the part everyone actually sees.
- */
-export async function renameWorkspace(nameRaw: string): Promise<Result> {
-  const gate = await requireOwner()
-  if (!gate.workspace) return { success: false, error: gate.error ?? "Not authorized" }
-
-  const name = nameRaw.trim().replace(/\s+/g, " ").slice(0, 60)
-  if (!name) return { success: false, error: "Enter a workspace name." }
-
-  const slugBase =
-    name
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "")
-      .slice(0, 32) || "workspace"
-
-  await db
-    .update(workspaces)
-    .set({ name, slug: `${slugBase}-${crypto.randomUUID().slice(0, 6)}` })
-    .where(eq(workspaces.id, gate.workspace.id))
-
-  // The name shows in the sidebar footer and the account menu on every page.
   revalidatePath("/", "layout")
   return { success: true }
 }

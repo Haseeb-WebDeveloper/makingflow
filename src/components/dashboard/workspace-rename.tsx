@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { showToast } from "@/components/ui/toast"
-import { renameWorkspace } from "@/lib/actions/team"
+import { renameWorkspace } from "@/lib/actions/workspaces"
 
 /**
  * Rename the workspace, in place on its own header.

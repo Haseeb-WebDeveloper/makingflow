@@ -42,6 +42,7 @@ export default async function DashboardLayout({
         name: w.name,
         plan: w.plan,
         role: w.role,
+        logoUrl: w.logoUrl,
       }))}
       activeWorkspaceId={workspace?.id ?? null}
     >

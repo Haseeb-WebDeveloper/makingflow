@@ -9,6 +9,7 @@ import rehypeSanitize from "rehype-sanitize"
 import type { PublicField, PublicTheme } from "@/lib/data/public-form"
 import type { AnswerValue } from "@/lib/db/schema"
 import { uploadToCloudinary } from "@/lib/cloudinary/upload"
+import { cldDeliver } from "@/lib/cloudinary/url"
 import { showToast } from "@/components/ui/toast"
 import {
   Select,
@@ -214,21 +215,6 @@ export function Field({
 }
 
 /** Form-level branding (banner + logo) shown above the title in both runtimes. */
-/**
- * Inject Cloudinary delivery transforms (auto format/quality + a size cap) into
- * an upload URL so respondents download a small, modern (WebP/AVIF) image instead
- * of the full-resolution original. No-ops on non-Cloudinary URLs.
- */
-function cldDeliver(url: string, transform: string): string {
-  const marker = "/image/upload/"
-  const i = url.indexOf(marker)
-  if (i === -1) return url
-  // SVGs are vector — rasterizing them (f_auto / q_auto / resize) blurs them and
-  // can crop. Serve the original so the logo/banner stays crisp at any size.
-  if (/\.svg(\?|$)/i.test(url)) return url
-  return `${url.slice(0, i + marker.length)}${transform}/${url.slice(i + marker.length)}`
-}
-
 export function FormBranding({ theme }: { theme?: PublicTheme | null }) {
   if (!theme || (!theme.logoUrl && !theme.coverImageUrl)) return null
   return (

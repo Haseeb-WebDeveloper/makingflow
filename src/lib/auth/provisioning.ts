@@ -12,17 +12,7 @@
 import { eq } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { users, workspaceMembers, workspaces } from '@/lib/db/schema'
-
-function slugify(input: string): string {
-  return (
-    input
-      .toLowerCase()
-      .trim()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '')
-      .slice(0, 32) || 'workspace'
-  )
-}
+import { withSlugRetry } from '@/lib/workspaces/slug'
 
 function deriveWorkspaceName(name: string | null, email: string): string {
   const base = (name?.trim() || email.split('@')[0] || 'My').trim()
@@ -60,19 +50,21 @@ export async function provisionUser({
   if (existing) return
 
   const workspaceName = deriveWorkspaceName(name, email)
-  // Short random suffix avoids a uniqueness round-trip on the slug index.
-  const slug = `${slugify(workspaceName)}-${crypto.randomUUID().slice(0, 6)}`
 
-  await db.transaction(async (tx) => {
-    const [workspace] = await tx
-      .insert(workspaces)
-      .values({ name: workspaceName, slug, createdById: userId })
-      .returning({ id: workspaces.id })
+  // Short random suffix avoids a uniqueness round-trip on the slug index; the
+  // retry covers the rare case where it collides anyway (signup must not 500).
+  await withSlugRetry(workspaceName, (slug) =>
+    db.transaction(async (tx) => {
+      const [workspace] = await tx
+        .insert(workspaces)
+        .values({ name: workspaceName, slug, createdById: userId })
+        .returning({ id: workspaces.id })
 
-    await tx.insert(workspaceMembers).values({
-      workspaceId: workspace.id,
-      userId,
-      role: 'owner',
-    })
-  })
+      await tx.insert(workspaceMembers).values({
+        workspaceId: workspace.id,
+        userId,
+        role: 'owner',
+      })
+    }),
+  )
 }

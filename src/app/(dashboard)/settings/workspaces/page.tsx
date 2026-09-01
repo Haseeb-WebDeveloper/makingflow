@@ -1,6 +1,7 @@
 import type { Metadata } from "next"
 import { getDefaultWorkspace, getMyWorkspaces } from "@/lib/auth/session"
 import { WorkspaceList } from "@/components/dashboard/workspace-list"
+import { CreateWorkspaceButton } from "@/components/dashboard/create-workspace-button"
 
 export const metadata: Metadata = { title: "Workspaces · MakingFlow" }
 
@@ -12,11 +13,14 @@ export default async function WorkspacesSettingsPage() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h2 className="text-sm font-semibold text-foreground">Your workspaces</h2>
-        <p className="mt-1 text-xs text-muted-foreground">
-          Switch between workspaces or manage the active one&apos;s team.
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h2 className="text-sm font-semibold text-foreground">Your workspaces</h2>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Switch between workspaces or manage the active one&apos;s team.
+          </p>
+        </div>
+        <CreateWorkspaceButton />
       </div>
       <WorkspaceList
         workspaces={workspaces.map((w) => ({
@@ -25,6 +29,7 @@ export default async function WorkspacesSettingsPage() {
           slug: w.slug,
           plan: w.plan,
           role: w.role,
+          logoUrl: w.logoUrl,
         }))}
         activeId={active?.id ?? null}
       />

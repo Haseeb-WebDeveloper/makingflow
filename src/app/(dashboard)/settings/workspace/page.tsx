@@ -1,9 +1,12 @@
 import type { Metadata } from "next"
 import { notFound } from "next/navigation"
-import { getRequiredUser, getDefaultWorkspace } from "@/lib/auth/session"
+import { getRequiredUser, getDefaultWorkspace, getMyWorkspaces } from "@/lib/auth/session"
 import { getTeam } from "@/lib/data/team"
+import { getWorkspaceCounts } from "@/lib/data/workspace"
 import { TeamManager } from "@/components/dashboard/team-manager"
 import { WorkspaceRename } from "@/components/dashboard/workspace-rename"
+import { WorkspaceLogo } from "@/components/dashboard/workspace-logo"
+import { WorkspaceDangerZone } from "@/components/dashboard/workspace-danger-zone"
 
 export const metadata: Metadata = { title: "Workspace · MakingFlow" }
 
@@ -18,16 +21,25 @@ export default async function WorkspaceDetailPage() {
   const workspace = await getDefaultWorkspace()
   if (!workspace) notFound()
 
-  const { members, invitations } = await getTeam(workspace.id)
+  const [{ members, invitations }, myWorkspaces, counts] = await Promise.all([
+    getTeam(workspace.id),
+    getMyWorkspaces(),
+    getWorkspaceCounts(workspace.id),
+  ])
   const isOwner = workspace.role === "owner"
+  // Derived from the members we already loaded — no extra query.
+  const isSoleOwner = isOwner && members.filter((m) => m.role === "owner").length <= 1
 
   return (
     <div>
       <div className="rounded-lg border border-border p-5">
         <div className="flex items-center gap-4">
-          <span className="flex size-12 shrink-0 items-center justify-center rounded-md bg-foreground text-lg font-semibold text-background">
-            {workspace.name.slice(0, 1).toUpperCase()}
-          </span>
+          <WorkspaceLogo
+            workspaceId={workspace.id}
+            name={workspace.name}
+            logoUrl={workspace.logoUrl}
+            canEdit={isOwner}
+          />
           <div className="min-w-0">
             {/* Owners can rename in place; everyone else just reads it. */}
             {isOwner ? (
@@ -51,6 +63,16 @@ export default async function WorkspaceDetailPage() {
         invitations={invitations}
         currentUserId={user.id}
         isOwner={isOwner}
+      />
+
+      <WorkspaceDangerZone
+        workspaceId={workspace.id}
+        name={workspace.name}
+        isOwner={isOwner}
+        isSoleOwner={isSoleOwner}
+        workspaceCount={myWorkspaces.length}
+        formCount={counts.forms}
+        submissionCount={counts.submissions}
       />
     </div>
   )

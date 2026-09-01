@@ -1,4 +1,4 @@
-import { and, desc, eq } from 'drizzle-orm'
+import { and, count, desc, eq } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import {
   users,
@@ -62,6 +62,20 @@ export async function getTeam(
       .orderBy(desc(workspaceInvitations.createdAt)),
   ])
   return { members, invitations }
+}
+
+/**
+ * How many owners a workspace has. The guard behind "a workspace must keep at
+ * least one owner" — enforced when removing a member, demoting one, and when an
+ * owner tries to leave. Lives here rather than in an action file so all three
+ * share it without becoming a network-exposed endpoint.
+ */
+export async function getOwnerCount(workspaceId: string): Promise<number> {
+  const [row] = await db
+    .select({ c: count() })
+    .from(workspaceMembers)
+    .where(and(eq(workspaceMembers.workspaceId, workspaceId), eq(workspaceMembers.role, 'owner')))
+  return row?.c ?? 0
 }
 
 export type InvitationView = {

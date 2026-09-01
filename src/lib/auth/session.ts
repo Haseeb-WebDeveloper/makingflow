@@ -5,16 +5,19 @@ import { asc, eq, sql } from 'drizzle-orm'
 import { createClient } from '@/lib/supabase/server'
 import { db } from '@/lib/db'
 import { users, workspaceMembers, workspaces } from '@/lib/db/schema'
+import { ACTIVE_WORKSPACE_COOKIE } from '@/lib/auth/active-workspace'
 
-/** Cookie holding the user's active workspace id (set by switchWorkspace / accept). */
-export const ACTIVE_WORKSPACE_COOKIE = 'mf_ws'
+/** Cookie holding the user's active workspace id. Defined in ./active-workspace
+ *  (which also owns the writers) and re-exported here for existing callers. */
+export { ACTIVE_WORKSPACE_COOKIE }
 
-type WorkspaceContext = {
+export type WorkspaceContext = {
   id: string
   name: string
   slug: string
   plan: string
   role: string
+  logoUrl: string | null
 }
 
 /**
@@ -51,6 +54,7 @@ const getSession = cache(
             name: workspaces.name,
             slug: workspaces.slug,
             plan: workspaces.plan,
+            logoUrl: workspaces.logoUrl,
             role: workspaceMembers.role,
           },
         })
@@ -74,6 +78,7 @@ const getSession = cache(
           slug: r.workspace.slug!,
           plan: r.workspace.plan!,
           role: r.workspace.role!,
+          logoUrl: r.workspace.logoUrl ?? null,
         }))
 
       // Active workspace: the cookie's choice if the user is a member of it
@@ -115,3 +120,15 @@ export const getDefaultWorkspace = cache(async () => (await getSession())?.works
 /** All workspaces the caller belongs to (for the sidebar switcher). Derived from
  *  the same cached session read — no extra query. */
 export const getMyWorkspaces = cache(async () => (await getSession())?.workspaces ?? [])
+
+/**
+ * Resolve ONE of the caller's memberships by workspace id, for actions that act
+ * on an explicitly named workspace rather than the active one (delete, leave,
+ * logo). The lookup runs over the caller's OWN membership rows, so it is itself
+ * the tenancy check — an id they don't belong to is indistinguishable from one
+ * that doesn't exist. Costs no extra query: it reads the cached session.
+ */
+export const getWorkspaceMembership = cache(
+  async (workspaceId: string): Promise<WorkspaceContext | null> =>
+    (await getMyWorkspaces()).find((w) => w.id === workspaceId) ?? null,
+)
