@@ -15,6 +15,7 @@ import {
   type TurnSituation,
 } from "@/lib/ai/conversational"
 import { incrementAiCalls } from "@/lib/usage/meter"
+import { LIMITS, rateLimit, tooManyRequests } from "@/lib/rate-limit"
 import type { TurnRequest, TurnMeta } from "@/lib/forms/conversation-types"
 
 export const maxDuration = 30
@@ -81,6 +82,13 @@ export async function POST(request: Request) {
   if (!isAiConfigured()) {
     return Response.json({ error: "ai_unavailable" }, { status: 503 })
   }
+
+  // This endpoint is anonymous and calls the model on every request, so an
+  // unbounded caller is an unbounded bill. Sized for a NAT full of respondents
+  // rather than one person (see LIMITS); a throttled caller degrades to the
+  // classic runtime rather than being stranded.
+  const limit = await rateLimit("forms-turn", LIMITS.turn)
+  if (!limit.ok) return tooManyRequests(limit.retryAfterSeconds)
 
   let body: TurnRequest
   try {

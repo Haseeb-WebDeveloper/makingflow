@@ -4,6 +4,7 @@ import { headers } from "next/headers"
 import { and, eq, isNull } from "drizzle-orm"
 import { db } from "@/lib/db"
 import { forms, formEvents } from "@/lib/db/schema"
+import { clientIp } from "@/lib/rate-limit"
 
 const SALT = process.env.ANALYTICS_SALT ?? "makingflow-analytics"
 
@@ -15,8 +16,7 @@ const SALT = process.env.ANALYTICS_SALT ?? "makingflow-analytics"
 export async function getVisitorKey(): Promise<string | null> {
   try {
     const h = await headers()
-    const ip =
-      h.get("x-forwarded-for")?.split(",")[0]?.trim() || h.get("x-real-ip") || ""
+    const ip = (await clientIp()) ?? ""
     const ua = h.get("user-agent") || ""
     if (!ip && !ua) return null
     const day = new Date().toISOString().slice(0, 10)
@@ -36,8 +36,7 @@ export async function getVisitorKey(): Promise<string | null> {
 export async function getRespondentKey(): Promise<string | null> {
   try {
     const h = await headers()
-    const ip =
-      h.get("x-forwarded-for")?.split(",")[0]?.trim() || h.get("x-real-ip") || ""
+    const ip = (await clientIp()) ?? ""
     const ua = h.get("user-agent") || ""
     if (!ip && !ua) return null
     return createHash("sha256").update(`${ip}|${ua}|${SALT}|respondent`).digest("hex").slice(0, 32)
