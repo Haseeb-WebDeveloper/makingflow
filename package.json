@@ -17,7 +17,9 @@
     "test:ui": "vitest --ui",
     "test:e2e": "playwright test",
     "test:db:up": "docker compose -f docker-compose.test.yml up -d",
-    "test:db:down": "docker compose -f docker-compose.test.yml down -v"
+    "test:db:down": "docker compose -f docker-compose.test.yml down -v",
+    "loadtest": "tsx scripts/loadtest.mts",
+    "loadtest:serve": "node --env-file=.env.test ./node_modules/next/dist/bin/next start -p 3100"
   },
   "dependencies": {
     "@ai-sdk/deepseek": "^2.0.59",
