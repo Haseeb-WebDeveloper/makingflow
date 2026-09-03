@@ -4,8 +4,6 @@ import { useMemo, useState, useTransition } from "react"
 import { Icon } from "@/components/ui/icon"
 import {
   SubmissionsTable,
-  cellToText,
-  formatDate,
   type Cell,
   type SubmissionRow,
 } from "@/components/forms/submissions-table"
@@ -56,14 +54,17 @@ function toCell(v: AnswerValue | undefined, type: string): Cell {
 }
 
 export function SubmissionsView({
+  formId,
   columns,
   rawRows,
-  formTitle,
+  totalCompleted,
   intelligenceEnabled = false,
 }: {
+  formId: string
   columns: FilterColumn[]
   rawRows: RawRow[]
-  formTitle: string
+  /** Every completed response the form has, not just the page in `rawRows`. */
+  totalCompleted: number
   intelligenceEnabled?: boolean
 }) {
   const [search, setSearch] = useState("")
@@ -175,19 +176,27 @@ export function SubmissionsView({
             </span>
           ) : null}
         </button>
-        <button
-          type="button"
-          onClick={() => exportCsv(formTitle, columnLabels, displayRows)}
+        {/* Server-rendered export: the table below holds only a capped page, so
+            exporting what's on screen silently dropped every response past it.
+            The route streams the full set straight to the browser. */}
+        <a
+          href={`/api/forms/${formId}/export`}
+          download
           className="inline-flex h-9 items-center gap-1.5 rounded-md border border-border px-3 text-sm font-medium text-foreground transition-colors hover:bg-muted"
         >
           <Icon name="download" className="size-4" />
           Export
-        </button>
+        </a>
       </div>
 
       <p className="mb-3 text-sm text-muted-foreground">
         {displayRows.length} of {liveRows.length} {liveRows.length === 1 ? "response" : "responses"}
         {activeCount > 0 || search.trim() ? " (filtered)" : ""}
+        {/* The page is capped, so say so rather than presenting it as the total —
+            "200 of 200" on a form with 543 responses reads as data loss. */}
+        {totalCompleted > liveRows.length
+          ? ` · showing the most recent ${liveRows.length} of ${totalCompleted} — export for all`
+          : ""}
       </p>
 
       {displayRows.length === 0 ? (
@@ -281,18 +290,3 @@ function FilterIcon() {
   )
 }
 
-function exportCsv(formTitle: string, columns: string[], rows: SubmissionRow[]) {
-  const esc = (s: string) => `"${String(s).replace(/"/g, '""')}"`
-  const header = ["Submitted", ...columns].map(esc).join(",")
-  const body = rows
-    .map((r) => [formatDate(r.submittedAt), ...r.cells.map(cellToText)].map(esc).join(","))
-    .join("\n")
-  const csv = `${header}\n${body}`
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement("a")
-  a.href = url
-  a.download = `${formTitle.replace(/[^\w-]+/g, "-").toLowerCase() || "form"}-submissions.csv`
-  a.click()
-  URL.revokeObjectURL(url)
-}

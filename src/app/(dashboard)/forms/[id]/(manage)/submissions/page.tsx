@@ -1,7 +1,7 @@
 import type { Metadata } from "next"
 import { notFound } from "next/navigation"
 import { getDefaultWorkspace } from "@/lib/auth/session"
-import { getFormShell, getFormSubmissions } from "@/lib/data/forms"
+import { getFormShell, getFormSubmissionCounts, getFormSubmissions } from "@/lib/data/forms"
 import { SubmissionsView } from "@/components/forms/submissions-view"
 
 export const metadata: Metadata = { title: "Submissions · MakingFlow" }
@@ -14,9 +14,12 @@ export default async function SubmissionsPage({
   const { id } = await params
   const workspace = await getDefaultWorkspace()
   if (!workspace) notFound()
-  const [shell, data] = await Promise.all([
+  // `data.rows` is a capped page, not the whole set — the true total comes from
+  // getFormSubmissionCounts so the table can say how much it isn't showing.
+  const [shell, data, counts] = await Promise.all([
     getFormShell(id, workspace.id),
     getFormSubmissions(id),
+    getFormSubmissionCounts(id, workspace.id),
   ])
   if (!shell || !data) notFound()
 
@@ -31,9 +34,10 @@ export default async function SubmissionsPage({
 
   return (
     <SubmissionsView
+      formId={id}
       columns={data.columns}
       rawRows={rawRows}
-      formTitle={shell.title}
+      totalCompleted={counts?.completed ?? rawRows.length}
       intelligenceEnabled={shell.intelligenceEnabled}
     />
   )
