@@ -757,6 +757,16 @@ export const submissions = pgTable(
       table.createdAt,
     ),
     index('submissions_form_respondent_idx').on(table.formId, table.respondentKey),
+    // One-response-per-person, enforced by the database rather than by a
+    // COUNT(*) read before the insert. The old check-then-insert let concurrent
+    // submits from the same respondent all observe zero and all commit; this
+    // makes the second one fail outright, and submitForm turns that failure
+    // into the "You've already responded" message. Partial so it constrains
+    // only finished responses that actually carry an identity — drafts and
+    // un-keyed submissions are unaffected.
+    uniqueIndex('submissions_form_respondent_unique_idx')
+      .on(table.formId, table.respondentKey)
+      .where(sql`${table.status} = 'completed' AND ${table.respondentKey} IS NOT NULL`),
   ],
 )
 
@@ -851,6 +861,19 @@ export const formIntegrations = pgTable(
     // sequential scans whose cost scales with EVERY tenant's rows, not the
     // caller's.
     index('form_integrations_workspace_idx').on(table.workspaceId),
+    // Sheets and Notion destinations are provisioned LAZILY, on a form's first
+    // response. With nothing enforcing uniqueness, N responses arriving at once
+    // each created their own spreadsheet/database and inserted their own row —
+    // then every later read picked one arbitrarily (`.limit(1)`) and the rest
+    // became orphans holding a slice of the responses. This makes the second
+    // writer lose instead, and the sync code re-reads the winner.
+    //
+    // Partial by necessity: a form may legitimately have several `webhook`
+    // rows (one per endpoint), so the constraint covers only the two
+    // singleton-by-design integrations.
+    uniqueIndex('form_integrations_singleton_idx')
+      .on(table.formId, table.type)
+      .where(sql`${table.type} IN ('google_sheets', 'notion')`),
   ],
 )
 

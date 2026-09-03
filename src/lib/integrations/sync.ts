@@ -22,7 +22,21 @@ import {
   DEFAULT_SHEET_NAME,
 } from "@/lib/integrations/google"
 import { createFormSheet, reconcileFormSheet } from "@/lib/integrations/sheets-provision"
-import { answerToCell as cell } from "@/lib/submissions/answer-format"
+import { answerToCell } from "@/lib/submissions/answer-format"
+import { neutralizeFormula } from "@/lib/submissions/csv"
+import type { AnswerValue as AnswerValueForCell } from "@/lib/db/schema"
+
+/**
+ * One Sheets cell from an answer value.
+ *
+ * Sheets rows are written with `valueInputOption=USER_ENTERED` so that a file
+ * URL becomes a clickable link — which also means a respondent answer starting
+ * with `=` is stored as a live formula in the owner's spreadsheet. The guard
+ * makes text literal without touching URLs.
+ */
+function cell(value: AnswerValueForCell | undefined): string {
+  return neutralizeFormula(answerToCell(value))
+}
 
 /** The workspace's Google connection (the global Sheets on-switch), or null. */
 async function googleConnection(workspaceId: string): Promise<WorkspaceConnection | null> {
@@ -78,19 +92,44 @@ export async function syncSubmissionToSheets(
 
     if (!config) {
       // First response since the workspace connected — provision now and store it.
-      config = await createFormSheet(conn, form.id, form.title)
-      await db.insert(formIntegrations).values({
-        formId: form.id,
-        workspaceId: form.workspaceId,
-        type: "google_sheets",
-        enabled: true,
-        config,
-      })
-      // The sheet is brand-new. Write EVERY completed response (this one
-      // included, as it's already committed) so connecting Sheets after
-      // responses exist backfills the history — not just rows from now on.
-      await backfillFormSheet(conn, config, form.id)
-      return
+      //
+      // Responses arrive concurrently, so two of them can both find no config
+      // and both provision. `form_integrations_singleton_idx` makes exactly one
+      // insert win; the loser must NOT proceed as if it owned the destination,
+      // or the form ends up split across two spreadsheets.
+      const created = await createFormSheet(conn, form.id, form.title)
+      const [claimed] = await db
+        .insert(formIntegrations)
+        .values({
+          formId: form.id,
+          workspaceId: form.workspaceId,
+          type: "google_sheets",
+          enabled: true,
+          config: created,
+        })
+        .onConflictDoNothing()
+        .returning({ id: formIntegrations.id })
+
+      if (!claimed) {
+        // Lost the race. The spreadsheet we just made is an orphan — left in the
+        // user's Drive rather than deleted, since it's now visible to them and
+        // deleting someone's file to tidy up is worse than an empty extra sheet.
+        console.warn(
+          `[sync] lost sheet provisioning for form ${form.id}; orphan spreadsheet ${created.spreadsheetId}`,
+        )
+        const winner = await sheetIntegration(form.id)
+        const winnerConfig = winner?.config as GoogleSheetsIntegrationConfig | undefined
+        if (!winner?.enabled || !winnerConfig?.spreadsheetId) return
+        config = winnerConfig
+        // Fall through to the normal append so THIS response still lands. The
+        // winner's own backfill covers the history.
+      } else {
+        // The sheet is brand-new. Write EVERY completed response (this one
+        // included, as it's already committed) so connecting Sheets after
+        // responses exist backfills the history — not just rows from now on.
+        await backfillFormSheet(conn, created, form.id)
+        return
+      }
     }
 
     // Grow columns for any new fields (and migrate old sheets to the id column).
@@ -144,13 +183,25 @@ export async function ensureFormSheet(form: {
     if (row) return // already has a sheet (or is paused) — leave it as-is.
 
     const config = await createFormSheet(conn, form.id, form.title)
-    await db.insert(formIntegrations).values({
-      formId: form.id,
-      workspaceId: form.workspaceId,
-      type: "google_sheets",
-      enabled: true,
-      config,
-    })
+    const [claimed] = await db
+      .insert(formIntegrations)
+      .values({
+        formId: form.id,
+        workspaceId: form.workspaceId,
+        type: "google_sheets",
+        enabled: true,
+        config,
+      })
+      .onConflictDoNothing()
+      .returning({ id: formIntegrations.id })
+    if (!claimed) {
+      // A response provisioned the form's sheet between our read and this
+      // insert. Theirs is the destination; ours is an orphan.
+      console.warn(
+        `[sync] sheet already provisioned for form ${form.id}; orphan spreadsheet ${config.spreadsheetId}`,
+      )
+      return
+    }
     // Creating the sheet here PRE-EMPTS the lazy branch above, which was the
     // only path that ever carried existing responses across — without this, a
     // workspace that connects after collecting responses gets an empty sheet

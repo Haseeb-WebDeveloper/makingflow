@@ -155,21 +155,43 @@ export async function syncSubmissionToNotion(
 
     if (!config) {
       // First response since the workspace connected — provision now and store it.
-      config = await createFormDatabase(conn, form.id, form.title)
-      await db.insert(formIntegrations).values({
-        formId: form.id,
-        workspaceId: form.workspaceId,
-        type: "notion",
-        enabled: true,
-        config,
-      })
-      // The database is brand-new. Write EVERY completed response (this one
-      // included, as it is already committed) so connecting Notion after
-      // responses exist brings the history across — not just pages from now on.
-      // Returning here matters: falling through would write this submission a
-      // second time.
-      await backfillFormNotionDatabase(conn, config, form.id)
-      return
+      //
+      // Concurrent first responses can both reach here and both provision.
+      // `form_integrations_singleton_idx` picks one winner; the loser must fall
+      // in behind it rather than treating its own database as the destination.
+      const created = await createFormDatabase(conn, form.id, form.title)
+      const [claimed] = await db
+        .insert(formIntegrations)
+        .values({
+          formId: form.id,
+          workspaceId: form.workspaceId,
+          type: "notion",
+          enabled: true,
+          config: created,
+        })
+        .onConflictDoNothing()
+        .returning({ id: formIntegrations.id })
+
+      if (!claimed) {
+        // Lost the race. The database we just made is an orphan — left in the
+        // user's Notion rather than deleted out from under them.
+        console.warn(
+          `[notion] lost database provisioning for form ${form.id}; orphan database ${created.databaseId}`,
+        )
+        const winner = await notionIntegration(form.id)
+        const winnerConfig = winner?.config as NotionIntegrationConfig | undefined
+        if (!winner?.enabled || !winnerConfig?.databaseId) return
+        config = winnerConfig
+        // Fall through so THIS response still lands in the winner's database.
+      } else {
+        // The database is brand-new. Write EVERY completed response (this one
+        // included, as it is already committed) so connecting Notion after
+        // responses exist brings the history across — not just pages from now
+        // on. Returning here matters: falling through would write this
+        // submission a second time.
+        await backfillFormNotionDatabase(conn, created, form.id)
+        return
+      }
     }
 
     // Grow properties for any newly added fields.
@@ -325,13 +347,25 @@ export async function ensureFormNotionDatabase(
     if (row) return 0 // already has a database (or is paused) — leave it as-is.
 
     const config = await createFormDatabase(conn, form.id, form.title)
-    await db.insert(formIntegrations).values({
-      formId: form.id,
-      workspaceId: form.workspaceId,
-      type: "notion",
-      enabled: true,
-      config,
-    })
+    const [claimed] = await db
+      .insert(formIntegrations)
+      .values({
+        formId: form.id,
+        workspaceId: form.workspaceId,
+        type: "notion",
+        enabled: true,
+        config,
+      })
+      .onConflictDoNothing()
+      .returning({ id: formIntegrations.id })
+    if (!claimed) {
+      // A response provisioned the form's database between our read and this
+      // insert. Theirs is the destination; ours is an orphan.
+      console.warn(
+        `[notion] database already provisioned for form ${form.id}; orphan database ${config.databaseId}`,
+      )
+      return 0
+    }
     // Provisioning eagerly used to PRE-EMPT the lazy path above, which was the
     // only thing that ever moved existing responses across: the database was
     // created empty and the next submission appended a single page. Backfill
