@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { submitForm } from "@/lib/actions/submissions";
+import { formatDistanceToNow } from "date-fns";
+import { submitForm, type SubmitAnswer } from "@/lib/actions/submissions";
 import type { PublicForm, PublicField } from "@/lib/data/public-form";
 import type { AnswerValue } from "@/lib/db/schema";
 import { isValidPhoneNumber } from "react-phone-number-input";
@@ -14,7 +15,13 @@ import {
 } from "@/components/forms/fill-mode-previews";
 import { SuccessContent } from "@/components/forms/success-content";
 import { SuccessMark } from "@/components/forms/success-mark";
-import { collectClientMeta, track } from "@/lib/forms/client-meta";
+import {
+  collectClientMeta,
+  track,
+  readDraftToken,
+  writeDraftToken,
+  clearDraftToken,
+} from "@/lib/forms/client-meta";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const URL_RE = /^https?:\/\/\S+\.\S+/i;
@@ -59,18 +66,49 @@ function problemMessage(
 export function FormRuntime({
   form,
   testMode = false,
+  initialValues,
+  initialSubmissionId,
+  extraAnswers,
+  answerMeta,
+  language,
 }: {
   form: PublicForm;
   /** Builder preview: validate + show the thank-you, but never record a submission. */
   testMode?: boolean;
+  /**
+   * Answers handed over directly by the conversational runtime when the AI
+   * layer degrades mid-session. Passing them in-process (rather than letting
+   * this component re-fetch the shared draft) removes a race: the hand-off used
+   * to depend on an unawaited partial-save landing before this runtime's resume
+   * GET, and when it didn't, the chat answers were silently dropped.
+   */
+  initialValues?: Record<string, AnswerValue>;
+  /** The draft row those answers already belong to, so submit promotes it. */
+  initialSubmissionId?: string | null;
+  /** AI follow-up answers collected in chat — they map to no form field, so
+   *  they'd be lost otherwise. Forwarded verbatim to submitForm. */
+  extraAnswers?: SubmitAnswer[];
+  /** Per-field original text + language, for answers given in another language. */
+  answerMeta?: Record<string, { originalValue: AnswerValue; originalLanguage: string }>;
+  /** Language the respondent was answering in. */
+  language?: string | null;
 }) {
-  const [values, setValues] = useState<Record<string, AnswerValue>>({});
+  const handedOver = initialValues !== undefined;
+  const [values, setValues] = useState<Record<string, AnswerValue>>(
+    () => initialValues ?? {}
+  );
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
   const [pageIndex, setPageIndex] = useState(0);
-  const [resumed, setResumed] = useState(false);
+  // A draft found in storage but NOT yet applied — the respondent is asked
+  // first (see the resume prompt below). Null means nothing to offer.
+  const [pendingDraft, setPendingDraft] = useState<{
+    id: string;
+    savedAt: number;
+    values: Record<string, AnswerValue>;
+  } | null>(null);
   // Respondent's chosen fill style. `null` = the chooser is still showing;
   // "normal" = the paginated all-at-once view; "step" = one question at a time.
   // Locked for the session once picked (persisted so a resumed draft reopens
@@ -105,10 +143,16 @@ export function FormRuntime({
   const questionRef = useRef<HTMLDivElement>(null);
   // Save & resume: the partial submission id (resume token) + a mirror of values
   // for the debounced/unload saver + the autosave debounce timer.
-  const submissionIdRef = useRef<string | null>(null);
-  const valuesRef = useRef<Record<string, AnswerValue>>({});
+  const submissionIdRef = useRef<string | null>(initialSubmissionId ?? null);
+  const valuesRef = useRef<Record<string, AnswerValue>>(initialValues ?? {});
   const partialTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const resumeKey = `mf:resume:${form.publicId}`;
+  // Set the instant a submission succeeds. The `pagehide` listener below lives
+  // for the component's lifetime and the success screen renders from this same
+  // component, so without this flag closing the tab (or following a redirectUrl,
+  // which fires pagehide too) posted the full answer set back to /api/partial
+  // with no id — minting a duplicate `partial` twin of the response that had
+  // just been recorded, and poisoning drop-off with a phantom abandon.
+  const doneRef = useRef(false);
 
   const answerable = useMemo(
     () => form.fields.filter((f) => !NON_ANSWER_TYPES.has(f.type)),
@@ -153,7 +197,7 @@ export function FormRuntime({
 
   // ── Save & resume ─────────────────────────────────────────────────
   async function savePartialNow() {
-    if (testMode) return;
+    if (testMode || doneRef.current) return;
     const payload = answerable
       .filter(
         (f) =>
@@ -176,11 +220,7 @@ export function FormRuntime({
       const data = await res.json().catch(() => null);
       if (data?.submissionId) {
         submissionIdRef.current = data.submissionId;
-        try {
-          localStorage.setItem(resumeKey, data.submissionId);
-        } catch {
-          /* storage blocked */
-        }
+        writeDraftToken(form.publicId, data.submissionId);
       }
     } catch {
       /* best-effort */
@@ -193,28 +233,32 @@ export function FormRuntime({
     partialTimer.current = setTimeout(savePartialNow, 1200);
   }
 
-  // Restore a saved draft on return; flush a final save when the tab is hidden.
+  // Offer any saved draft on return; flush a final save when the tab is hidden.
+  //
+  // The draft is fetched but NOT applied — `pendingDraft` drives a prompt and
+  // the respondent chooses. Silently restoring meant that on a shared or kiosk
+  // browser the next person to open the form inherited the previous person's
+  // answers, which for these forms can be contact details or a CV.
   useEffect(() => {
     if (testMode) return;
-    let saved: string | null = null;
-    try {
-      saved = localStorage.getItem(resumeKey);
-    } catch {
-      /* ignore */
-    }
-    if (saved) {
-      submissionIdRef.current = saved;
+    // On the conversational hand-off the answers came in as props and the draft
+    // row is already known, so there is nothing to offer — but the unload flush
+    // below still applies to anything typed from here on.
+    const token = handedOver ? null : readDraftToken(form.publicId);
+    if (token) {
       fetch(
         `/api/partial?publicId=${encodeURIComponent(
           form.publicId
-        )}&submissionId=${encodeURIComponent(saved)}`
+        )}&submissionId=${encodeURIComponent(token.id)}`
       )
         .then((r) => (r.ok ? r.json() : null))
         .then((d) => {
           if (d?.values && Object.keys(d.values).length > 0) {
-            valuesRef.current = d.values;
-            setValues(d.values);
-            setResumed(true);
+            setPendingDraft({ id: token.id, savedAt: token.savedAt, values: d.values });
+          } else {
+            // Gone server-side (promoted, or the form was edited) — drop the token
+            // so we don't ask again on every visit.
+            clearDraftToken(form.publicId);
           }
         })
         .catch(() => {});
@@ -226,7 +270,25 @@ export function FormRuntime({
       if (partialTimer.current) clearTimeout(partialTimer.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [testMode, form.publicId]);
+  }, [testMode, handedOver, form.publicId]);
+
+  /** Resume prompt — "Continue": adopt the draft row and its answers. */
+  function continueDraft() {
+    if (!pendingDraft) return;
+    submissionIdRef.current = pendingDraft.id;
+    valuesRef.current = pendingDraft.values;
+    setValues(pendingDraft.values);
+    setPendingDraft(null);
+  }
+
+  /** Resume prompt — "Start fresh": abandon the draft. The row stays on the
+   *  server as an ordinary abandoned partial (it's real drop-off data); we just
+   *  stop pointing at it, so the next autosave opens a new one. */
+  function startFresh() {
+    clearDraftToken(form.publicId);
+    submissionIdRef.current = null;
+    setPendingDraft(null);
+  }
 
   function setValue(id: string, value: AnswerValue) {
     setValues((prev) => {
@@ -288,9 +350,18 @@ export function FormRuntime({
 
     if (partialTimer.current) clearTimeout(partialTimer.current);
     setSubmitting(true);
-    const payload = answerable
+    const payload: SubmitAnswer[] = answerable
       .filter((f) => isFieldVisible(f.logic, values) && !isEmpty(values[f.id]))
-      .map((f) => ({ fieldId: f.id, value: values[f.id]! }));
+      .map((f) => ({
+        fieldId: f.id,
+        value: values[f.id]!,
+        // Present only on the conversational hand-off, where the respondent may
+        // have answered in another language.
+        ...(answerMeta?.[f.id] ?? {}),
+      }));
+    // AI follow-ups collected in chat before the degrade. They belong to no
+    // field, so nothing else would carry them into the submission.
+    if (extraAnswers?.length) payload.push(...extraAnswers);
 
     // The action returns {success:false} for anything it can handle, but the
     // CALL itself rejects on transport failure — offline, dropped tunnel, an
@@ -305,6 +376,7 @@ export function FormRuntime({
         answers: payload,
         meta: collectClientMeta(),
         submissionId: submissionIdRef.current, // promote the draft if we have one
+        language: language ?? null,
       });
     } catch {
       setSubmitting(false);
@@ -316,12 +388,12 @@ export function FormRuntime({
       setError(res.error);
       return;
     }
-    // Done — clear the resume token so a fresh visit starts clean.
-    try {
-      localStorage.removeItem(resumeKey);
-    } catch {
-      /* ignore */
-    }
+    // Recorded. Latch this BEFORE anything that can trigger `pagehide` (the
+    // redirect below, or the respondent closing the tab on the success screen)
+    // so the unload saver can never re-post these answers as a new draft.
+    doneRef.current = true;
+    valuesRef.current = {};
+    clearDraftToken(form.publicId);
     submissionIdRef.current = null;
     // A redirect URL is the form's own thank-you page.
     if (form.redirectUrl) {
@@ -487,6 +559,59 @@ export function FormRuntime({
           videoUrl={form.successVideoUrl}
           className="mt-6 w-full"
         />
+      </div>
+    );
+  }
+
+  // Resume prompt — asked BEFORE the fill-style chooser and before any answer
+  // reaches the screen, because the draft may not belong to the person looking
+  // at it (see readDraftToken). Nothing is restored until they pick.
+  if (pendingDraft) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 px-4 backdrop-blur-sm">
+        <motion.div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="resume-title"
+          initial={reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.98, y: 6 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+          className="w-full max-w-md rounded-lg border border-border bg-background p-6 sm:p-8"
+        >
+          {form.title ? (
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              {form.title}
+            </p>
+          ) : null}
+          <h2
+            id="resume-title"
+            className="mt-1 text-xl font-bold tracking-tight text-foreground"
+          >
+            Continue where you left off?
+          </h2>
+          <p className="mt-1.5 text-sm text-muted-foreground">
+            We saved an unfinished response from{" "}
+            {formatDistanceToNow(pendingDraft.savedAt, { addSuffix: true })}. If this
+            isn&apos;t yours, start fresh.
+          </p>
+          <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <button
+              type="button"
+              onClick={startFresh}
+              className="h-11 rounded-md border border-border px-5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
+            >
+              Start fresh
+            </button>
+            <button
+              type="button"
+              onClick={continueDraft}
+              autoFocus
+              className="h-11 rounded-md bg-foreground px-5 text-sm font-medium text-background transition-opacity hover:opacity-90"
+            >
+              Continue
+            </button>
+          </div>
+        </motion.div>
       </div>
     );
   }
@@ -675,19 +800,6 @@ export function FormRuntime({
           </p>
         </header>
 
-        {resumed ? (
-          <div className="mb-6 flex items-center justify-between gap-2 rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-            <span>We restored the answers you started earlier.</span>
-            <button
-              type="button"
-              onClick={() => setResumed(false)}
-              className="shrink-0 font-medium text-foreground hover:underline"
-            >
-              Dismiss
-            </button>
-          </div>
-        ) : null}
-
         <AnimatePresence mode="wait" initial={false}>
           <motion.div
             key={currentStep.key}
@@ -793,19 +905,6 @@ export function FormRuntime({
           </p>
         ) : null}
       </header>
-
-      {resumed ? (
-        <div className="mb-6 flex items-center justify-between gap-2 rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-          <span>We restored the answers you started earlier.</span>
-          <button
-            type="button"
-            onClick={() => setResumed(false)}
-            className="shrink-0 font-medium text-foreground hover:underline"
-          >
-            Dismiss
-          </button>
-        </div>
-      ) : null}
 
       <AnimatePresence mode="wait" initial={false}>
         <motion.div

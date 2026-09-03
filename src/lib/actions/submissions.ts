@@ -21,33 +21,35 @@ import { sendSubmissionEmails } from "@/lib/integrations/email"
 import { deliverDiscord } from "@/lib/integrations/discord"
 import { syncSubmissionToNotion, deleteSubmissionFromNotion } from "@/lib/integrations/notion-sync"
 import { destroyAssets, resourceTypeFromMime } from "@/lib/cloudinary/delete"
+import { isCloudinaryUrl } from "@/lib/cloudinary/url"
 import { processSubmission, intelligenceEnabled } from "@/lib/ai/submission-intelligence"
 import { getDefaultWorkspace } from "@/lib/auth/session"
 import { NON_ANSWER_TYPES, isEmpty, isFieldVisible } from "@/lib/builder/logic"
+import { MAX_ANSWERS, MAX_VALUE_LEN, valueLength } from "@/lib/submissions/limits"
+import { LIMITS, rateLimit } from "@/lib/rate-limit"
+import { isUniqueViolation } from "@/lib/db/errors"
 
 // Server-side submit guards (the client validates too, but a crafted POST skips
-// it — never store unbounded or malformed data).
-const MAX_ANSWERS = 1000
-const MAX_VALUE_LEN = 50_000
+// it — never store unbounded or malformed data). Shared with /api/partial.
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const URL_RE = /^https?:\/\/\S+\.\S+/i
 
 type FieldRow = typeof formFields.$inferSelect
 
-function valueLength(v: AnswerValue): number {
-  if (typeof v === "string") return v.length
-  if (Array.isArray(v)) return v.reduce((n, x) => n + String(x).length, 0)
-  return String(v ?? "").length
-}
-
 /**
  * Validate one answer against its field type. Returns an error string or null.
  *
- * `strict` (classic mode only) additionally enforces format/option membership —
- * safe there because the classic client already validates with the same rules,
- * so it never false-rejects a legit submit. Conversational answers are AI-coerced
- * (and may keep raw free text for unmatched choices), so they get size + type
- * sanity only.
+ * `strict` (classic mode only) additionally enforces format/option membership.
+ * Conversational answers are AI-coerced (and may keep raw free text for
+ * unmatched choices), so they get size + type sanity only.
+ *
+ * NOTE on option membership: a field with `config.allowOther` stores the
+ * respondent's typed text AS the answer — that is the whole design of the Other
+ * box (see OtherChoice in field-control.tsx), and the client validator never
+ * checks membership. Enforcing it here regardless made every classic form with
+ * an Other option unsubmittable the moment someone used it: the answer is by
+ * definition not one of the listed labels. So membership is only enforced when
+ * Other is off.
  */
 function validateAnswer(field: FieldRow, value: AnswerValue, strict: boolean): string | null {
   const label = field.label || "a field"
@@ -60,6 +62,7 @@ function validateAnswer(field: FieldRow, value: AnswerValue, strict: boolean): s
   if (!strict) return null
 
   const opts = (field.options ?? []).map((o) => o.label)
+  const allowOther = field.config?.allowOther === true
   switch (field.type) {
     case "email":
       if (typeof value !== "string" || !EMAIL_RE.test(value))
@@ -74,13 +77,19 @@ function validateAnswer(field: FieldRow, value: AnswerValue, strict: boolean): s
       break
     case "multiple_choice":
     case "dropdown":
-      if (typeof value !== "string" || (opts.length > 0 && !opts.includes(value)))
+      if (typeof value !== "string") return `Invalid option for "${label}".`
+      if (!allowOther && opts.length > 0 && !opts.includes(value))
         return `Invalid option for "${label}".`
       break
     case "multi_select":
     case "checkboxes":
-      if (Array.isArray(value) && opts.length > 0 && value.some((v) => !opts.includes(String(v))))
-        return `Invalid option for "${label}".`
+      if (Array.isArray(value) && opts.length > 0) {
+        const extras = value.filter((v) => !opts.includes(String(v)))
+        // With Other enabled exactly ONE value may sit outside the option list —
+        // the text typed into the Other box. Two or more means the payload
+        // didn't come from the runtime, so it's still rejected.
+        if (extras.length > (allowOther ? 1 : 0)) return `Invalid option for "${label}".`
+      }
       break
     case "nps":
     case "rating":
@@ -97,19 +106,46 @@ type SubmitResult = { success: true } | { success: false; error: string }
 
 type StoredFile = { storageKey: string; url: string; name: string; mime: string; bytes: number }
 
-/** Extract uploaded-file metadata from a file_upload/signature answer value. */
+/** Ceiling for a single respondent upload. Far above any real file, low enough
+ *  that one forged `bytes` can't blow out the workspace storage total. */
+const MAX_FILE_BYTES = 1024 * 1024 * 1024 // 1 GB
+
+/**
+ * Extract uploaded-file metadata from a file_upload/signature answer value.
+ *
+ * Uploads go straight from the respondent's browser to Cloudinary, so every
+ * field here is attacker-controlled: whatever is posted is what lands in
+ * `uploads`, where `url` is later rendered and `bytes` is summed into the
+ * workspace storage quota. Previously only `storageKey`/`url` were checked for
+ * being non-empty strings, so a crafted submit could point a row at any URL and
+ * claim any size. Each entry is now validated and bounded, and one that fails
+ * is dropped rather than stored.
+ */
 function filesFromValue(v: AnswerValue | undefined): StoredFile[] {
   if (!v || typeof v !== "object" || Array.isArray(v)) return []
   const files = (v as { files?: unknown }).files
   if (!Array.isArray(files)) return []
-  return files.filter(
-    (f): f is StoredFile =>
-      !!f &&
-      typeof f === "object" &&
-      typeof (f as StoredFile).storageKey === "string" &&
-      (f as StoredFile).storageKey !== "" &&
-      typeof (f as StoredFile).url === "string",
-  )
+
+  const out: StoredFile[] = []
+  for (const f of files) {
+    if (!f || typeof f !== "object") continue
+    const r = f as Record<string, unknown>
+    const storageKey = typeof r.storageKey === "string" ? r.storageKey : ""
+    const url = typeof r.url === "string" ? r.url : ""
+    // Pins the host AND our cloud name — another account's URL doesn't qualify.
+    if (!storageKey || !isCloudinaryUrl(url)) continue
+    const raw = r.bytes
+    const bytes = typeof raw === "number" && Number.isFinite(raw) ? Math.round(raw) : -1
+    if (bytes < 0 || bytes > MAX_FILE_BYTES) continue
+    out.push({
+      storageKey: storageKey.slice(0, 500),
+      url,
+      name: typeof r.name === "string" && r.name ? r.name.slice(0, 255) : "file",
+      mime: typeof r.mime === "string" ? r.mime.slice(0, 100) : "",
+      bytes,
+    })
+  }
+  return out
 }
 
 /**
@@ -143,6 +179,14 @@ export async function submitForm(input: {
   /** Language the respondent answered in (conversational mode). */
   language?: string | null
 }): Promise<SubmitResult> {
+  // Sized per IP, and an IP is a whole office or conference — not a person
+  // (see LIMITS). Blocking a genuine respondent loses a submission the owner
+  // never finds out about, so this is the most generous budget of the set.
+  const limit = await rateLimit("submit", LIMITS.submit)
+  if (!limit.ok) {
+    return { success: false, error: "Too many attempts. Please wait a moment and try again." }
+  }
+
   const [form] = await db
     .select()
     .from(forms)
@@ -219,6 +263,11 @@ export async function submitForm(input: {
     return { success: false, error: `Please answer: ${f.label || "a required question"}` }
   }
 
+  // Cheap pre-check so an obviously-closed form rejects without opening a
+  // transaction. It is NOT the enforcement point — a count read outside the
+  // transaction lets concurrent submits all observe the same under-limit value
+  // and all commit. The authoritative re-count happens under an advisory lock
+  // inside the transaction below.
   if (form.submissionLimit != null) {
     const [{ count }] = await db
       .select({ count: sql<number>`count(*)::int` })
@@ -230,6 +279,10 @@ export async function submitForm(input: {
   // One response per person: block a respondent (coarse device identity) who
   // already has a completed response. Best-effort — stored on the row so it's
   // enforced and visible going forward.
+  //
+  // Like the cap above, this read is only a fast path that produces a friendly
+  // message. The real guarantee is `submissions_form_respondent_unique_idx`,
+  // whose violation is caught after the transaction.
   let respondentKey: string | null = null
   if (form.oneResponsePerPerson) {
     respondentKey = await getRespondentKey()
@@ -260,8 +313,27 @@ export async function submitForm(input: {
   const metaValue = Object.keys(meta).length > 0 ? meta : null
 
   let submissionId: string | null = null
+  let overLimit = false
   try {
     await db.transaction(async (tx) => {
+      // Capped forms serialize here. The count that decides whether this
+      // response fits has to be taken while holding something, or N concurrent
+      // submits each read "99 of 100" and each commit — the exact failure a
+      // load test surfaces. The lock is transaction-scoped (released on commit
+      // or rollback) and keyed on the form, so only submissions to the SAME
+      // capped form queue; uncapped forms never take it at all.
+      if (form.submissionLimit != null) {
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${form.id}))`)
+        const [{ count }] = await tx
+          .select({ count: sql<number>`count(*)::int` })
+          .from(submissions)
+          .where(and(eq(submissions.formId, form.id), eq(submissions.status, "completed")))
+        if (count >= form.submissionLimit) {
+          overLimit = true
+          return // nothing written; the tx commits empty
+        }
+      }
+
       // Promote the respondent's partial draft (save & resume) to completed if
       // they have one; otherwise create a fresh completed submission.
       if (input.submissionId) {
@@ -348,15 +420,24 @@ export async function submitForm(input: {
           url: file.url,
           fileName: file.name,
           mimeType: file.mime || "application/octet-stream",
-          bytes: Math.round(file.bytes) || 0,
+          bytes: file.bytes, // already validated + bounded in filesFromValue
         }))
       })
       if (uploadRows.length > 0) await tx.insert(uploads).values(uploadRows)
     })
   } catch (err) {
+    // The only unique constraint a submit can trip is
+    // submissions_form_respondent_unique_idx, i.e. this respondent raced their
+    // own second submission past the pre-check above. That's the rule working,
+    // not an error — report it the same way the pre-check does.
+    if (isUniqueViolation(err)) {
+      return { success: false, error: "You've already responded to this form." }
+    }
     console.error("[submitForm] failed", err)
     return { success: false, error: "Couldn't submit your response. Please try again." }
   }
+  // Decided inside the transaction, under the advisory lock.
+  if (overLimit) return { success: false, error: "This form is closed." }
 
   // Everything below is best-effort, post-commit work (funnel event + integration
   // delivery — Sheets/webhooks/email, each with its own network I/O and a slow

@@ -5,7 +5,14 @@ import { submitForm } from "@/lib/actions/submissions"
 import type { PublicForm, PublicField } from "@/lib/data/public-form"
 import type { AnswerValue } from "@/lib/db/schema"
 import { isFieldVisible, NON_ANSWER_TYPES, isEmpty } from "@/lib/builder/logic"
-import { collectClientMeta, track } from "@/lib/forms/client-meta"
+import {
+  collectClientMeta,
+  track,
+  readDraftToken,
+  writeDraftToken,
+  clearDraftToken,
+} from "@/lib/forms/client-meta"
+import { formatDistanceToNow } from "date-fns"
 import { Control, Check, FormBranding } from "@/components/forms/field-control"
 import { SuccessContent } from "@/components/forms/success-content"
 import { SVGIcon } from "@/components/ui/svg-icon"
@@ -50,7 +57,13 @@ export function ConversationalRuntime({ form }: { form: PublicForm }) {
     "booting",
   )
   const [aiDown, setAiDown] = useState(false)
-  const [resumed, setResumed] = useState(false)
+  // A draft found in storage but NOT yet applied — the respondent is asked
+  // before anything is restored (see the resume prompt below).
+  const [pendingDraft, setPendingDraft] = useState<{
+    id: string
+    savedAt: number
+    values: Record<string, AnswerValue>
+  } | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [input, setInput] = useState("")
   const [multi, setMulti] = useState<string[]>([])
@@ -69,7 +82,12 @@ export function ConversationalRuntime({ form }: { form: PublicForm }) {
   const bootedRef = useRef(false)
   const partialTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
-  const resumeKey = `mf:resume:${form.publicId}`
+  // Set once this runtime must stop writing drafts: after a successful submit,
+  // and on hand-off to the classic runtime (which owns the draft from then on).
+  // Without it the `pagehide` listener below — which outlives both events,
+  // since this component stays mounted in either case — re-posted the full
+  // answer set as a brand-new partial row.
+  const doneRef = useRef(false)
 
   const fieldById = useMemo(
     () => new Map(form.fields.map((f) => [f.id, f])),
@@ -99,7 +117,11 @@ export function ConversationalRuntime({ form }: { form: PublicForm }) {
   }
 
   // ── Partial save (shared draft + resume token, identical to classic) ───────
-  function savePartialNow() {
+  // Returns a promise so callers that must not race the write — notably the
+  // degrade hand-off, which passes the draft straight to the classic runtime —
+  // can await it.
+  async function savePartialNow(): Promise<void> {
+    if (doneRef.current) return
     const payload = form.fields
       .filter(
         (f) =>
@@ -109,28 +131,25 @@ export function ConversationalRuntime({ form }: { form: PublicForm }) {
       )
       .map((f) => ({ fieldId: f.id, value: valuesRef.current[f.id]! }))
     if (payload.length === 0) return
-    fetch("/api/partial", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        publicId: form.publicId,
-        submissionId: submissionIdRef.current,
-        answers: payload,
-      }),
-      keepalive: true,
-    })
-      .then((r) => r.json().catch(() => null))
-      .then((data) => {
-        if (data?.submissionId) {
-          submissionIdRef.current = data.submissionId
-          try {
-            localStorage.setItem(resumeKey, data.submissionId)
-          } catch {
-            /* storage blocked */
-          }
-        }
+    try {
+      const res = await fetch("/api/partial", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          publicId: form.publicId,
+          submissionId: submissionIdRef.current,
+          answers: payload,
+        }),
+        keepalive: true,
       })
-      .catch(() => {})
+      const data = await res.json().catch(() => null)
+      if (data?.submissionId) {
+        submissionIdRef.current = data.submissionId
+        writeDraftToken(form.publicId, data.submissionId)
+      }
+    } catch {
+      /* best-effort */
+    }
   }
   function schedulePartialSave() {
     if (partialTimer.current) clearTimeout(partialTimer.current)
@@ -143,29 +162,31 @@ export function ConversationalRuntime({ form }: { form: PublicForm }) {
     bootedRef.current = true
     track(form.publicId, "view")
 
+    // Offer a saved draft rather than applying it: the token is keyed by form,
+    // not by person, so on a shared device it may belong to someone else. The
+    // conversation only opens once the respondent has chosen.
     const boot = async () => {
-      try {
-        const saved = localStorage.getItem(resumeKey)
-        if (saved) {
-          submissionIdRef.current = saved
+      const token = readDraftToken(form.publicId) // null when missing or stale
+      if (token) {
+        try {
           const r = await fetch(
-            `/api/partial?publicId=${encodeURIComponent(form.publicId)}&submissionId=${encodeURIComponent(saved)}`,
+            `/api/partial?publicId=${encodeURIComponent(form.publicId)}&submissionId=${encodeURIComponent(token.id)}`,
           )
           const d = r.ok ? await r.json() : null
           if (d?.values && Object.keys(d.values).length > 0) {
-            valuesRef.current = d.values
-            setValues(d.values)
-            setResumed(true)
+            setPendingDraft({ id: token.id, savedAt: token.savedAt, values: d.values })
+            return // continueDraft / startFresh opens the conversation
           }
+          clearDraftToken(form.publicId) // gone server-side — stop offering it
+        } catch {
+          /* unreachable draft — just start a fresh conversation */
         }
-      } catch {
-        /* ignore resume errors */
       }
       await runTurn(undefined)
     }
     void boot()
 
-    const onHide = () => savePartialNow()
+    const onHide = () => void savePartialNow()
     window.addEventListener("pagehide", onHide)
     return () => {
       window.removeEventListener("pagehide", onHide)
@@ -249,12 +270,16 @@ export function ConversationalRuntime({ form }: { form: PublicForm }) {
     if (meta.language) submissionLangRef.current = meta.language
 
     if (meta.action === "degrade") {
-      // The server couldn't capture a required answer in chat. Persist progress
-      // and hand off to the classic runtime, which resumes the shared draft so
-      // nothing is lost and the respondent can finish the required fields and
+      // The server couldn't capture a required answer in chat. Persist progress,
+      // then hand off to the classic runtime so the respondent can finish and
       // submit — a submission is never blocked by the AI layer.
-      savePartialNow()
-      degradeToClassic()
+      //
+      // AWAIT the save: this used to be fire-and-forget, and the classic runtime
+      // would fetch the shared draft before the write landed (or before the row
+      // existed at all, on the first save), resuming empty and losing the whole
+      // conversation. The answers are also passed in-process below, so the
+      // hand-off no longer depends on that round-trip at all.
+      void savePartialNow().then(() => degradeToClassic())
       return
     }
 
@@ -311,7 +336,32 @@ export function ConversationalRuntime({ form }: { form: PublicForm }) {
     send({ reply: text, display: text })
   }
 
+  /** Resume prompt — "Continue": adopt the draft, then open the conversation.
+   *  The turn endpoint skips already-answered fields, so it lands on the first
+   *  unanswered question by itself. */
+  function continueDraft() {
+    if (!pendingDraft) return
+    submissionIdRef.current = pendingDraft.id
+    valuesRef.current = pendingDraft.values
+    setValues(pendingDraft.values)
+    setPendingDraft(null)
+    void runTurn(undefined)
+  }
+
+  /** Resume prompt — "Start fresh": abandon the draft (the row stays as real
+   *  drop-off data) and start a new conversation. */
+  function startFresh() {
+    clearDraftToken(form.publicId)
+    submissionIdRef.current = null
+    setPendingDraft(null)
+    void runTurn(undefined)
+  }
+
   function degradeToClassic() {
+    // The classic runtime owns the draft from here — this one must stop writing
+    // to it, or its unload saver would post the chat answers back as a new row
+    // after the classic form has already submitted them.
+    doneRef.current = true
     setAiDown(true)
   }
 
@@ -362,11 +412,11 @@ export function ConversationalRuntime({ form }: { form: PublicForm }) {
       setStatus("ready")
       return
     }
-    try {
-      localStorage.removeItem(resumeKey)
-    } catch {
-      /* ignore */
-    }
+    // Recorded. Latch this BEFORE the redirect below (which fires `pagehide`)
+    // so the unload saver can never re-post these answers as a new draft.
+    doneRef.current = true
+    valuesRef.current = {}
+    clearDraftToken(form.publicId)
     submissionIdRef.current = null
     if (form.redirectUrl) {
       window.location.href = form.redirectUrl
@@ -376,9 +426,69 @@ export function ConversationalRuntime({ form }: { form: PublicForm }) {
   }
 
   // ── Render ────────────────────────────────────────────────────────────────
+  // Asked before the conversation opens and before any saved answer is shown —
+  // the draft may belong to whoever used this browser last.
+  if (pendingDraft) {
+    return (
+      <div className="mx-auto flex min-h-[70dvh] w-full max-w-md flex-col items-center justify-center">
+        <div className="w-full rounded-lg border border-border bg-background p-6 sm:p-8">
+          {form.title ? (
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              {form.title}
+            </p>
+          ) : null}
+          <h2 className="mt-1 text-xl font-bold tracking-tight text-foreground">
+            Continue where you left off?
+          </h2>
+          <p className="mt-1.5 text-sm text-muted-foreground">
+            We saved an unfinished response from{" "}
+            {formatDistanceToNow(pendingDraft.savedAt, { addSuffix: true })}. If this
+            isn&apos;t yours, start fresh.
+          </p>
+          <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <button
+              type="button"
+              onClick={startFresh}
+              className="h-11 rounded-md border border-border px-5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
+            >
+              Start fresh
+            </button>
+            <button
+              type="button"
+              onClick={continueDraft}
+              autoFocus
+              className="h-11 rounded-md bg-foreground px-5 text-sm font-medium text-background transition-opacity hover:opacity-90"
+            >
+              Continue
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   if (aiDown) {
-    // Graceful degradation: classic runtime resumes the shared draft.
-    return <FormRuntime form={form} />
+    // Graceful degradation. Everything the conversation collected is handed
+    // over directly — the parsed field values, the draft row they belong to,
+    // the AI follow-up answers (which map to no form field and would otherwise
+    // be dropped), and the per-answer original text/language. Nothing here
+    // depends on the classic runtime re-fetching the shared draft.
+    return (
+      <FormRuntime
+        form={form}
+        initialValues={valuesRef.current}
+        initialSubmissionId={submissionIdRef.current}
+        extraAnswers={followUpsRef.current.map((fu) => ({
+          fieldId: null,
+          value: fu.value,
+          isAiFollowUp: true,
+          question: fu.question,
+          type: "long_text",
+        }))}
+        answerMeta={langMetaRef.current}
+        language={submissionLangRef.current}
+      />
+    )
   }
 
   if (status === "done") {
@@ -419,12 +529,6 @@ export function ConversationalRuntime({ form }: { form: PublicForm }) {
       </header>
 
       <div className="space-y-4">
-        {resumed ? (
-          <div className="mx-auto w-fit rounded-md border border-border bg-muted/40 px-3 py-1 text-xs text-muted-foreground">
-            Picking up where you left off.
-          </div>
-        ) : null}
-
         {messages.map((m, i) =>
           m.role === "user" ? (
             <div key={i} className="flex justify-end">
