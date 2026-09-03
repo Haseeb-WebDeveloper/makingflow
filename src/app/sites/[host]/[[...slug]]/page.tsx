@@ -9,6 +9,14 @@ import { FormRenderer } from "@/components/forms/form-renderer"
  * Reuses the exact same FormRuntime + resolution as /f/[publicId].
  */
 
+/**
+ * Same budget as /f/[publicId], and for the same reason: this route hosts the
+ * submit Server Action for custom-domain forms, so it owns the `after()`
+ * integration fan-out too. A form served from a customer's own domain must not
+ * quietly deliver less than the same form served from the share link.
+ */
+export const maxDuration = 60
+
 type Params = Promise<{ host: string; slug?: string[] }>
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {

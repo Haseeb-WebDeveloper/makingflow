@@ -3,6 +3,21 @@ import { getPublicForm } from "@/lib/data/public-form";
 import { FormRenderer } from "@/components/forms/form-renderer";
 import { Lottie } from "@/components/builder/lottie";
 
+/**
+ * `submitForm` is a Server Action, and a Server Action runs as a POST to the
+ * page that hosts it — so this page's budget is the submit path's budget.
+ *
+ * It has to cover the `after()` work, not just the insert: Sheets, Notion, a
+ * webhook (5s timeout plus one retry), email, Discord, and then the AI
+ * summary/screening sequentially after those. The platform default (10-15s)
+ * cuts that off partway, and because `after()` runs post-response the casualty
+ * is silent — the respondent sees success, the row is in the inbox, and the
+ * Sheets row simply never appears with nothing logged. The integration code is
+ * already written against a 60s budget (see MAX_FORM_BACKFILL in notion-sync),
+ * which every dashboard route grants and this one did not.
+ */
+export const maxDuration = 60;
+
 export async function generateMetadata({
   params,
 }: {

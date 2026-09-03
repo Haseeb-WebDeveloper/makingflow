@@ -247,6 +247,24 @@ export function ConversationalRuntime({ form }: { form: PublicForm }) {
         setMessages(messagesRef.current)
         scrollToEnd()
       }
+      // A failed model call CANNOT arrive here as a rejection. `streamText`
+      // sends 200 with the turn headers before it ever reaches the model, so a
+      // failure — an outage, or a drained API balance returning 402 — surfaces
+      // as a stream that closes having produced nothing. Every check above
+      // tests the transport, and the transport was fine.
+      //
+      // A turn that was going to ASK something and produced no text leaves the
+      // respondent staring at an empty bubble with no question and no way
+      // forward, which is the one thing the AI layer must never do. Treat it as
+      // a failed turn so the catch below hands off to the classic form.
+      //
+      // `done` is deliberately exempt: every answer is already collected, and
+      // applyMeta substitutes a closing line and submits. Bouncing someone to a
+      // fresh form at that point would lose the conversation, not save it.
+      if (!acc.trim() && meta.action !== "done") {
+        throw new Error(`turn "${meta.action}" produced no text`)
+      }
+
       applyMeta(meta, prev, acc)
     } catch (err) {
       console.error("[conversational] turn failed — degrading to classic", err)

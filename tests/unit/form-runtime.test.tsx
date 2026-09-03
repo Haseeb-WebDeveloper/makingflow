@@ -65,11 +65,6 @@ function mockFetch(draftValues?: Record<string, unknown>) {
 beforeEach(() => {
   localStorage.clear()
   submitForm.mockClear()
-  // jsdom ships neither of these, and framer-motion / the runtime use both.
-  window.matchMedia ??= ((q: string) =>
-    ({ matches: false, media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, onchange: null, dispatchEvent: () => false })) as typeof window.matchMedia
-  window.scrollTo = vi.fn() as typeof window.scrollTo
-  Element.prototype.scrollIntoView = vi.fn()
 })
 afterEach(() => {
   // The vitest config runs with `globals: false`, so testing-library never
