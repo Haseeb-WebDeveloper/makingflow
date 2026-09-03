@@ -154,7 +154,7 @@ export function UserNav({ user, workspaces, activeWorkspaceId }: UserNavProps) {
                   disabled={pending}
                   className="gap-2"
                 >
-                  <WorkspaceAvatar name={w.name} logoUrl={w.logoUrl} size="xs" />
+                  <WorkspaceAvatar id={w.id} name={w.name} logoUrl={w.logoUrl} size="xs" />
                   <span className="min-w-0 flex-1 truncate">{w.name}</span>
                   <span className="shrink-0 text-[10px] capitalize text-muted-foreground">
                     {w.role}

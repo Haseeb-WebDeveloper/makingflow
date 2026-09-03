@@ -141,7 +141,7 @@ export function WorkspaceList({
               <TableRow key={w.id}>
                 <TableCell>
                   <div className="flex items-center gap-3">
-                    <WorkspaceAvatar name={w.name} logoUrl={w.logoUrl} size="md" />
+                    <WorkspaceAvatar id={w.id} name={w.name} logoUrl={w.logoUrl} size="md" />
                     <div className="min-w-0">
                       <p className="flex items-center gap-2 truncate text-sm font-medium text-foreground">
                         {w.name}

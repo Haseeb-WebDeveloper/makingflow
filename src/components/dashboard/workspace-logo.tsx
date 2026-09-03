@@ -31,7 +31,8 @@ export function WorkspaceLogo({
   const router = useRouter()
   const [pending, start] = React.useTransition()
 
-  if (!canEdit) return <WorkspaceAvatar name={name} logoUrl={logoUrl} size="lg" />
+  if (!canEdit)
+    return <WorkspaceAvatar id={workspaceId} name={name} logoUrl={logoUrl} size="lg" />
 
   function save(url: string | null) {
     start(async () => {
@@ -55,7 +56,7 @@ export function WorkspaceLogo({
         onUpload={(r) => save(r.secureUrl)}
       >
         <span className="group relative block">
-          <WorkspaceAvatar name={name} logoUrl={logoUrl} size="lg" />
+          <WorkspaceAvatar id={workspaceId} name={name} logoUrl={logoUrl} size="lg" />
           <span className="absolute inset-0 flex items-center justify-center rounded-md bg-background/70 text-[10px] font-medium text-foreground opacity-0 transition-opacity group-hover:opacity-100">
             Change
           </span>
