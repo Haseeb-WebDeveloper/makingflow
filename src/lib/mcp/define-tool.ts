@@ -27,7 +27,7 @@ import "server-only"
 
 import * as z from "zod"
 import { authorize, type AuthContext, type Scope } from "@/lib/auth/context"
-import type { WorkspaceAction } from "@/lib/auth/permissions"
+import type { WorkspaceAction } from "@/lib/auth/roles"
 
 /**
  * A failure the CALLER should see in full: "Form not found", "That folder

@@ -29,7 +29,10 @@
  *   - `src/lib/mcp/auth.ts`          → API key bearer token
  */
 
-import { can, type WorkspaceAction } from "@/lib/auth/permissions"
+// From roles.ts, not permissions.ts: the latter also holds the cookie-bound
+// gates, and importing it here would drag next/headers into a module whose
+// entire purpose is to be transport-agnostic.
+import { can, type WorkspaceAction } from "@/lib/auth/roles"
 
 declare const seal: unique symbol
 

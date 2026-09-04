@@ -38,6 +38,7 @@
 import { createHash } from "node:crypto"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
+import "dotenv/config"
 import postgres from "postgres"
 
 type JournalEntry = { idx: number; when: number; tag: string; breakpoints: boolean }
@@ -70,6 +71,14 @@ function loadMigrations() {
 async function main() {
   const url = process.env.DATABASE_URL
   if (!url) throw new Error("DATABASE_URL is not set")
+
+  // Say which database this is about to change, before changing it. `.env` is
+  // loaded as a fallback (dotenv does not override an already-set variable), so
+  // running this with no environment set targets whatever `.env` points at —
+  // which may well be production. Printing the host makes that impossible to
+  // do by accident. The credentials are never printed.
+  const target = new URL(url)
+  console.log(`migrating: ${target.hostname}${target.pathname}`)
 
   // max: 1 so every statement lands on the same backend — a migration that
   // creates something and then uses it must not race across pooled sockets.
