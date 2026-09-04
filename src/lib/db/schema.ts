@@ -526,6 +526,105 @@ export const workspaceUsage = pgTable(
 )
 
 // ---------------------------------------------------------------------------
+// MCP access
+// ---------------------------------------------------------------------------
+
+// API keys for the MCP server (/api/mcp), which lets an external AI client do
+// what a member can do in the app.
+//
+// USER-SCOPED, NOT WORKSPACE-SCOPED. A key names both the workspace it reaches
+// and the member who minted it, and it carries NO ROLE: the role is re-read from
+// `workspace_members` on every request. That is what makes access revocation
+// instant — remove the member (or delete the user, which cascades these rows)
+// and their keys stop working on the next call, with no sweep to run and no
+// stale `owner` cached anywhere.
+//
+// The secret is never stored. `key_hash` is HMAC-SHA256 of the presented token
+// under APP_ENCRYPTION_KEY (see hashApiKey in src/lib/integrations/crypto.ts),
+// so a SQL-level dump alone yields nothing usable. Lookup goes straight to the
+// unique index on that hash; `prefix` is display-only ("mf_sk_live_a1b2…").
+export const mcpApiKeys = pgTable(
+  'mcp_api_keys',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    // The human the key acts as. Cascades, so deleting a user revokes their keys.
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(), // user-chosen label, e.g. "Claude Code"
+    prefix: text('prefix').notNull(), // display only — never used for lookup
+    keyHash: text('key_hash').notNull(),
+    // Subset of the Scope union in src/lib/auth/context.ts. Scopes only ever
+    // NARROW what the member could already do; they never grant.
+    scopes: text('scopes').array().notNull().default(sql`'{}'::text[]`),
+    lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
+    expiresAt: timestamp('expires_at', { withTimezone: true }),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex('mcp_api_keys_hash_idx').on(table.keyHash),
+    index('mcp_api_keys_workspace_idx').on(table.workspaceId),
+    index('mcp_api_keys_user_idx').on(table.userId),
+  ],
+)
+
+// What each API key did. Append-only.
+//
+// Records the tool and the row it touched — NEVER the arguments. Tool arguments
+// carry answer content, and an audit table is the last place respondent PII
+// should accumulate (see the GDPR note at the top of this file). `key_id` goes
+// null rather than cascading so the trail outlives the key it describes.
+export const mcpAuditLog = pgTable(
+  'mcp_audit_log',
+  {
+    id: bigserial('id', { mode: 'number' }).primaryKey(),
+    keyId: uuid('key_id').references(() => mcpApiKeys.id, { onDelete: 'set null' }),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id').references(() => users.id, { onDelete: 'set null' }),
+    tool: text('tool').notNull(),
+    targetId: text('target_id'), // the form/submission acted on, when there is one
+    status: text('status').notNull(), // ok | denied | error
+    durationMs: integer('duration_ms'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index('mcp_audit_log_workspace_idx').on(table.workspaceId, table.createdAt)],
+)
+
+// Fixed-window request counters for the MCP surface, one row per
+// (key, budget, minute).
+//
+// The existing src/lib/rate-limit.ts cannot serve this: it keys on client IP —
+// meaningless for server-to-server traffic behind a shared egress address —
+// and keeps counters in process memory, so on serverless the real limit is
+// per-instance and resets on cold start. That is a fine floor for the
+// anonymous respondent path; it is not enough for an authenticated surface
+// that spends AI budget.
+//
+// Rows are disposable: anything older than the current minute is dead weight
+// and can be swept whenever convenient.
+export const mcpRateLimits = pgTable(
+  'mcp_rate_limits',
+  {
+    keyId: uuid('key_id')
+      .notNull()
+      .references(() => mcpApiKeys.id, { onDelete: 'cascade' }),
+    budget: text('budget').notNull(), // read | write | ai — priced differently
+    windowStart: timestamp('window_start', { withTimezone: true }).notNull(),
+    hits: integer('hits').notNull().default(0),
+  },
+  (table) => [
+    primaryKey({ columns: [table.keyId, table.budget, table.windowStart] }),
+    index('mcp_rate_limits_window_idx').on(table.windowStart),
+  ],
+)
+
+// ---------------------------------------------------------------------------
 // Forms
 // ---------------------------------------------------------------------------
 
@@ -952,6 +1051,7 @@ export const workspacesRelations = relations(workspaces, ({ one, many }) => ({
   connections: many(workspaceConnections),
   customDomains: many(customDomains),
   usage: many(workspaceUsage),
+  mcpApiKeys: many(mcpApiKeys),
   folders: many(folders),
   forms: many(forms),
   submissions: many(submissions),
@@ -1139,6 +1239,9 @@ export type WorkspaceInvitation = typeof workspaceInvitations.$inferSelect
 export type WorkspaceConnection = typeof workspaceConnections.$inferSelect
 export type CustomDomain = typeof customDomains.$inferSelect
 export type WorkspaceUsage = typeof workspaceUsage.$inferSelect
+export type McpApiKey = typeof mcpApiKeys.$inferSelect
+export type NewMcpApiKey = typeof mcpApiKeys.$inferInsert
+export type McpAuditEntry = typeof mcpAuditLog.$inferSelect
 export type Folder = typeof folders.$inferSelect
 export type Form = typeof forms.$inferSelect
 export type FormField = typeof formFields.$inferSelect

@@ -71,6 +71,20 @@
       "when": 1788421394527,
       "tag": "0009_past_cargill",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1788527754994,
+      "tag": "0010_happy_human_cannonball",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1788530419635,
+      "tag": "0011_milky_wasp",
+      "breakpoints": true
     }
   ]
 }

@@ -36,6 +36,15 @@ function shouldSkipEntirely(pathname: string): boolean {
     return true
   }
   if (pathname.startsWith('/api/webhooks')) return true
+  // The MCP server and its discovery document authenticate themselves, with a
+  // bearer token rather than a session cookie. They must SKIP this gate rather
+  // than join PUBLIC_PATHS: a public path is still rendered by Next, and under
+  // cacheComponents that can emit a static shell with a 200 before a layout's
+  // auth redirect fires. Skipping avoids the question entirely — and without
+  // this, every bearer request gets a 302 to /auth/login, which an MCP client
+  // reports as a baffling HTML response.
+  if (pathname.startsWith('/api/mcp')) return true
+  if (pathname.startsWith('/.well-known')) return true
   return false
 }
 
