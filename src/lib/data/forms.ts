@@ -9,7 +9,6 @@ import {
   customDomains,
   type AnswerValue,
 } from "@/lib/db/schema"
-import { getDefaultWorkspace } from "@/lib/auth/session"
 import { NON_ANSWER_TYPES } from "@/lib/builder/logic"
 import type { AiFieldType } from "@/lib/ai/form-schema"
 import type { EditorForm } from "@/lib/builder/form-model"
@@ -48,10 +47,19 @@ export type EditableForm = {
   domain: string | null
 }
 
-/** Load one form (workspace-scoped) and map it back to the AI form spec. */
-export async function getFormForEdit(id: string): Promise<EditableForm | null> {
-  const workspace = await getDefaultWorkspace()
-  if (!workspace) return null
+/**
+ * Load one form (workspace-scoped) and map it back to the AI form spec.
+ *
+ * Takes `workspaceId` explicitly rather than resolving it from the session,
+ * matching `getFormShell` / `getFormSettings` / `getFormSubmissionCounts`
+ * below. A bearer-authenticated caller (the MCP server) has no session cookie,
+ * so a session-resolved read would return null there and surface to the model
+ * as a baffling "not found".
+ */
+export async function getFormForEdit(
+  id: string,
+  workspaceId: string,
+): Promise<EditableForm | null> {
 
   // Form row (with its custom domain folded in via leftJoin) and its fields are
   // independent — one round-trip instead of form → fields → domain in series.
@@ -60,7 +68,7 @@ export async function getFormForEdit(id: string): Promise<EditableForm | null> {
       .select({ form: forms, domain: customDomains.domain })
       .from(forms)
       .leftJoin(customDomains, eq(customDomains.id, forms.customDomainId))
-      .where(and(eq(forms.id, id), eq(forms.workspaceId, workspace.id), isNull(forms.deletedAt)))
+      .where(and(eq(forms.id, id), eq(forms.workspaceId, workspaceId), isNull(forms.deletedAt)))
       .limit(1),
     db
       .select()
@@ -263,13 +271,16 @@ export type SubmissionsTable = {
   rows: SubmissionRowData[]
 }
 
-/** Submissions for the responses table — columns = answerable fields, rows = answers. */
+/**
+ * Submissions for the responses table — columns = answerable fields, rows = answers.
+ *
+ * `workspaceId` is explicit for the same reason as `getFormForEdit` above.
+ */
 export async function getFormSubmissions(
   id: string,
+  workspaceId: string,
   limit = 200,
 ): Promise<SubmissionsTable | null> {
-  const workspace = await getDefaultWorkspace()
-  if (!workspace) return null
 
   // The tenancy guard, the field list, and the submission list are independent —
   // run them in one round-trip instead of three serial hops to the remote DB.
@@ -277,7 +288,7 @@ export async function getFormSubmissions(
     db
       .select({ id: forms.id })
       .from(forms)
-      .where(and(eq(forms.id, id), eq(forms.workspaceId, workspace.id), isNull(forms.deletedAt)))
+      .where(and(eq(forms.id, id), eq(forms.workspaceId, workspaceId), isNull(forms.deletedAt)))
       .limit(1),
     db
       .select({

@@ -1,0 +1,110 @@
+/**
+ * The MakingFlow MCP endpoint.
+ *
+ * Lets any MCP-capable AI client act on a workspace with the same authority its
+ * owner has in the browser. Authenticated by a scoped API key
+ * (`Authorization: Bearer mf_sk_live_…`).
+ *
+ * Shape follows MCP 2026-07-28, which is a STATELESS protocol: no `initialize`
+ * handshake, no session id, no resumable streams. One POST endpoint, a fresh
+ * server instance per request, and any instance can serve any request — which
+ * is exactly what serverless wants.
+ *
+ * Order matters here. Origin/Host validation runs before authentication so a
+ * hostile page cannot use a browser's ambient credentials; authentication runs
+ * before rate limiting so the budget can be keyed to a real principal rather
+ * than a shared egress IP.
+ */
+
+import { createMcpHandler, hostHeaderValidationResponse, originValidationResponse } from "@modelcontextprotocol/server"
+import { after } from "next/server"
+import { contextFromBearer, touchApiKey, unauthorized } from "@/lib/mcp/auth"
+import { buildServer } from "@/lib/mcp/server"
+import { rateLimitApiKey, tooManyRequests } from "@/lib/mcp/rate-limit"
+import { budgetFor, TOOLS_BY_NAME } from "@/lib/mcp/registry"
+import type { AuthContext } from "@/lib/auth/context"
+
+// NOTE: no `export const runtime`. Under `cacheComponents` Next rejects the
+// segment config outright ("not compatible with nextConfig.cacheComponents"),
+// and it would be redundant anyway — Node is the default, which is what the
+// postgres driver needs. No other route in this app declares one either.
+//
+// Sized for the slowest tool. AI-backed tools land later; publish already fans
+// out to Sheets/Notion provisioning behind after().
+export const maxDuration = 120
+
+/** Absolute URL of our RFC 9728 metadata, for the WWW-Authenticate challenge. */
+function resourceMetadataUrl(request: Request): string {
+  const base = process.env.NEXT_PUBLIC_SITE_URL ?? new URL(request.url).origin
+  return `${base}/.well-known/oauth-protected-resource`
+}
+
+/**
+ * Hostnames this server answers on. Anything else is a rebinding attempt.
+ *
+ * HOSTNAMES, not `host:port` — the SDK validators compare the hostname alone,
+ * so including a port here would reject every request.
+ */
+function allowedHostnames(request: Request): string[] {
+  const configured = process.env.NEXT_PUBLIC_SITE_URL
+  const names = [new URL(request.url).hostname]
+  if (configured) names.push(new URL(configured).hostname)
+  // Vercel serves each deployment on its own generated hostname as well as the
+  // project domain; without this a preview deployment would refuse everything.
+  if (process.env.VERCEL_URL) names.push(new URL(`https://${process.env.VERCEL_URL}`).hostname)
+  return [...new Set(names)]
+}
+
+export async function POST(request: Request): Promise<Response> {
+  // Neither Next.js nor the SDK handler does this for us, and the spec makes it
+  // a MUST: an unvalidated Origin lets a malicious page in a victim's browser
+  // drive this endpoint using whatever credentials the browser attaches.
+  const rejected =
+    hostHeaderValidationResponse(request, allowedHostnames(request)) ??
+    originValidationResponse(request, allowedHostnames(request))
+  if (rejected) return rejected
+
+  const auth = await contextFromBearer(request)
+  if (!auth.ok) {
+    if (auth.status === 403) {
+      return Response.json({ error: "forbidden", error_description: auth.error }, { status: 403 })
+    }
+    return unauthorized(resourceMetadataUrl(request), ["forms:read"])
+  }
+
+  const ctx: AuthContext = auth.ctx
+
+  // Budgeted per key, in Postgres, so the limit holds across instances.
+  //
+  // Which budget depends on what is being called: a read is cheap, a write
+  // touches the database and invalidates caches, and an AI-backed tool spends
+  // real money. Charging everything to one bucket would let a client looping on
+  // reads exhaust the AI budget. The tool name travels in the `Mcp-Name` header
+  // precisely so an intermediary can see it without parsing the body; falling
+  // back to "read" for anything unnamed keeps listing calls cheap.
+  const toolName = request.headers.get("mcp-name")
+  const tool = toolName ? TOOLS_BY_NAME.get(toolName) : undefined
+  const limit = await rateLimitApiKey(ctx.apiKeyId!, tool ? budgetFor(tool) : "read")
+  if (!limit.ok) return tooManyRequests(limit.retryAfterSeconds)
+
+  // Bookkeeping, off the response path — never fail a call over it.
+  after(() => touchApiKey(ctx.apiKeyId!))
+
+  const handler = createMcpHandler(() => buildServer(ctx))
+  try {
+    return await handler.fetch(request)
+  } finally {
+    await handler.close()
+  }
+}
+
+/**
+ * 2026-07-28 servers are POST-only. Answering 405 (rather than Next's default
+ * 404) tells a client it reached the right URL with the wrong method, which is
+ * how it distinguishes this from a missing endpoint.
+ */
+export function GET(): Response {
+  return new Response("Method Not Allowed", { status: 405, headers: { allow: "POST" } })
+}
+
+export const DELETE = GET

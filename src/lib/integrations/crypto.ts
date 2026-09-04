@@ -52,6 +52,29 @@ export function decrypt(payload: string): string {
 }
 
 /**
+ * One-way fingerprint for a bearer credential (MCP API keys).
+ *
+ * Deliberately NOT `encrypt()`. Encryption is for secrets we must hand back to
+ * someone later — a Google refresh token we present to Google again. An API key
+ * is the opposite: it arrives on every request and we only ever need to answer
+ * "have I seen this before?". Storing it reversibly would mean a SQL-level leak
+ * hands the attacker working keys, so this is a one-way HMAC and the plaintext
+ * is shown to the user exactly once, at mint time, and never persisted.
+ *
+ * HMAC rather than a bare SHA-256 so the app key acts as a pepper: a dump of the
+ * table alone is not enough to verify guesses offline. (The tokens are 256 bits
+ * of CSPRNG output, so they are not guessable regardless — this is belt and
+ * braces, at no cost, on a key we already load.)
+ *
+ * Deterministic by design: the caller hashes the presented token and looks it up
+ * on `mcp_api_keys.key_hash`'s unique index. One indexed read, no candidate
+ * scan, and no comparison-timing question to reason about.
+ */
+export function hashApiKey(rawToken: string): string {
+  return createHmac("sha256", key()).update(rawToken).digest("base64url")
+}
+
+/**
  * Sign/verify a short-lived OAuth `state` blob (HMAC-SHA256, base64url). The
  * state carries the workspace/form/return-path across the Google round-trip;
  * signing it makes the callback tamper-proof without a server-side store.

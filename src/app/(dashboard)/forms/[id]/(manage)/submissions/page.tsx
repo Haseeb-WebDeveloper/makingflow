@@ -18,7 +18,7 @@ export default async function SubmissionsPage({
   // getFormSubmissionCounts so the table can say how much it isn't showing.
   const [shell, data, counts] = await Promise.all([
     getFormShell(id, workspace.id),
-    getFormSubmissions(id),
+    getFormSubmissions(id, workspace.id),
     getFormSubmissionCounts(id, workspace.id),
   ])
   if (!shell || !data) notFound()

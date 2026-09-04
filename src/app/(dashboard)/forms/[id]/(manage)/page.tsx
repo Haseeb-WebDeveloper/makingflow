@@ -2,6 +2,7 @@ import type { Metadata } from "next"
 import dynamic from "next/dynamic"
 import { notFound } from "next/navigation"
 import { getFormInsights } from "@/lib/data/form-insights"
+import { getDefaultWorkspace } from "@/lib/auth/session"
 import { StatCard } from "@/components/dashboard/stat-card"
 import { CountryLeaderboard } from "@/components/dashboard/country-leaderboard"
 import { BreakdownPanel } from "@/components/dashboard/breakdown-panel"
@@ -31,7 +32,9 @@ export default async function InsightsPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
-  const data = await getFormInsights(id)
+  const workspace = await getDefaultWorkspace()
+  if (!workspace) notFound()
+  const data = await getFormInsights(id, workspace.id)
   if (!data) notFound()
 
   const { totals, fields, dropOff } = data

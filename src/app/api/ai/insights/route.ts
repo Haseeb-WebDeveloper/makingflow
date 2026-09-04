@@ -55,7 +55,7 @@ export async function POST(request: Request) {
   // far from the function, so each serial await is a full round-trip).
   const [shell, data, counts, thread] = await Promise.all([
     getFormShell(formId, workspace.id),
-    getFormSubmissions(formId, MAX_ROWS),
+    getFormSubmissions(formId, workspace.id, MAX_ROWS),
     getFormSubmissionCounts(formId, workspace.id),
     getFormChat(formId, "insights"),
   ])

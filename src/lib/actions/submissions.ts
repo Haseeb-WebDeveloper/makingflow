@@ -1,7 +1,7 @@
 "use server"
 
 import { after } from "next/server"
-import { and, eq, inArray, isNull, sql } from "drizzle-orm"
+import { and, eq, isNull, sql } from "drizzle-orm"
 import { db } from "@/lib/db"
 import {
   forms,
@@ -12,18 +12,17 @@ import {
   type AnswerValue,
   type SubmissionMeta,
 } from "@/lib/db/schema"
-import { revalidatePath } from "next/cache"
 import { getVisitorKey, getRespondentKey, logFormEvent } from "@/lib/analytics/track"
 import { getServerSubmissionMeta } from "@/lib/analytics/request-meta"
-import { syncSubmissionToSheets, deleteSubmissionFromSheet } from "@/lib/integrations/sync"
+import { syncSubmissionToSheets } from "@/lib/integrations/sync"
 import { deliverWebhooks } from "@/lib/integrations/webhook"
 import { sendSubmissionEmails } from "@/lib/integrations/email"
 import { deliverDiscord } from "@/lib/integrations/discord"
-import { syncSubmissionToNotion, deleteSubmissionFromNotion } from "@/lib/integrations/notion-sync"
-import { destroyAssets, resourceTypeFromMime } from "@/lib/cloudinary/delete"
+import { syncSubmissionToNotion } from "@/lib/integrations/notion-sync"
 import { isCloudinaryUrl } from "@/lib/cloudinary/url"
 import { processSubmission, intelligenceEnabled } from "@/lib/ai/submission-intelligence"
-import { getDefaultWorkspace } from "@/lib/auth/session"
+import { sessionContext } from "@/lib/auth/context-web"
+import * as submissionsCore from "@/lib/core/submissions"
 import { NON_ANSWER_TYPES, isEmpty, isFieldVisible } from "@/lib/builder/logic"
 import { MAX_ANSWERS, MAX_VALUE_LEN, valueLength } from "@/lib/submissions/limits"
 import { LIMITS, rateLimit } from "@/lib/rate-limit"
@@ -492,93 +491,30 @@ export async function submitForm(input: {
 }
 
 /**
- * Owner-side: permanently delete a submission (and its answers, via cascade).
- * Workspace-scoped — only a member of the submission's workspace can delete it.
- * Mirrors the deletion to Google Sheets (best-effort, after commit) so the sheet
- * stays in sync.
+ * Owner-side submission operations moved to src/lib/core/submissions.ts so the
+ * MCP server can reach them too. These stay as the browser's entry point:
+ * resolve the caller from the session cookie, then delegate.
+ *
+ * `submitForm` above does NOT move, and must not. It is the anonymous
+ * respondent path: no caller to resolve, identified by publicId rather than by
+ * workspace, and it reads request headers for rate limiting and device
+ * metadata. An AuthContext has nothing to offer it.
  */
 export async function deleteSubmission(submissionId: string): Promise<SubmitResult> {
-  const workspace = await getDefaultWorkspace()
-  if (!workspace) return { success: false, error: "Not authorized" }
-
-  const [sub] = await db
-    .select({ id: submissions.id, formId: submissions.formId, workspaceId: submissions.workspaceId })
-    .from(submissions)
-    .where(eq(submissions.id, submissionId))
-    .limit(1)
-  // Never reveal a submission from another tenant — same response as "not found".
-  if (!sub || sub.workspaceId !== workspace.id) {
-    return { success: false, error: "Submission not found" }
-  }
-
-  // Capture the respondent's uploaded files before the delete so we can erase
-  // them from Cloudinary (GDPR) — uploads.submissionId is set-null on delete,
-  // so they'd otherwise orphan with the asset left live.
-  const uploadRows = await db
-    .select({ id: uploads.id, storageKey: uploads.storageKey, mimeType: uploads.mimeType })
-    .from(uploads)
-    .where(eq(uploads.submissionId, submissionId))
-
-  try {
-    await db.delete(submissions).where(eq(submissions.id, submissionId))
-    if (uploadRows.length > 0) {
-      await db.delete(uploads).where(
-        inArray(uploads.id, uploadRows.map((u) => u.id)),
-      )
-    }
-  } catch (err) {
-    console.error("[deleteSubmission] failed", err)
-    return { success: false, error: "Couldn't delete the response. Please try again." }
-  }
-
-  // Refresh the owner views (insights + submissions table) on next render.
-  revalidatePath(`/forms/${sub.formId}`)
-  revalidatePath(`/forms/${sub.formId}/submissions`)
-
-  // Off the request path — neither an integration outage nor a Cloudinary
-  // failure may fail a delete that already committed in our DB.
-  after(async () => {
-    await Promise.allSettled([
-      deleteSubmissionFromSheet({ id: sub.formId, workspaceId: sub.workspaceId }, submissionId),
-      deleteSubmissionFromNotion({ id: sub.formId, workspaceId: sub.workspaceId }, submissionId),
-      destroyAssets(
-        uploadRows.map((u) => ({
-          publicId: u.storageKey,
-          resourceType: resourceTypeFromMime(u.mimeType),
-        })),
-      ),
-    ])
-  })
-
-  return { success: true }
+  const session = await sessionContext()
+  if (!session.ok) return { success: false, error: 'Not authorized' }
+  return submissionsCore.deleteSubmission(session.ctx, submissionId)
 }
 
 /**
- * Owner-side: (re)generate the AI summary/score for one submission on demand —
- * powers the "Generate" button in the response detail and lets owners backfill
- * responses collected before they enabled intelligence. Respects the form's
- * opt-in flags (no-op if neither is on). Workspace-scoped.
+ * (Re)generate the AI summary/score for one response on demand — powers the
+ * "Generate" button in the response detail and lets owners backfill responses
+ * collected before they enabled intelligence.
  */
 export async function generateSubmissionIntelligence(
   submissionId: string,
 ): Promise<SubmitResult> {
-  const workspace = await getDefaultWorkspace()
-  if (!workspace) return { success: false, error: "Not authorized" }
-
-  const [sub] = await db
-    .select({ id: submissions.id, formId: submissions.formId, workspaceId: submissions.workspaceId })
-    .from(submissions)
-    .where(eq(submissions.id, submissionId))
-    .limit(1)
-  if (!sub || sub.workspaceId !== workspace.id) {
-    return { success: false, error: "Submission not found" }
-  }
-
-  const result = await processSubmission(submissionId)
-  if (!result) {
-    return { success: false, error: "Couldn't generate. Check that AI summary or screening is enabled." }
-  }
-
-  revalidatePath(`/forms/${sub.formId}/submissions`)
-  return { success: true }
+  const session = await sessionContext()
+  if (!session.ok) return { success: false, error: 'Not authorized' }
+  return submissionsCore.generateSubmissionIntelligence(session.ctx, submissionId)
 }

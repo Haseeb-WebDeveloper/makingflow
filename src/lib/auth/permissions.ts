@@ -11,19 +11,13 @@ import type { WorkspaceContext } from '@/lib/auth/session'
  * inverse of the owner-only model here. That rule lives in `leaveWorkspace`.
  */
 
-export type WorkspaceAction = 'manage_team' | 'delete_workspace' | 'update_workspace'
-
-// Actions only owners may perform. Anything not listed is allowed for any member.
-const OWNER_ONLY: Record<WorkspaceAction, true> = {
-  manage_team: true,
-  delete_workspace: true,
-  // Name, slug, and logo — the workspace's identity to everyone in it.
-  update_workspace: true,
-}
-
-export function can(role: string | undefined, action: WorkspaceAction): boolean {
-  return OWNER_ONLY[action] ? role === 'owner' : true
-}
+// The rules themselves live in ./roles.ts, which touches no request state, so
+// that code needing only `can()` does not pull the session (and with it
+// next/headers and next/navigation) in behind it. Re-exported here so every
+// existing import path keeps working.
+export { can, OWNER_ONLY, type WorkspaceAction } from '@/lib/auth/roles'
+import { can } from '@/lib/auth/roles'
+import type { WorkspaceAction } from '@/lib/auth/roles'
 
 export type ActiveWorkspace = WorkspaceContext
 
