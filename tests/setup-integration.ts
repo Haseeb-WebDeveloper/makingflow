@@ -28,6 +28,40 @@ vi.mock('next/server', async (importOriginal) => {
   return { ...actual, after: () => {} }
 })
 
+// Cache invalidation is request-scoped too: `updateTag` additionally requires a
+// Server Action, and `revalidateTag`/`revalidatePath` require a request. Core
+// mutations call them (deliberately — see src/lib/core/cache.ts), so they need
+// stubbing here for the same reason `after()` does.
+//
+// These RECORD rather than no-op. Forgetting to invalidate is the failure this
+// whole layer exists to prevent — an MCP write that skips it leaves the public
+// form runtime serving a stale definition, with nothing throwing — so tests
+// need to be able to assert it happened. See tests/helpers/cache-spy.ts.
+vi.mock('next/cache', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('next/cache')>()
+  const spy = () => {
+    const g = globalThis as typeof globalThis & {
+      __mfCacheSpy?: { tags: string[]; paths: string[] }
+    }
+    g.__mfCacheSpy ??= { tags: [], paths: [] }
+    return g.__mfCacheSpy
+  }
+  return {
+    ...actual,
+    updateTag: (tag: string) => void spy().tags.push(tag),
+    revalidateTag: (tag: string) => void spy().tags.push(tag),
+    revalidatePath: (path: string) => void spy().paths.push(path),
+    // `cacheLife`/`cacheTag` only work when Next's compiler has processed a
+    // `"use cache"` function, which does not happen under vitest — the real
+    // `cacheLife` throws "only available with the cacheComponents config".
+    // Data functions in src/lib/data/** are cached, so any test that reaches
+    // one needs these to be inert. Caching itself is a production concern; what
+    // the tests care about is the query underneath and the invalidation above.
+    cacheLife: () => {},
+    cacheTag: () => {},
+  }
+})
+
 // ============================================================
 // Supabase schema stubs.
 //

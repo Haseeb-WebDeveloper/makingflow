@@ -19,7 +19,7 @@ export default async function EditFormPage({
   const [workspace, viewer] = await Promise.all([getDefaultWorkspace(), getRequiredUser()])
   if (!workspace) notFound()
   const [data, settings, domains, folders, chat] = await Promise.all([
-    getFormForEdit(id),
+    getFormForEdit(id, workspace.id),
     getFormSettings(id, workspace.id),
     getActiveDomains(workspace.id),
     getWorkspaceFolders(workspace.id),

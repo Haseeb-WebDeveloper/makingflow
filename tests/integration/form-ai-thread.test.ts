@@ -95,7 +95,7 @@ describe("submission counts feeding the AI analyst", () => {
   test("the real total is independent of the row limit", async () => {
     const f = await seedFormWithSubmissions()
 
-    const data = await getFormSubmissions(f.formId, SAMPLE_LIMIT)
+    const data = await getFormSubmissions(f.formId, f.workspaceId, SAMPLE_LIMIT)
     const counts = await getFormSubmissionCounts(f.formId, f.workspaceId)
 
     // The sample is capped...
@@ -111,7 +111,7 @@ describe("submission counts feeding the AI analyst", () => {
 
     // getFormSubmissions only returns completed rows, so a drop-off question
     // can't be answered from the sample — the count is the only source.
-    const data = await getFormSubmissions(f.formId, 500)
+    const data = await getFormSubmissions(f.formId, f.workspaceId, 500)
     const counts = await getFormSubmissionCounts(f.formId, f.workspaceId)
 
     expect(data?.rows).toHaveLength(COMPLETED)
