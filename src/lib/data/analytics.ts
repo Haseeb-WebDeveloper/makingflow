@@ -1,7 +1,6 @@
 import { and, desc, eq, gte, inArray, isNull, sql } from "drizzle-orm"
 import { db } from "@/lib/db"
 import { forms, submissions, formEvents } from "@/lib/db/schema"
-import { getDefaultWorkspace } from "@/lib/auth/session"
 import {
   DEFAULT_RANGE,
   rangeBuckets,
@@ -111,10 +110,10 @@ const EMPTY: FormsDashboard = {
  * from the `form_events` funnel.
  */
 export async function getFormsDashboard(
+  // Explicit, not session-resolved — see getFormInsights for why.
+  workspaceId: string,
   range: DashboardRange = DEFAULT_RANGE,
 ): Promise<FormsDashboard | null> {
-  const workspace = await getDefaultWorkspace()
-  if (!workspace) return null
 
   const formRows = await db
     .select({
@@ -125,7 +124,7 @@ export async function getFormsDashboard(
       updatedAt: forms.updatedAt,
     })
     .from(forms)
-    .where(and(eq(forms.workspaceId, workspace.id), isNull(forms.deletedAt)))
+    .where(and(eq(forms.workspaceId, workspaceId), isNull(forms.deletedAt)))
     .orderBy(desc(forms.updatedAt))
 
   const totalForms = formRows.length
@@ -146,7 +145,7 @@ export async function getFormsDashboard(
             .from(submissions)
             .where(
               and(
-                eq(submissions.workspaceId, workspace.id),
+                eq(submissions.workspaceId, workspaceId),
                 eq(submissions.status, "completed"),
               ),
             )
@@ -162,7 +161,7 @@ export async function getFormsDashboard(
   // Breakdowns are scoped to completed submissions that actually carry metadata,
   // so percentages are computed within the tracked population.
   const metaWhere = and(
-    eq(submissions.workspaceId, workspace.id),
+    eq(submissions.workspaceId, workspaceId),
     eq(submissions.status, "completed"),
     sql`${submissions.meta} is not null`,
   )
@@ -178,7 +177,7 @@ export async function getFormsDashboard(
       .from(submissions)
       .where(
         and(
-          eq(submissions.workspaceId, workspace.id),
+          eq(submissions.workspaceId, workspaceId),
           eq(submissions.status, "completed"),
         ),
       )
@@ -203,7 +202,7 @@ export async function getFormsDashboard(
       .from(submissions)
       .where(
         and(
-          eq(submissions.workspaceId, workspace.id),
+          eq(submissions.workspaceId, workspaceId),
           eq(submissions.status, "completed"),
         ),
       ),
@@ -216,7 +215,7 @@ export async function getFormsDashboard(
       .from(submissions)
       .where(
         and(
-          eq(submissions.workspaceId, workspace.id),
+          eq(submissions.workspaceId, workspaceId),
           eq(submissions.status, "completed"),
           gte(submissions.createdAt, from),
         ),
@@ -233,7 +232,7 @@ export async function getFormsDashboard(
       .from(submissions)
       .where(
         and(
-          eq(submissions.workspaceId, workspace.id),
+          eq(submissions.workspaceId, workspaceId),
           eq(submissions.status, "completed"),
           gte(submissions.createdAt, from),
         ),

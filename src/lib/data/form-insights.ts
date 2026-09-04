@@ -9,7 +9,6 @@ import {
   type AnswerValue,
   type FieldOption,
 } from "@/lib/db/schema"
-import { getDefaultWorkspace } from "@/lib/auth/session"
 import { channelExpr, lastNDayKeys, SOURCE_CHANNELS, type Bucket } from "@/lib/data/analytics"
 
 const NON_ANSWER = new Set(["heading", "paragraph", "image", "embed", "page_break"])
@@ -67,14 +66,17 @@ export type FormInsights = {
 
 /** Funnel stats + respondent breakdowns + per-question answer aggregation for one
  * form. Workspace-scoped. */
-export async function getFormInsights(formId: string): Promise<FormInsights | null> {
-  const workspace = await getDefaultWorkspace()
-  if (!workspace) return null
+export async function getFormInsights(
+  formId: string,
+  // Explicit, not session-resolved: a bearer caller (the MCP server) has no
+  // cookie, so resolving it here would return null and surface as "not found".
+  workspaceId: string,
+): Promise<FormInsights | null> {
 
   const [form] = await db
     .select({ id: forms.id })
     .from(forms)
-    .where(and(eq(forms.id, formId), eq(forms.workspaceId, workspace.id), isNull(forms.deletedAt)))
+    .where(and(eq(forms.id, formId), eq(forms.workspaceId, workspaceId), isNull(forms.deletedAt)))
     .limit(1)
   if (!form) return null
 

@@ -22,6 +22,7 @@ import {
   forms,
   mcpApiKeys,
   mcpAuditLog,
+  submissions,
   users,
   workspaceMembers,
   workspaces,
@@ -396,5 +397,164 @@ describe("MCP route", () => {
       expect(status).toBe(200)
       expect(JSON.stringify(body).length).toBeGreaterThan(0)
     })
+  })
+})
+
+/**
+ * The wider tool surface: editing through the operation language, the
+ * submission tools behind their PII scope, and analytics.
+ */
+describe("MCP tools", () => {
+  beforeEach(() => resetCacheSpy())
+
+  test("get_context hands the model the vocabulary instead of making it guess", async () => {
+    const alice = await seedTenantWithKey("alice")
+    const { body } = await callTool(alice.token, "makingflow_get_context")
+    const result = structured(body) as {
+      workspace: { id: string; role: string }
+      capabilities: { fieldTypes: string[]; operations: string[] }
+    }
+
+    expect(result.workspace.id).toBe(alice.workspaceId)
+    expect(result.workspace.role).toBe("owner")
+    expect(result.capabilities.fieldTypes).toContain("short_text")
+    expect(result.capabilities.operations).toContain("add_field")
+  })
+
+  test("create_form then update_form edits through the operation language", async () => {
+    const alice = await seedTenantWithKey("alice")
+
+    const created = structured(
+      (
+        await callTool(alice.token, "makingflow_create_form", {
+          title: "Job Application",
+          fields: [{ type: "short_text", label: "Name", required: true }],
+        })
+      ).body,
+    ) as { id: string }
+
+    // The connected model emits operations directly — no second LLM hop to
+    // re-derive them from prose.
+    const updated = structured(
+      (
+        await callTool(alice.token, "makingflow_update_form", {
+          formId: created.id,
+          operations: [
+            { op: "add_field", field: { type: "email", label: "Email", required: true } },
+            { op: "rename_form", title: "Senior Engineer Application" },
+          ],
+        })
+      ).body,
+    ) as { applied: number; form: { title: string; fields: { label: string }[] } }
+
+    expect(updated.applied).toBe(2)
+    expect(updated.form.title).toBe("Senior Engineer Application")
+    expect(updated.form.fields.map((f) => f.label)).toEqual(["Name", "Email"])
+
+    // Persisted, not just returned.
+    const [form] = await db.select().from(forms).where(eq(forms.id, created.id))
+    expect(form.title).toBe("Senior Engineer Application")
+  })
+
+  test("delete_form refuses without confirm, then works with it", async () => {
+    const alice = await seedTenantWithKey("alice", ["forms:read", "forms:write", "destructive"])
+    const saved = await formsCore.saveAiForm(alice.ctx, {
+      form: { title: "Disposable", fields: [] },
+    })
+    if (!saved.success) throw new Error("setup failed")
+
+    // The scope alone is not enough: a model acting on a vague instruction must
+    // still be stopped by the explicit confirm.
+    const refused = await callTool(alice.token, "makingflow_delete_form", { formId: saved.id })
+    expect(toolError(refused.body).toLowerCase()).toContain("confirm")
+    expect(await db.select().from(forms).where(eq(forms.id, saved.id))).toHaveLength(1)
+
+    await callTool(alice.token, "makingflow_delete_form", { formId: saved.id, confirm: true })
+    expect(await db.select().from(forms).where(eq(forms.id, saved.id))).toHaveLength(0)
+  })
+
+  test("a key without the destructive scope cannot delete at all", async () => {
+    const alice = await seedTenantWithKey("alice", ["forms:read", "forms:write"])
+    const saved = await formsCore.saveAiForm(alice.ctx, {
+      form: { title: "Safe", fields: [] },
+    })
+    if (!saved.success) throw new Error("setup failed")
+
+    const { body } = await callTool(alice.token, "makingflow_delete_form", {
+      formId: saved.id,
+      confirm: true,
+    })
+    // Even with confirm supplied, the credential was never granted deletion.
+    expect(JSON.stringify(body).toLowerCase()).toMatch(/scope|unknown|not found/)
+    expect(await db.select().from(forms).where(eq(forms.id, saved.id))).toHaveLength(1)
+  })
+
+  test("submission answers stay behind their own scope", async () => {
+    const formsOnly = await seedTenantWithKey("formsonly", ["forms:read", "forms:write"])
+    const saved = await formsCore.saveAiForm(formsOnly.ctx, {
+      form: { title: "Survey", fields: [] },
+    })
+    if (!saved.success) throw new Error("setup failed")
+
+    const { body } = await rpc(formsOnly.token, "tools/list")
+    const names = (body as { result: { tools: { name: string }[] } }).result.tools.map((t) => t.name)
+    // A key that can build forms all day still cannot read what people wrote.
+    expect(names).not.toContain("makingflow_list_submissions")
+    expect(names).not.toContain("makingflow_get_submission")
+
+    const denied = await callTool(formsOnly.token, "makingflow_list_submissions", {
+      formId: saved.id,
+    })
+    expect(JSON.stringify(denied.body).toLowerCase()).toMatch(/scope|unknown|not found/)
+  })
+
+  test("list_submissions reports the true total, not the page size", async () => {
+    const alice = await seedTenantWithKey("alice", [
+      "forms:read",
+      "forms:write",
+      "submissions:read",
+    ])
+    const saved = await formsCore.saveAiForm(alice.ctx, {
+      form: {
+        title: "Survey",
+        fields: [{ id: randomUUID(), type: "short_text", label: "Name", required: false }],
+      },
+    })
+    if (!saved.success) throw new Error("setup failed")
+
+    for (let i = 0; i < 5; i++) {
+      await db.insert(submissions).values({
+        formId: saved.id,
+        workspaceId: alice.workspaceId,
+        status: "completed",
+        completedAt: new Date(),
+      })
+    }
+
+    const { body } = await callTool(alice.token, "makingflow_list_submissions", {
+      formId: saved.id,
+      limit: 2,
+    })
+    const result = structured(body) as {
+      counts: { completed: number }
+      returned: number
+      submissions: { answers?: unknown }[]
+    }
+
+    expect(result.returned).toBe(2)
+    // Reporting the page size as the total is the regression that told someone
+    // they had 100 responses when they had 150.
+    expect(result.counts.completed).toBe(5)
+    // Answers are opt-in, so a listing does not spray respondent PII into context.
+    expect(result.submissions[0].answers).toBeUndefined()
+  })
+
+  test("analytics are readable without the answers scope", async () => {
+    const analyst = await seedTenantWithKey("analyst", ["forms:read", "analytics:read"])
+    const { body } = await callTool(analyst.token, "makingflow_get_dashboard", { range: "14d" })
+    const result = structured(body) as { totals: { totalForms: number }; range: string }
+
+    expect(result.range).toBe("14d")
+    expect(result.totals.totalForms).toBe(0)
   })
 })

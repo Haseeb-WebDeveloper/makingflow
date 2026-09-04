@@ -46,7 +46,7 @@ export default async function FormsPage({
   const range = parseRange((await searchParams).range);
   const workspace = await getDefaultWorkspace();
   const [data, folders] = await Promise.all([
-    getFormsDashboard(range),
+    workspace ? getFormsDashboard(workspace.id, range) : Promise.resolve(null),
     workspace ? getWorkspaceFolders(workspace.id) : Promise.resolve([]),
   ]);
   const totals = data?.totals;

@@ -21,6 +21,7 @@ import { after } from "next/server"
 import { contextFromBearer, touchApiKey, unauthorized } from "@/lib/mcp/auth"
 import { buildServer } from "@/lib/mcp/server"
 import { rateLimitApiKey, tooManyRequests } from "@/lib/mcp/rate-limit"
+import { budgetFor, TOOLS_BY_NAME } from "@/lib/mcp/registry"
 import type { AuthContext } from "@/lib/auth/context"
 
 // NOTE: no `export const runtime`. Under `cacheComponents` Next rejects the
@@ -73,10 +74,17 @@ export async function POST(request: Request): Promise<Response> {
 
   const ctx: AuthContext = auth.ctx
 
-  // Budgeted per key, in Postgres, so the limit holds across instances. The
-  // finer per-tool split (a write costs more than a read) happens inside the
-  // handler, where the tool is known; this is the coarse gate.
-  const limit = await rateLimitApiKey(ctx.apiKeyId!, "read")
+  // Budgeted per key, in Postgres, so the limit holds across instances.
+  //
+  // Which budget depends on what is being called: a read is cheap, a write
+  // touches the database and invalidates caches, and an AI-backed tool spends
+  // real money. Charging everything to one bucket would let a client looping on
+  // reads exhaust the AI budget. The tool name travels in the `Mcp-Name` header
+  // precisely so an intermediary can see it without parsing the body; falling
+  // back to "read" for anything unnamed keeps listing calls cheap.
+  const toolName = request.headers.get("mcp-name")
+  const tool = toolName ? TOOLS_BY_NAME.get(toolName) : undefined
+  const limit = await rateLimitApiKey(ctx.apiKeyId!, tool ? budgetFor(tool) : "read")
   if (!limit.ok) return tooManyRequests(limit.retryAfterSeconds)
 
   // Bookkeeping, off the response path — never fail a call over it.
