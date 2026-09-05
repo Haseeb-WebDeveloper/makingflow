@@ -82,16 +82,29 @@ describe("core/mcp-keys", () => {
     expect(JSON.stringify(listed)).not.toContain(result.token)
   })
 
-  test("a member cannot create one", async () => {
+  test("a member can create one — a key never exceeds its creator", async () => {
     const result = await keys.createKey(memberCtx(), {
-      name: "Sneaky",
+      name: "My own key",
       scopes: ["submissions:read"],
       workspaceIds: [wsA.id],
     })
-    // Issuing a credential that reads every response is the same weight as
-    // inviting a teammate, which is already owner-only.
-    expect(result).toEqual({ success: false, error: "Only owners can create API keys" })
-    expect(await keys.listKeys(ownerCtx())).toHaveLength(0)
+    // Members already read responses in the browser. A key is the same access
+    // from a different tool: its role is re-read from workspace_members on
+    // every request, so it can never do more than the person who made it.
+    expect(result.success).toBe(true)
+  })
+
+  test("a member cannot grant a workspace they do not belong to", async () => {
+    // The member belongs to A only. B is the owner's.
+    const result = await keys.createKey(memberCtx(), {
+      name: "Reaching",
+      scopes: ["forms:read"],
+      workspaceIds: [wsA.id, wsB.id],
+    })
+    expect(result).toEqual({
+      success: false,
+      error: "You can only grant access to workspaces you belong to.",
+    })
   })
 
   test("one key can cover several workspaces", async () => {

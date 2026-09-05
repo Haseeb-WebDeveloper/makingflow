@@ -42,6 +42,13 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { Icon } from "@/components/ui/icon";
 import { showToast } from "@/components/ui/toast";
 import { CardShell } from "@/components/integrations/cards";
@@ -82,8 +89,8 @@ export type McpCardProps = {
   /** Workspaces the viewer belongs to, so one key can cover several. */
   workspaces: { id: string; name: string }[];
   currentWorkspaceId: string;
-  /** Owners only — minting a key that can read every response is owner-weight. */
-  canCreate: boolean;
+  /** Owners may additionally revoke keys other people created. */
+  isOwner: boolean;
   endpoint: string;
 };
 
@@ -91,10 +98,11 @@ export function McpCard({
   keys,
   workspaces,
   currentWorkspaceId,
-  canCreate,
+  isOwner,
   endpoint,
 }: McpCardProps) {
   const [createOpen, setCreateOpen] = React.useState(false);
+  const [detailsOpen, setDetailsOpen] = React.useState(false);
   const [revoking, setRevoking] = React.useState<KeySummary | null>(null);
   const [created, setCreated] = React.useState<{ token: string; name: string } | null>(null);
   const [pending, startTransition] = React.useTransition();
@@ -175,52 +183,91 @@ export function McpCard({
             : "Let Claude, Cursor or any MCP client build forms, publish them and read responses — from wherever you already work."}
         </p>
 
-        {connected ? (
-          <ul className="mt-3 space-y-1.5">
-            {keys.map((key) => (
-              <li key={key.id} className="flex items-center justify-between gap-2 text-xs">
-                <span className="min-w-0">
-                  <span className="block truncate font-medium text-foreground">{key.name}</span>
-                  <span className="block truncate text-muted-foreground">
-                    {key.prefix}… · {key.workspaces.length} workspace
-                    {key.workspaces.length === 1 ? "" : "s"} ·{" "}
-                    {key.lastUsedAt
-                      ? `used ${new Date(key.lastUsedAt).toLocaleDateString()}`
-                      : "never used"}
-                  </span>
-                </span>
-                {key.mine || canCreate ? (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="shrink-0 text-muted-foreground hover:text-destructive"
-                    onClick={() => setRevoking(key)}
-                  >
-                    Revoke
-                  </Button>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        ) : null}
-
         <div className="mt-4 flex items-center justify-between gap-3 border-t border-border pt-3">
-          {canCreate ? (
-            <Button size="sm" variant="outline" onClick={() => setCreateOpen(true)}>
-              <Icon name="plus" className="size-4" />
-              {connected ? "New connection" : "Connect"}
+          <Button size="sm" variant="outline" onClick={() => setCreateOpen(true)}>
+            <Icon name="plus" className="size-4" />
+            {connected ? "New connection" : "Connect"}
+          </Button>
+          {connected ? (
+            <Button size="sm" variant="ghost" onClick={() => setDetailsOpen(true)}>
+              View details
             </Button>
-          ) : (
-            <span className="text-xs text-muted-foreground">
-              Only owners can create connections
-            </span>
-          )}
+          ) : null}
         </div>
       </CardShell>
 
+      {/* ── Connections ────────────────────────────────────────────────── */}
+      <Sheet open={detailsOpen} onOpenChange={setDetailsOpen}>
+        <SheetContent side="right" className="thin-scroll w-full overflow-y-auto sm:max-w-md">
+          <SheetHeader>
+            <SheetTitle>AI assistant connections</SheetTitle>
+            <SheetDescription>
+              Each connection is a key an AI client uses to act on your behalf. Revoking one takes
+              effect on its very next request.
+            </SheetDescription>
+          </SheetHeader>
+
+          <div className="space-y-3 px-4 pb-6">
+            {keys.map((key) => (
+              <div key={key.id} className="rounded-lg border border-border p-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-foreground">{key.name}</p>
+                    <p className="truncate font-mono text-xs text-muted-foreground">
+                      {key.prefix}…
+                    </p>
+                  </div>
+                  {/* Anyone may revoke their own; an owner may revoke any key
+                      that reaches this workspace. */}
+                  {key.mine || isOwner ? (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="shrink-0 text-muted-foreground hover:text-destructive"
+                      onClick={() => setRevoking(key)}
+                    >
+                      Revoke
+                    </Button>
+                  ) : null}
+                </div>
+
+                <dl className="mt-3 space-y-1.5 text-xs">
+                  <div className="flex gap-2">
+                    <dt className="w-24 shrink-0 text-muted-foreground">Workspaces</dt>
+                    <dd className="min-w-0 text-foreground">
+                      {key.workspaces.map((w) => w.name).join(", ")}
+                    </dd>
+                  </div>
+                  <div className="flex gap-2">
+                    <dt className="w-24 shrink-0 text-muted-foreground">Permissions</dt>
+                    <dd className="min-w-0 text-foreground">
+                      {key.scopes
+                        .map((s) => PERMISSIONS.find((p) => p.scope === s)?.label ?? s)
+                        .join(", ")}
+                    </dd>
+                  </div>
+                  <div className="flex gap-2">
+                    <dt className="w-24 shrink-0 text-muted-foreground">Last used</dt>
+                    <dd className="text-foreground">
+                      {key.lastUsedAt ? new Date(key.lastUsedAt).toLocaleString() : "Never"}
+                    </dd>
+                  </div>
+                  <div className="flex gap-2">
+                    <dt className="w-24 shrink-0 text-muted-foreground">Expires</dt>
+                    <dd className="text-foreground">
+                      {key.expiresAt ? new Date(key.expiresAt).toLocaleDateString() : "Never"}
+                    </dd>
+                  </div>
+                </dl>
+              </div>
+            ))}
+          </div>
+        </SheetContent>
+      </Sheet>
+
       {/* ── Create ─────────────────────────────────────────────────────── */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="thin-scroll sm:max-w-lg [&>*]:min-w-0">
           <DialogHeader>
             <DialogTitle>Connect an AI assistant</DialogTitle>
             <DialogDescription>
@@ -319,7 +366,7 @@ export function McpCard({
 
       {/* ── The one-time reveal ────────────────────────────────────────── */}
       <Dialog open={Boolean(created)} onOpenChange={(open) => !open && setCreated(null)}>
-        <DialogContent className="sm:max-w-2xl">
+        <DialogContent className="thin-scroll sm:max-w-2xl [&>*]:min-w-0">
           <DialogHeader>
             <DialogTitle>Connection created</DialogTitle>
             <DialogDescription>
@@ -329,43 +376,57 @@ export function McpCard({
           </DialogHeader>
 
           {created ? (
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label>Connect Claude Code</Label>
-                <div className="flex items-start gap-2">
-                  <pre className="min-w-0 flex-1 overflow-x-auto rounded-md border border-border bg-muted p-3 text-xs leading-relaxed">
-                    <code>{connectCommand(created.token)}</code>
-                  </pre>
+            /*
+             * min-w-0 is load-bearing, not defensive tidying. DialogContent is a
+             * CSS grid, and grid items default to min-width:auto — so a long
+             * unbreakable string like the connect command stretches the track
+             * past the dialog's max-width and pushes everything to its right
+             * (including the copy buttons) off the screen entirely.
+             *
+             * The copy button also sits in the LABEL row rather than beside the
+             * code block, so it stays put no matter how wide the content is.
+             * Copying is the entire point of this dialog; it must never be the
+             * thing that scrolls away.
+             */
+            <div className="min-w-0 space-y-4">
+              <div className="min-w-0 space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <Label>Connect Claude Code</Label>
                   <Button
                     size="sm"
                     variant="outline"
                     className="shrink-0"
                     onClick={() => copy(connectCommand(created.token), "Command")}
                   >
-                    Copy
+                    <Icon name="paper" className="size-3.5" />
+                    Copy command
                   </Button>
                 </div>
+                <pre className="w-full thin-scroll overflow-x-auto rounded-md border border-border bg-muted p-3 text-xs leading-relaxed">
+                  <code>{connectCommand(created.token)}</code>
+                </pre>
                 <p className="text-xs text-muted-foreground">
                   Paste it as a single line. A line break inside the quotes puts a newline in the
-                  header and the connection fails.
+                  header, and the connection fails with an unhelpful error.
                 </p>
               </div>
 
-              <div className="space-y-2">
-                <Label>Or just the key</Label>
-                <div className="flex items-center gap-2">
-                  <code className="min-w-0 flex-1 truncate rounded-md border border-border bg-muted px-3 py-2 font-mono text-xs">
-                    {created.token}
-                  </code>
+              <div className="min-w-0 space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <Label>Or just the key</Label>
                   <Button
                     size="sm"
                     variant="outline"
                     className="shrink-0"
                     onClick={() => copy(created.token, "Key")}
                   >
-                    Copy
+                    <Icon name="paper" className="size-3.5" />
+                    Copy key
                   </Button>
                 </div>
+                <code className="block w-full thin-scroll overflow-x-auto rounded-md border border-border bg-muted px-3 py-2 font-mono text-xs whitespace-nowrap">
+                  {created.token}
+                </code>
               </div>
             </div>
           ) : null}
