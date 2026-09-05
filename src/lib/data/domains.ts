@@ -2,7 +2,6 @@ import { cacheLife, cacheTag } from "next/cache"
 import { and, desc, eq, sql } from "drizzle-orm"
 import { db } from "@/lib/db"
 import { customDomains, forms, type DomainVerification } from "@/lib/db/schema"
-import { getDefaultWorkspace } from "@/lib/auth/session"
 import { isVercelConfigured, VERCEL_CNAME_TARGET } from "@/lib/domains/vercel"
 
 export type WorkspaceDomain = {
@@ -20,9 +19,9 @@ export type WorkspaceDomains = {
 }
 
 /** All custom domains in the caller's workspace, with how many forms use each. */
-export async function getWorkspaceDomains(): Promise<WorkspaceDomains | null> {
-  const workspace = await getDefaultWorkspace()
-  if (!workspace) return null
+export async function getWorkspaceDomains(
+  workspaceId: string,
+): Promise<WorkspaceDomains | null> {
 
   const rows = await db
     .select({
@@ -36,7 +35,7 @@ export async function getWorkspaceDomains(): Promise<WorkspaceDomains | null> {
       )`,
     })
     .from(customDomains)
-    .where(eq(customDomains.workspaceId, workspace.id))
+    .where(eq(customDomains.workspaceId, workspaceId))
     .orderBy(desc(customDomains.createdAt))
 
   return {

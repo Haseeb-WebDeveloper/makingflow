@@ -3,11 +3,14 @@ import { redirect } from "next/navigation"
 import { PageContainer, PageHeader } from "@/components/dashboard/page-shell"
 import { DomainsPanel } from "@/components/domains/domains-panel"
 import { getWorkspaceDomains } from "@/lib/data/domains"
+import { getDefaultWorkspace } from "@/lib/auth/session"
 
 export const metadata: Metadata = { title: "Domains · MakingFlow" }
 
 export default async function DomainsPage() {
-  const data = await getWorkspaceDomains()
+  const workspace = await getDefaultWorkspace()
+  if (!workspace) redirect("/auth/login")
+  const data = await getWorkspaceDomains(workspace.id)
   if (!data) redirect("/auth/login")
 
   return (
