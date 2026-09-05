@@ -597,6 +597,71 @@ export const mcpKeyWorkspaces = pgTable(
   ],
 )
 
+// An OAuth client's standing grant over a user's workspaces.
+//
+// The API-key path and the OAuth path exist side by side because they solve
+// different problems. Claude Code, Cursor and VS Code let a user paste an
+// Authorization header; ChatGPT and claude.ai do not, and authenticate
+// connectors only through OAuth. So this is not a nicer version of the same
+// door — it is the only door those clients can use.
+//
+// WHY A GRANT TABLE RATHER THAN SCOPES IN THE TOKEN. The authorization server
+// issues the token, and no hosted AS worth using models an eight-scope
+// per-workspace permission set. It does not need to: the token's job is to say
+// reliably WHO is calling and WHICH client they authorised, bound to our
+// resource. What that pairing may then reach is our question, answered here —
+// exactly as `mcp_key_workspaces` answers it for a key. Consent writes this row;
+// verification reads it and intersects with live membership, so the same
+// "can lose access, never gain it" rule holds for both credentials.
+//
+// One row per (user, client). A user who authorises the same client twice
+// re-consents rather than accumulating grants — otherwise revoking access would
+// mean finding every row a client ever collected.
+export const mcpOauthGrants = pgTable(
+  'mcp_oauth_grants',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    // The OAuth client this was granted to, as the authorization server names
+    // it. Compared against the token's `client_id` on every request, so a token
+    // for a different client cannot ride on this grant.
+    clientId: text('client_id').notNull(),
+    // Human-readable, for the "you have connected these apps" list. Supplied by
+    // the client at registration, so it is untrusted display text.
+    clientName: text('client_name'),
+    scopes: text('scopes').array().notNull().default(sql`'{}'::text[]`),
+    lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex('mcp_oauth_grants_user_client_idx').on(table.userId, table.clientId),
+    index('mcp_oauth_grants_user_idx').on(table.userId),
+  ],
+)
+
+// Which workspaces an OAuth grant covers. Same shape and same reasoning as
+// mcp_key_workspaces: an explicit list chosen at consent, never a wildcard, so
+// joining a new workspace later does not silently widen what a connected app
+// can see.
+export const mcpOauthGrantWorkspaces = pgTable(
+  'mcp_oauth_grant_workspaces',
+  {
+    grantId: uuid('grant_id')
+      .notNull()
+      .references(() => mcpOauthGrants.id, { onDelete: 'cascade' }),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+  },
+  (table) => [
+    primaryKey({ columns: [table.grantId, table.workspaceId] }),
+    index('mcp_oauth_grant_workspaces_workspace_idx').on(table.workspaceId),
+  ],
+)
+
 // What each API key did. Append-only.
 //
 // Records the tool and the row it touched — NEVER the arguments. Tool arguments
@@ -607,7 +672,11 @@ export const mcpAuditLog = pgTable(
   'mcp_audit_log',
   {
     id: bigserial('id', { mode: 'number' }).primaryKey(),
+    // Exactly one of these is set, naming the credential the call arrived on.
+    // Both go null rather than cascading, so the trail outlives what it
+    // describes — revoking a key must not erase the record of its use.
     keyId: uuid('key_id').references(() => mcpApiKeys.id, { onDelete: 'set null' }),
+    grantId: uuid('grant_id').references(() => mcpOauthGrants.id, { onDelete: 'set null' }),
     workspaceId: uuid('workspace_id')
       .notNull()
       .references(() => workspaces.id, { onDelete: 'cascade' }),
@@ -636,9 +705,15 @@ export const mcpAuditLog = pgTable(
 export const mcpRateLimits = pgTable(
   'mcp_rate_limits',
   {
-    keyId: uuid('key_id')
-      .notNull()
-      .references(() => mcpApiKeys.id, { onDelete: 'cascade' }),
+    // The credential being counted: an API key id or an OAuth grant id.
+    //
+    // Deliberately NOT a foreign key to either. This is a counter, not a
+    // relation — it holds no meaning once its window closes, and constraining it
+    // to one table would mean either a second counter table for OAuth or a
+    // nullable pair of columns whose "exactly one is set" rule nothing enforces.
+    // The cost is orphan rows after a credential is deleted, which the
+    // opportunistic sweep below already removes on age.
+    keyId: uuid('key_id').notNull(),
     budget: text('budget').notNull(), // read | write | ai — priced differently
     windowStart: timestamp('window_start', { withTimezone: true }).notNull(),
     hits: integer('hits').notNull().default(0),

@@ -92,8 +92,21 @@ export type AuthContext = {
    * check site the same boring `ctx.scopes.has(s)`.
    */
   readonly scopes: ReadonlySet<Scope>
+  /**
+   * Session, or delegated.
+   *
+   * Deliberately two values rather than three, even though a delegated call may
+   * arrive on an API key or an OAuth grant. Nothing downstream treats those two
+   * differently — both are attenuated credentials that lose reach on a
+   * membership change — so splitting them here would put a distinction without a
+   * difference in front of every consumer. Which credential it actually was is
+   * recorded below, for the audit trail that does care.
+   */
   readonly origin: "session" | "api-key"
+  /** Set when the call arrived on an API key. Null otherwise. */
   readonly apiKeyId: string | null
+  /** Set when the call arrived on an OAuth grant. Null otherwise. */
+  readonly grantId: string | null
   /**
    * WHICH KIND OF REQUEST THIS IS RUNNING IN. Not cosmetic — Next.js gates
    * cache invalidation on it.

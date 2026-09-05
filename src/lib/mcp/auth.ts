@@ -41,6 +41,10 @@ import {
   type Role,
   type Scope,
 } from "@/lib/auth/context"
+import { canonicalResource } from "@/lib/mcp/metadata"
+import { oauthConfig } from "@/lib/mcp/oauth/config"
+import { verifyAccessToken } from "@/lib/mcp/oauth/verify"
+import { grantForToken } from "@/lib/mcp/oauth/grants"
 
 /** Visible prefix, so a leaked key is recognisable in logs and search. */
 const KEY_PREFIX = "mf_sk_live_"
@@ -74,12 +78,40 @@ export type GrantedWorkspace = {
   plan: string
 }
 
+/**
+ * Which credential a request arrived on.
+ *
+ * Two paths exist because two families of client exist. Claude Code, Cursor and
+ * VS Code let a user set an Authorization header, so a long-lived key is the
+ * simplest thing that works. ChatGPT and claude.ai authenticate connectors only
+ * through OAuth and have no header field anywhere in their UI — so that is not a
+ * nicer version of the same door, it is the only door those clients can use.
+ *
+ * Past this point the two are indistinguishable. Both resolve to the same
+ * principal, both intersect their grant with live membership, and every tool
+ * sees the same AuthContext. The credential decides who is calling; it has never
+ * decided what they may do.
+ */
+export type Credential =
+  | { kind: "api-key"; apiKeyId: string }
+  | { kind: "oauth"; grantId: string; clientId: string }
+
 export type McpPrincipal = {
   userId: string
-  apiKeyId: string
+  credential: Credential
   scopes: ReadonlySet<Scope>
   /** Granted ∩ still-a-member. Never empty — an empty result is a 403. */
   workspaces: GrantedWorkspace[]
+}
+
+/** The key id, when this principal came from one. Null for an OAuth caller. */
+export function apiKeyIdOf(principal: McpPrincipal): string | null {
+  return principal.credential.kind === "api-key" ? principal.credential.apiKeyId : null
+}
+
+/** The grant id, when this principal came from one. Null for a key. */
+export function grantIdOf(principal: McpPrincipal): string | null {
+  return principal.credential.kind === "oauth" ? principal.credential.grantId : null
 }
 
 export type BearerFailure = {
@@ -100,12 +132,22 @@ export function bearerToken(request: Request): string | null {
   return token.length > 0 ? token : null
 }
 
-/** Verify a presented key and resolve what it can currently reach. */
+/**
+ * Verify whatever credential was presented and resolve what it can reach.
+ *
+ * The two token families are told apart by our own prefix, not by guessing: a
+ * key always starts `mf_sk_live_`, so anything else is offered to the OAuth
+ * verifier. That ordering matters — trying to parse a key as a JWT produces a
+ * confusing "signature invalid" where "invalid API key" is the truth.
+ *
+ * When OAuth is not configured, a non-key token is refused as a bad key, which
+ * is exactly what it is on such a deployment.
+ */
 export async function principalFromBearer(request: Request): Promise<PrincipalResult> {
   const token = bearerToken(request)
   if (!token) return { ok: false, status: 401, error: "Missing bearer token" }
   if (!token.startsWith(KEY_PREFIX)) {
-    return { ok: false, status: 401, error: "Invalid API key" }
+    return principalFromOauthToken(token, request)
   }
 
   const presented = hashApiKey(token)
@@ -176,7 +218,7 @@ export async function principalFromBearer(request: Request): Promise<PrincipalRe
     ok: true,
     principal: {
       userId: key.userId,
-      apiKeyId: key.id,
+      credential: { kind: "api-key", apiKeyId: key.id },
       scopes: new Set(key.scopes.filter(isScope)),
       workspaces: reachable.map((w) => ({
         id: w.id,
@@ -184,6 +226,48 @@ export async function principalFromBearer(request: Request): Promise<PrincipalRe
         role: w.role as Role,
         plan: w.plan,
       })),
+    },
+  }
+}
+
+/**
+ * The OAuth half: verify the JWT, then resolve the consent behind it.
+ *
+ * Deliberately two steps with two different owners. The token is checked against
+ * the authorization server's keys and, critically, against OUR audience — see
+ * oauth/verify.ts. What that verified identity may then reach is answered
+ * entirely from our own tables, so no vendor needs to model our permissions and
+ * a token minted last week cannot outrun a membership change made this morning.
+ */
+async function principalFromOauthToken(
+  token: string,
+  request: Request,
+): Promise<PrincipalResult> {
+  const config = oauthConfig(canonicalResource(request))
+  if (!config) {
+    // No authorization server on this deployment, so a non-key token is simply
+    // not a credential here. Reported as a bad key rather than as an OAuth
+    // failure, because there is no OAuth to have failed.
+    return { ok: false, status: 401, error: "Invalid API key" }
+  }
+
+  const verified = await verifyAccessToken(token, config)
+  if (!verified.ok) return { ok: false, status: 401, error: verified.error }
+
+  const resolved = await grantForToken(verified.token)
+  if (!resolved.ok) return resolved
+
+  return {
+    ok: true,
+    principal: {
+      userId: resolved.grant.userId,
+      credential: {
+        kind: "oauth",
+        grantId: resolved.grant.grantId,
+        clientId: verified.token.clientId,
+      },
+      scopes: resolved.grant.scopes,
+      workspaces: resolved.grant.workspaces,
     },
   }
 }
@@ -234,8 +318,13 @@ export function contextForWorkspace(
       role: target.role,
       plan: target.plan,
       scopes: principal.scopes,
+      // Both credentials are delegated, and core treats them identically. The
+      // distinction that matters downstream is session-vs-delegated, not which
+      // kind of delegation — so it stays "api-key" rather than fanning out a
+      // second value every consumer would have to learn to handle the same way.
       origin: "api-key",
-      apiKeyId: principal.apiKeyId,
+      apiKeyId: apiKeyIdOf(principal),
+      grantId: grantIdOf(principal),
       // Not a Server Action, so cache invalidation must go through
       // revalidateTag rather than updateTag. See src/lib/core/cache.ts.
       surface: "route-handler",

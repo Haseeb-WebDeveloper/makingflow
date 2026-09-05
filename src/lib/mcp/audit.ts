@@ -33,7 +33,9 @@ export async function recordToolCall(input: {
 }): Promise<void> {
   try {
     await db.insert(mcpAuditLog).values({
+      // Exactly one of these is set — see AuthContext.origin.
       keyId: input.ctx.apiKeyId,
+      grantId: input.ctx.grantId,
       workspaceId: input.ctx.workspaceId,
       userId: input.ctx.userId,
       tool: input.tool,

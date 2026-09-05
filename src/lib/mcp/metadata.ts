@@ -17,6 +17,7 @@ import "server-only"
  */
 
 import { SCOPES } from "@/lib/auth/context"
+import { oauthConfig } from "@/lib/mcp/oauth/config"
 
 export function siteUrl(request: Request): string {
   return process.env.NEXT_PUBLIC_SITE_URL ?? new URL(request.url).origin
@@ -30,12 +31,18 @@ export function canonicalResource(request: Request): string {
 
 export function protectedResourceMetadata(request: Request) {
   const base = siteUrl(request)
+  const resource = canonicalResource(request)
+  const oauth = oauthConfig(resource)
+
   return {
-    resource: canonicalResource(request),
-    // Empty until the OAuth phase names an authorization server. An empty array
-    // is the honest answer — there is no AS issuing tokens for this resource
-    // yet — rather than an omission.
-    authorization_servers: [] as string[],
+    resource,
+    // Named only when an authorization server is actually configured. An empty
+    // array is the honest answer for a deployment authenticating by API key
+    // alone, and honesty matters here: a client that reads a non-empty
+    // `authorization_servers` COMMITS to the OAuth flow and never falls back to
+    // the header it would otherwise have used. Advertising an issuer that
+    // cannot mint tokens for us therefore breaks clients that were working.
+    authorization_servers: oauth ? [oauth.issuer] : ([] as string[]),
     bearer_methods_supported: ["header"],
     scopes_supported: [...SCOPES],
     resource_documentation: `${base}/docs/mcp`,

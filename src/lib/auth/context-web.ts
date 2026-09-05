@@ -62,6 +62,7 @@ export async function sessionContext(
       scopes: ALL_SCOPES,
       origin: "session",
       apiKeyId: null,
+      grantId: null,
       surface,
     }),
   }

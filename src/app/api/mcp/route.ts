@@ -19,6 +19,7 @@
 import { createMcpHandler, hostHeaderValidationResponse, originValidationResponse } from "@modelcontextprotocol/server"
 import { after } from "next/server"
 import { principalFromBearer, touchApiKey, unauthorized } from "@/lib/mcp/auth"
+import { touchGrant } from "@/lib/mcp/oauth/grants"
 import { buildServer } from "@/lib/mcp/server"
 import { rateLimitApiKey, tooManyRequests } from "@/lib/mcp/rate-limit"
 import { budgetFor, TOOLS_BY_NAME } from "@/lib/mcp/registry"
@@ -90,11 +91,22 @@ export async function POST(request: Request): Promise<Response> {
   // back to "read" for anything unnamed keeps listing calls cheap.
   const toolName = request.headers.get("mcp-name")
   const tool = toolName ? TOOLS_BY_NAME.get(toolName) : undefined
-  const limit = await rateLimitApiKey(principal.apiKeyId, tool ? budgetFor(tool) : "read")
+  // Counted against the credential, whichever kind it is — an OAuth grant and
+  // an API key are equally capable of looping, and a shared bucket would let
+  // one tenant's connected app throttle another's.
+  const credentialId =
+    principal.credential.kind === "api-key"
+      ? principal.credential.apiKeyId
+      : principal.credential.grantId
+  const limit = await rateLimitApiKey(credentialId, tool ? budgetFor(tool) : "read")
   if (!limit.ok) return withCors(tooManyRequests(limit.retryAfterSeconds), request)
 
   // Bookkeeping, off the response path — never fail a call over it.
-  after(() => touchApiKey(principal.apiKeyId))
+  after(() =>
+    principal.credential.kind === "api-key"
+      ? touchApiKey(principal.credential.apiKeyId)
+      : touchGrant(principal.credential.grantId),
+  )
 
   const handler = createMcpHandler(() => buildServer(principal))
   try {

@@ -28,6 +28,7 @@ export function testContext(overrides: {
   scopes?: ReadonlySet<Scope>
   origin?: "session" | "api-key"
   apiKeyId?: string | null
+  grantId?: string | null
   surface?: Surface
 }): AuthContext {
   return unsafeSealContext({
@@ -39,6 +40,7 @@ export function testContext(overrides: {
     scopes: overrides.scopes ?? ALL_SCOPES,
     origin: overrides.origin ?? "session",
     apiKeyId: overrides.apiKeyId ?? null,
+    grantId: overrides.grantId ?? null,
     // Tests run outside a Server Action, where updateTag() throws. The
     // route-handler path uses revalidateTag, which is valid here.
     surface: overrides.surface ?? "route-handler",
