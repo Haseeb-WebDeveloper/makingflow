@@ -19,7 +19,7 @@ export default async function IntegrationsPage() {
   if (!session.ok) redirect("/auth/login")
 
   const [data, keys, workspaces] = await Promise.all([
-    getWorkspaceIntegrations(),
+    getWorkspaceIntegrations(session.ctx.workspaceId),
     listKeys(session.ctx),
     grantableWorkspaces(session.ctx),
   ])

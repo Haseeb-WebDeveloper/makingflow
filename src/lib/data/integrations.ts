@@ -7,7 +7,6 @@ import {
   type GoogleSheetsIntegrationConfig,
   type NotionIntegrationConfig,
 } from "@/lib/db/schema"
-import { getDefaultWorkspace } from "@/lib/auth/session"
 import { isGoogleConfigured } from "@/lib/integrations/google"
 import { isEmailConfigured } from "@/lib/email/provider"
 import { isNotionConfigured } from "@/lib/integrations/notion"
@@ -39,14 +38,12 @@ export type GoogleSheetsState = {
   spreadsheetUrl: string | null
 }
 
-export async function getGoogleSheetsState(formId: string): Promise<GoogleSheetsState | null> {
-  const workspace = await getDefaultWorkspace()
-  if (!workspace) return null
+export async function getGoogleSheetsState(formId: string, workspaceId: string): Promise<GoogleSheetsState | null> {
 
   const [form] = await db
     .select({ id: forms.id })
     .from(forms)
-    .where(and(eq(forms.id, formId), eq(forms.workspaceId, workspace.id)))
+    .where(and(eq(forms.id, formId), eq(forms.workspaceId, workspaceId)))
     .limit(1)
   if (!form) return null
 
@@ -55,7 +52,7 @@ export async function getGoogleSheetsState(formId: string): Promise<GoogleSheets
     .from(workspaceConnections)
     .where(
       and(
-        eq(workspaceConnections.workspaceId, workspace.id),
+        eq(workspaceConnections.workspaceId, workspaceId),
         eq(workspaceConnections.provider, "google"),
       ),
     )
@@ -85,17 +82,15 @@ export type NotionState = {
   databaseUrl: string | null
 }
 
-export async function getNotionState(formId: string): Promise<NotionState> {
+export async function getNotionState(formId: string, workspaceId: string): Promise<NotionState> {
   const configured = isNotionConfigured()
-  const workspace = await getDefaultWorkspace()
-  if (!workspace) return { configured, connection: null, status: "inactive", databaseUrl: null }
 
   const [conn] = await db
     .select({ accountEmail: workspaceConnections.accountEmail })
     .from(workspaceConnections)
     .where(
       and(
-        eq(workspaceConnections.workspaceId, workspace.id),
+        eq(workspaceConnections.workspaceId, workspaceId),
         eq(workspaceConnections.provider, "notion"),
       ),
     )
@@ -128,9 +123,7 @@ export type FormWebhook = {
 }
 
 /** Webhook endpoints configured on a form (secret value never leaves the server). */
-export async function getFormWebhooks(formId: string): Promise<FormWebhook[]> {
-  const workspace = await getDefaultWorkspace()
-  if (!workspace) return []
+export async function getFormWebhooks(formId: string, workspaceId: string): Promise<FormWebhook[]> {
 
   const rows = await db
     .select({ id: formIntegrations.id, enabled: formIntegrations.enabled, config: formIntegrations.config })
@@ -138,7 +131,7 @@ export async function getFormWebhooks(formId: string): Promise<FormWebhook[]> {
     .where(
       and(
         eq(formIntegrations.formId, formId),
-        eq(formIntegrations.workspaceId, workspace.id),
+        eq(formIntegrations.workspaceId, workspaceId),
         eq(formIntegrations.type, "webhook"),
       ),
     )
@@ -163,10 +156,8 @@ export type FormEmailState = {
 }
 
 /** The form's single email-notification config (recipients + options). */
-export async function getFormEmail(formId: string): Promise<FormEmailState> {
+export async function getFormEmail(formId: string, workspaceId: string): Promise<FormEmailState> {
   const configured = isEmailConfigured()
-  const workspace = await getDefaultWorkspace()
-  if (!workspace) return { configured, notification: null }
 
   const [row] = await db
     .select({ id: formIntegrations.id, enabled: formIntegrations.enabled, config: formIntegrations.config })
@@ -174,7 +165,7 @@ export async function getFormEmail(formId: string): Promise<FormEmailState> {
     .where(
       and(
         eq(formIntegrations.formId, formId),
-        eq(formIntegrations.workspaceId, workspace.id),
+        eq(formIntegrations.workspaceId, workspaceId),
         eq(formIntegrations.type, "email"),
       ),
     )
@@ -210,9 +201,7 @@ function maskWebhookUrl(url: string): string {
 }
 
 /** The form's single Discord webhook config — without exposing the URL/token. */
-export async function getFormDiscord(formId: string): Promise<FormDiscordState> {
-  const workspace = await getDefaultWorkspace()
-  if (!workspace) return { notification: null }
+export async function getFormDiscord(formId: string, workspaceId: string): Promise<FormDiscordState> {
 
   const [row] = await db
     .select({ id: formIntegrations.id, enabled: formIntegrations.enabled, config: formIntegrations.config })
@@ -220,7 +209,7 @@ export async function getFormDiscord(formId: string): Promise<FormDiscordState> 
     .where(
       and(
         eq(formIntegrations.formId, formId),
-        eq(formIntegrations.workspaceId, workspace.id),
+        eq(formIntegrations.workspaceId, workspaceId),
         eq(formIntegrations.type, "discord"),
       ),
     )
@@ -269,9 +258,9 @@ export type WorkspaceIntegrations = {
   }
 }
 
-export async function getWorkspaceIntegrations(): Promise<WorkspaceIntegrations | null> {
-  const workspace = await getDefaultWorkspace()
-  if (!workspace) return null
+export async function getWorkspaceIntegrations(
+  workspaceId: string,
+): Promise<WorkspaceIntegrations | null> {
 
   const [conn, notionConn] = await Promise.all([
     db
@@ -279,7 +268,7 @@ export async function getWorkspaceIntegrations(): Promise<WorkspaceIntegrations 
       .from(workspaceConnections)
       .where(
         and(
-          eq(workspaceConnections.workspaceId, workspace.id),
+          eq(workspaceConnections.workspaceId, workspaceId),
           eq(workspaceConnections.provider, "google"),
         ),
       )
@@ -290,7 +279,7 @@ export async function getWorkspaceIntegrations(): Promise<WorkspaceIntegrations 
       .from(workspaceConnections)
       .where(
         and(
-          eq(workspaceConnections.workspaceId, workspace.id),
+          eq(workspaceConnections.workspaceId, workspaceId),
           eq(workspaceConnections.provider, "notion"),
         ),
       )
@@ -303,7 +292,7 @@ export async function getWorkspaceIntegrations(): Promise<WorkspaceIntegrations 
   const formRows = await db
     .select({ id: forms.id, title: forms.title })
     .from(forms)
-    .where(and(eq(forms.workspaceId, workspace.id), isNull(forms.deletedAt)))
+    .where(and(eq(forms.workspaceId, workspaceId), isNull(forms.deletedAt)))
     .orderBy(desc(forms.updatedAt))
 
   // Every integration row for the workspace, split by type. Sheets is one row
@@ -316,7 +305,7 @@ export async function getWorkspaceIntegrations(): Promise<WorkspaceIntegrations 
       config: formIntegrations.config,
     })
     .from(formIntegrations)
-    .where(eq(formIntegrations.workspaceId, workspace.id))
+    .where(eq(formIntegrations.workspaceId, workspaceId))
 
   const byForm = new Map(
     integrationRows.filter((r) => r.type === "google_sheets").map((r) => [r.formId, r]),

@@ -1,336 +1,57 @@
 "use server"
 
-import { and, eq, isNull } from "drizzle-orm"
-import { revalidatePath } from "next/cache"
-import { after } from "next/server"
-import { db } from "@/lib/db"
-import {
-  forms,
-  formIntegrations,
-  workspaceConnections,
-  type GoogleSheetsIntegrationConfig,
-  type NotionIntegrationConfig,
-} from "@/lib/db/schema"
-import { getDefaultWorkspace } from "@/lib/auth/session"
-import { createFormSheet, refreshFormSheetHeader } from "@/lib/integrations/sheets-provision"
-import { backfillFormSheet } from "@/lib/integrations/sync"
-import { backfillFormNotionDatabase } from "@/lib/integrations/notion-sync"
-import {
-  createFormDatabase,
-  NotionNoParentPageError,
-  reconcileFormDatabase,
-  TITLE_PROP,
-} from "@/lib/integrations/notion-provision"
+/**
+ * Google Sheets / Notion Server Actions — the browser's entry point.
+ *
+ * Logic lives in src/lib/core/integrations.ts, shared with the MCP surface.
+ * Note that CONNECTING a provider is not here and cannot be: it is an OAuth
+ * redirect handled by /api/integrations/{google,notion}/connect, which needs a
+ * browser. These actions manage sync for an already-connected workspace.
+ */
+
+import { sessionContext } from "@/lib/auth/context-web"
+import * as integrationsCore from "@/lib/core/integrations"
 
 type Result = { success: true } | { success: false; error: string }
 
-async function workspaceConnection(workspaceId: string, provider: "google" | "notion") {
-  const [conn] = await db
-    .select()
-    .from(workspaceConnections)
-    .where(
-      and(
-        eq(workspaceConnections.workspaceId, workspaceId),
-        eq(workspaceConnections.provider, provider),
-      ),
-    )
-    .limit(1)
-  return conn ?? null
-}
-
-const workspaceGoogleConnection = (workspaceId: string) =>
-  workspaceConnection(workspaceId, "google")
-
-/**
- * Resume / create a form's Google Sheets sync. Under the global model every
- * form syncs automatically once the workspace connects, so this is only needed
- * to UN-pause a form, or to create its spreadsheet eagerly before its first
- * response. Reuses the existing spreadsheet (refreshing its header) when present.
- */
+/** Resume / create a form's Google Sheets sync. */
 export async function enableFormSheet(formId: string): Promise<Result> {
-  const workspace = await getDefaultWorkspace()
-  if (!workspace) return { success: false, error: "No workspace" }
-
-  const [form] = await db
-    .select({ id: forms.id, title: forms.title })
-    .from(forms)
-    .where(and(eq(forms.id, formId), eq(forms.workspaceId, workspace.id), isNull(forms.deletedAt)))
-    .limit(1)
-  if (!form) return { success: false, error: "Form not found" }
-
-  const conn = await workspaceGoogleConnection(workspace.id)
-  if (!conn) return { success: false, error: "Connect a Google account first" }
-
-  const [existing] = await db
-    .select()
-    .from(formIntegrations)
-    .where(and(eq(formIntegrations.formId, formId), eq(formIntegrations.type, "google_sheets")))
-    .limit(1)
-
-  let config: GoogleSheetsIntegrationConfig
-  try {
-    const prev = existing?.config as GoogleSheetsIntegrationConfig | undefined
-    config = prev?.spreadsheetId
-      ? await refreshFormSheetHeader(conn, prev, formId)
-      : await createFormSheet(conn, formId, form.title)
-
-    if (existing) {
-      await db
-        .update(formIntegrations)
-        .set({ enabled: true, config })
-        .where(eq(formIntegrations.id, existing.id))
-    } else {
-      await db.insert(formIntegrations).values({
-        formId,
-        workspaceId: workspace.id,
-        type: "google_sheets",
-        enabled: true,
-        config,
-      })
-    }
-  } catch (err) {
-    console.error("[enableFormSheet] failed", err)
-    return { success: false, error: "Couldn't set up the spreadsheet. Reconnect Google and try again." }
-  }
-
-  // Pull any responses that predate this sync into the sheet (idempotent — skips
-  // rows already present). Deferred: the sheet is already set up, and a long
-  // history is more rows than a server action's budget wants to sit through.
-  after(async () => {
-    await backfillFormSheet(conn, config, formId)
-    revalidatePath(`/forms/${formId}/integrations`)
-  })
-
-  revalidatePath(`/forms/${formId}/integrations`)
-  revalidatePath("/integrations")
-  return { success: true }
+  const session = await sessionContext()
+  if (!session.ok) return { success: false, error: session.error }
+  return integrationsCore.enableFormSheet(session.ctx, formId)
 }
 
-/**
- * Pause Sheets sync for a single form (keeps the spreadsheet for later). Works
- * even before the form has synced once — we record a disabled placeholder row
- * so the form is excluded from the global auto-sync until resumed.
- */
+/** Pause Sheets sync for a single form (keeps the spreadsheet for later). */
 export async function pauseFormSheet(formId: string): Promise<Result> {
-  const workspace = await getDefaultWorkspace()
-  if (!workspace) return { success: false, error: "No workspace" }
-
-  const [existing] = await db
-    .select({ id: formIntegrations.id })
-    .from(formIntegrations)
-    .where(
-      and(
-        eq(formIntegrations.formId, formId),
-        eq(formIntegrations.workspaceId, workspace.id),
-        eq(formIntegrations.type, "google_sheets"),
-      ),
-    )
-    .limit(1)
-
-  if (existing) {
-    await db.update(formIntegrations).set({ enabled: false }).where(eq(formIntegrations.id, existing.id))
-  } else {
-    // No sheet yet — verify the form is ours and the workspace is connected,
-    // then store a disabled placeholder (spreadsheet is created on resume).
-    const [form] = await db
-      .select({ id: forms.id })
-      .from(forms)
-      .where(and(eq(forms.id, formId), eq(forms.workspaceId, workspace.id), isNull(forms.deletedAt)))
-      .limit(1)
-    const conn = await workspaceGoogleConnection(workspace.id)
-    if (!form || !conn) return { success: false, error: "Nothing to pause" }
-    await db.insert(formIntegrations).values({
-      formId,
-      workspaceId: workspace.id,
-      type: "google_sheets",
-      enabled: false,
-      config: { connectionId: conn.id, spreadsheetId: "" },
-    })
-  }
-
-  revalidatePath(`/forms/${formId}/integrations`)
-  revalidatePath("/integrations")
-  return { success: true }
+  const session = await sessionContext()
+  if (!session.ok) return { success: false, error: session.error }
+  return integrationsCore.pauseFormSheet(session.ctx, formId)
 }
 
-/**
- * Disconnect the workspace's Google account: this is the global off-switch.
- * Deletes the grant and disables every form's Sheets sync (spreadsheets are
- * left intact in the user's Drive).
- */
+/** Disconnect the workspace's Google account — the global off-switch. */
 export async function disconnectGoogle(returnFormId?: string): Promise<Result> {
-  const workspace = await getDefaultWorkspace()
-  if (!workspace) return { success: false, error: "No workspace" }
-
-  await db.transaction(async (tx) => {
-    await tx
-      .update(formIntegrations)
-      .set({ enabled: false })
-      .where(
-        and(
-          eq(formIntegrations.workspaceId, workspace.id),
-          eq(formIntegrations.type, "google_sheets"),
-        ),
-      )
-    await tx
-      .delete(workspaceConnections)
-      .where(
-        and(
-          eq(workspaceConnections.workspaceId, workspace.id),
-          eq(workspaceConnections.provider, "google"),
-        ),
-      )
-  })
-
-  if (returnFormId) revalidatePath(`/forms/${returnFormId}/integrations`)
-  revalidatePath("/integrations")
-  return { success: true }
+  const session = await sessionContext()
+  if (!session.ok) return { success: false, error: session.error }
+  return integrationsCore.disconnectGoogle(session.ctx, returnFormId)
 }
 
-// ── Notion (mirror of the Google actions; global connect-once model) ─────────
-
-/**
- * Resume / create a form's Notion sync. Like Sheets, every form syncs once the
- * workspace connects; this un-pauses a form or creates its database eagerly.
- * Reuses the existing database when present.
- */
+/** Resume / create a form's Notion sync. */
 export async function enableFormNotion(formId: string): Promise<Result> {
-  const workspace = await getDefaultWorkspace()
-  if (!workspace) return { success: false, error: "No workspace" }
-
-  const [form] = await db
-    .select({ id: forms.id, title: forms.title })
-    .from(forms)
-    .where(and(eq(forms.id, formId), eq(forms.workspaceId, workspace.id), isNull(forms.deletedAt)))
-    .limit(1)
-  if (!form) return { success: false, error: "Form not found" }
-
-  const conn = await workspaceConnection(workspace.id, "notion")
-  if (!conn) return { success: false, error: "Connect a Notion account first" }
-
-  const [existing] = await db
-    .select()
-    .from(formIntegrations)
-    .where(and(eq(formIntegrations.formId, formId), eq(formIntegrations.type, "notion")))
-    .limit(1)
-
-  let config: NotionIntegrationConfig
-  try {
-    const prev = existing?.config as NotionIntegrationConfig | undefined
-    // Reconcile before reusing: the form may have gained questions while this
-    // was paused, and the backfill below writes only the properties the config
-    // knows about. Pages are never revisited, so a stale config would leave
-    // those answers permanently missing from the history it writes.
-    // (The Sheets branch above gets this from refreshFormSheetHeader.)
-    config = prev?.databaseId
-      ? (await reconcileFormDatabase(conn, prev, formId)).config
-      : await createFormDatabase(conn, formId, form.title)
-
-    if (existing) {
-      await db
-        .update(formIntegrations)
-        .set({ enabled: true, config })
-        .where(eq(formIntegrations.id, existing.id))
-    } else {
-      await db.insert(formIntegrations).values({
-        formId,
-        workspaceId: workspace.id,
-        type: "notion",
-        enabled: true,
-        config,
-      })
-    }
-  } catch (err) {
-    console.error("[enableFormNotion] failed", err)
-    // "Share a page with the integration" is something only the user can do —
-    // telling them to reconnect sends them round a loop that can't fix it.
-    if (err instanceof NotionNoParentPageError) return { success: false, error: err.message }
-    return { success: false, error: "Couldn't set up the Notion database. Reconnect Notion and try again." }
-  }
-
-  // Pull any responses that predate this sync into the database (idempotent —
-  // skips pages already present). Deferred because Notion takes one request per
-  // page, paced: a few hundred responses is minutes, not milliseconds.
-  after(async () => {
-    await backfillFormNotionDatabase(conn, config, formId)
-    revalidatePath(`/forms/${formId}/integrations`)
-  })
-
-  revalidatePath(`/forms/${formId}/integrations`)
-  revalidatePath("/integrations")
-  return { success: true }
+  const session = await sessionContext()
+  if (!session.ok) return { success: false, error: session.error }
+  return integrationsCore.enableFormNotion(session.ctx, formId)
 }
 
-/** Pause Notion sync for a single form (keeps the database for later). */
+/** Pause Notion sync for a single form. */
 export async function pauseFormNotion(formId: string): Promise<Result> {
-  const workspace = await getDefaultWorkspace()
-  if (!workspace) return { success: false, error: "No workspace" }
-
-  const [existing] = await db
-    .select({ id: formIntegrations.id })
-    .from(formIntegrations)
-    .where(
-      and(
-        eq(formIntegrations.formId, formId),
-        eq(formIntegrations.workspaceId, workspace.id),
-        eq(formIntegrations.type, "notion"),
-      ),
-    )
-    .limit(1)
-
-  if (existing) {
-    await db.update(formIntegrations).set({ enabled: false }).where(eq(formIntegrations.id, existing.id))
-  } else {
-    const [form] = await db
-      .select({ id: forms.id })
-      .from(forms)
-      .where(and(eq(forms.id, formId), eq(forms.workspaceId, workspace.id), isNull(forms.deletedAt)))
-      .limit(1)
-    const conn = await workspaceConnection(workspace.id, "notion")
-    if (!form || !conn) return { success: false, error: "Nothing to pause" }
-    await db.insert(formIntegrations).values({
-      formId,
-      workspaceId: workspace.id,
-      type: "notion",
-      enabled: false,
-      config: { databaseId: "", titlePropertyName: TITLE_PROP, properties: [] },
-    })
-  }
-
-  revalidatePath(`/forms/${formId}/integrations`)
-  revalidatePath("/integrations")
-  return { success: true }
+  const session = await sessionContext()
+  if (!session.ok) return { success: false, error: session.error }
+  return integrationsCore.pauseFormNotion(session.ctx, formId)
 }
 
-/**
- * Disconnect the workspace's Notion account (global off-switch). Deletes the
- * grant and disables every form's Notion sync (databases are left intact).
- */
+/** Disconnect the workspace's Notion account. */
 export async function disconnectNotion(returnFormId?: string): Promise<Result> {
-  const workspace = await getDefaultWorkspace()
-  if (!workspace) return { success: false, error: "No workspace" }
-
-  await db.transaction(async (tx) => {
-    await tx
-      .update(formIntegrations)
-      .set({ enabled: false })
-      .where(
-        and(
-          eq(formIntegrations.workspaceId, workspace.id),
-          eq(formIntegrations.type, "notion"),
-        ),
-      )
-    await tx
-      .delete(workspaceConnections)
-      .where(
-        and(
-          eq(workspaceConnections.workspaceId, workspace.id),
-          eq(workspaceConnections.provider, "notion"),
-        ),
-      )
-  })
-
-  if (returnFormId) revalidatePath(`/forms/${returnFormId}/integrations`)
-  revalidatePath("/integrations")
-  return { success: true }
+  const session = await sessionContext()
+  if (!session.ok) return { success: false, error: session.error }
+  return integrationsCore.disconnectNotion(session.ctx, returnFormId)
 }

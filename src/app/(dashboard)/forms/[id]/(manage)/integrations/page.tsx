@@ -3,7 +3,7 @@ import { notFound } from "next/navigation"
 import { Icon } from "@/components/ui/icon"
 import { IntegrationsPanel } from "@/components/forms/integrations-panel"
 import { getGoogleSheetsState, getFormWebhooks, getFormEmail, getFormDiscord, getNotionState } from "@/lib/data/integrations"
-import { getRequiredUser } from "@/lib/auth/session"
+import { getDefaultWorkspace, getRequiredUser } from "@/lib/auth/session"
 
 export const metadata: Metadata = { title: "Integrations · MakingFlow" }
 /**
@@ -19,12 +19,15 @@ export default async function FormIntegrationsPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
+  const workspace = await getDefaultWorkspace()
+  if (!workspace) notFound()
+
   const [state, webhooks, email, discord, notion, user] = await Promise.all([
-    getGoogleSheetsState(id),
-    getFormWebhooks(id),
-    getFormEmail(id),
-    getFormDiscord(id),
-    getNotionState(id),
+    getGoogleSheetsState(id, workspace.id),
+    getFormWebhooks(id, workspace.id),
+    getFormEmail(id, workspace.id),
+    getFormDiscord(id, workspace.id),
+    getNotionState(id, workspace.id),
     getRequiredUser(),
   ])
   if (!state) notFound()
