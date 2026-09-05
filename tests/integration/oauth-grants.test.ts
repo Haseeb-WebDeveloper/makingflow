@@ -16,7 +16,7 @@
 
 import { randomUUID } from "node:crypto"
 import { beforeEach, describe, expect, test } from "vitest"
-import { eq } from "drizzle-orm"
+import { and, eq } from "drizzle-orm"
 import { db } from "@/lib/db"
 import {
   mcpOauthGrantWorkspaces,
@@ -185,13 +185,56 @@ describe("oauth grants", () => {
     })
 
     test("a token for a different client does not ride on this consent", async () => {
-      // The narrowest grant on an account would be decorative if it did.
+      // The narrowest grant on an account would be decorative if it did. The
+      // second client gets its OWN grant, empty, rather than inheriting the
+      // first one's workspaces.
       const resolved = await grantForToken(token(userId, "client_other"))
-      expect(resolved).toEqual({
+      expect(resolved).toMatchObject({ ok: false, status: 403 })
+      if (resolved.ok) throw new Error("expected a refusal")
+      expect(resolved.error).toMatch(/isn't set up yet/)
+
+      const rows = await db
+        .select({ clientId: mcpOauthGrants.clientId })
+        .from(mcpOauthGrants)
+        .where(eq(mcpOauthGrants.userId, userId))
+      expect(rows.map((r) => r.clientId).sort()).toEqual(["client_abc", "client_other"])
+
+      // And the new one reaches nothing.
+      const [placeholder] = await db
+        .select({ id: mcpOauthGrants.id })
+        .from(mcpOauthGrants)
+        .where(
+          and(eq(mcpOauthGrants.userId, userId), eq(mcpOauthGrants.clientId, "client_other")),
+        )
+      expect(
+        await db
+          .select()
+          .from(mcpOauthGrantWorkspaces)
+          .where(eq(mcpOauthGrantWorkspaces.grantId, placeholder.id)),
+      ).toHaveLength(0)
+    })
+
+    test("an unknown client's placeholder does not resurrect a revoked grant", async () => {
+      // Disconnecting must actually disconnect. If the "never seen this client"
+      // path re-created rows indiscriminately, revoking would do nothing from
+      // the very next request onwards.
+      const [grant] = await db
+        .select({ id: mcpOauthGrants.id })
+        .from(mcpOauthGrants)
+        .where(eq(mcpOauthGrants.userId, userId))
+      await revokeGrant(userId, grant.id)
+
+      expect(await grantForToken(token(userId))).toEqual({
         ok: false,
         status: 401,
-        error: "This app is not connected to your account",
+        error: "Access for this app has been revoked",
       })
+
+      const [after] = await db
+        .select({ revokedAt: mcpOauthGrants.revokedAt })
+        .from(mcpOauthGrants)
+        .where(eq(mcpOauthGrants.id, grant.id))
+      expect(after.revokedAt).not.toBeNull()
     })
 
     test("losing membership drops that workspace on the very next call", async () => {

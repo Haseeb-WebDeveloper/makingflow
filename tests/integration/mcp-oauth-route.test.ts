@@ -242,9 +242,20 @@ describe("MCP over OAuth", () => {
       expect((await callTool(stale, "makingflow_list_forms")).status).toBe(401)
     })
 
-    test("a token from a client the user never connected is refused", async () => {
+    test("a token from a client the user never connected reaches nothing", async () => {
+      // 403, not 401: the token is genuinely valid — the app just has no
+      // workspaces yet. Sending a 401 would tell the client to re-authorise,
+      // which would produce another valid token and another 401, forever.
       const other = await mintToken(tenant.userId, { clientId: "client_never_seen" })
-      expect((await callTool(other, "makingflow_list_forms")).status).toBe(401)
+      const { status, body } = await callTool(other, "makingflow_list_forms")
+
+      expect(status).toBe(403)
+      // The refusal names the page that fixes it, because the user sees this
+      // message inside their assistant with nothing else to go on.
+      expect(JSON.stringify(body)).toContain("/integrations")
+
+      // It reached no forms, and did not inherit the other client's grant.
+      expect(JSON.stringify(body)).not.toContain(tenant.formId)
     })
 
     test("disconnecting the app stops it on the next call", async () => {

@@ -34,6 +34,12 @@ import { isScope, type Role, type Scope } from "@/lib/auth/context"
 import type { GrantedWorkspace } from "@/lib/mcp/auth"
 import type { VerifiedToken } from "@/lib/mcp/oauth/verify"
 
+/** Where a user finishes setting up a connection. Named in refusal messages. */
+function settingsUrl(): string {
+  const base = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") || ""
+  return `${base}/integrations`
+}
+
 export type ResolvedGrant = {
   grantId: string
   userId: string
@@ -81,11 +87,32 @@ export async function grantForToken(token: VerifiedToken): Promise<GrantResult> 
     .limit(1)
 
   if (!grant) {
-    // Valid token, no consent on file — the user revoked it, or authorised a
-    // different client. 401 rather than 403: re-authorising is exactly the fix.
-    return { ok: false, status: 401, error: "This app is not connected to your account" }
+    // A verified token for a client we never saw at consent time.
+    //
+    // This is the normal path when the authorization server's Login URI does
+    // not forward `client_id` — we could not ask which workspaces before the
+    // app connected, because we did not yet know which app was asking. Guessing
+    // is not an option: a grant bound to the wrong client would let one
+    // connected app act through another's permissions.
+    //
+    // So the grant is created here, empty, and the user finishes the job. That
+    // makes the app visible in /integrations immediately rather than leaving
+    // them with a failing assistant and nothing to click.
+    await db
+      .insert(mcpOauthGrants)
+      .values({ userId: user.id, clientId: token.clientId, scopes: [] })
+      .onConflictDoNothing()
+
+    return {
+      ok: false,
+      status: 403,
+      error: `This app isn't set up yet. Open ${settingsUrl()} and choose which workspaces it may reach.`,
+    }
   }
   if (grant.revokedAt) {
+    // Deliberately NOT re-created above: the row exists, and the user put it in
+    // this state on purpose. Auto-reviving a revoked grant on the next request
+    // would make disconnecting an app do nothing.
     return { ok: false, status: 401, error: "Access for this app has been revoked" }
   }
 
@@ -94,7 +121,13 @@ export async function grantForToken(token: VerifiedToken): Promise<GrantResult> 
     .from(mcpOauthGrantWorkspaces)
     .where(eq(mcpOauthGrantWorkspaces.grantId, grant.id))
   if (granted.length === 0) {
-    return { ok: false, status: 403, error: "This app has access to no workspace" }
+    // Either the placeholder above, still unfinished, or a grant whose every
+    // workspace has since been deleted. Same message: the fix is the same page.
+    return {
+      ok: false,
+      status: 403,
+      error: `This app isn't set up yet. Open ${settingsUrl()} and choose which workspaces it may reach.`,
+    }
   }
 
   // THE ACCESS CHECK, identical in spirit to the API-key path: the consented

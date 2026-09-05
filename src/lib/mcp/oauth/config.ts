@@ -57,3 +57,16 @@ export function oauthConfig(canonicalResource: string): OauthConfig | null {
 export function isOauthConfigured(): boolean {
   return Boolean(process.env.MCP_OAUTH_ISSUER)
 }
+
+/**
+ * True when we can also COMPLETE an authorization, not merely verify a token.
+ *
+ * Separate from the above because the two halves fail differently. Without an
+ * issuer we cannot verify anything and should advertise no OAuth at all;
+ * without an API key we can verify tokens perfectly well but the Login URI
+ * cannot hand identity back, so users get stuck mid-connect. Distinguishing
+ * them turns a mystifying dead end into a message naming the missing variable.
+ */
+export function canCompleteAuthorization(): boolean {
+  return isOauthConfigured() && Boolean(process.env.WORKOS_API_KEY)
+}

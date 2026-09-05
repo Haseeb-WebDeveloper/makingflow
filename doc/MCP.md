@@ -13,7 +13,7 @@ owner has in the browser. 27 tools, MCP revision **2026-07-28**, served at
 | Works with | Claude Code, Cursor, VS Code | ChatGPT, claude.ai |
 | Credential | `Authorization: Bearer mf_sk_live_…` | access token from an authorization server |
 | Set up from | `/integrations` → Connect | the client's "add connector" flow |
-| Needs config | nothing | `MCP_OAUTH_ISSUER` |
+| Needs config | nothing | `MCP_OAUTH_ISSUER` + `WORKOS_API_KEY` |
 
 The second is not a nicer version of the first. OpenAI's connector docs are
 explicit that ChatGPT "does not support machine-to-machine OAuth grants such as
@@ -63,8 +63,13 @@ working exactly as it does today and advertises no `authorization_servers` in it
 discovery document, which is the honest answer for a self-hosted install.
 
 ```bash
-# Required to switch OAuth on.
+# Required. Your AuthKit domain, exactly as it appears in tokens as `iss`.
+# This alone switches OAuth on.
 MCP_OAUTH_ISSUER=https://your-authkit-domain.workos.com
+
+# Required to COMPLETE a connection. Without it we can verify tokens but the
+# Login URI cannot hand identity back, so users get stuck mid-connect.
+WORKOS_API_KEY=sk_live_...
 
 # Optional. Defaults to <issuer>/oauth2/jwks.
 MCP_OAUTH_JWKS_URI=https://your-authkit-domain.workos.com/oauth2/jwks
@@ -86,8 +91,14 @@ Using WorkOS AuthKit in **Standalone Connect** mode (Supabase stays as the only
 thing that ever sees a password):
 
 1. **Login URI** → `https://<your-domain>/api/mcp/oauth/login`
-   The AS sends users here to authenticate. We check for a Supabase session and
-   hand back our own `users.id` as `external_auth_id`, so the token's `sub`
+   AuthKit sends users here with an `external_auth_id` — a short-lived handle for
+   one authorization request. We resolve who is signed in, then **POST that
+   handle back** to `https://api.workos.com/authkit/oauth2/complete` with our own
+   `users.id`, and send the user to the `redirect_uri` that call returns.
+
+   The direction matters and is easy to get backwards: step three is a
+   server-to-server POST authenticated with `WORKOS_API_KEY`, **not** a redirect
+   with the id appended. Because we send our own `users.id`, the token's `sub`
    resolves directly against `users` with no mapping table.
 
 2. **Resource URL** → `https://<your-domain>/api/mcp`
@@ -127,6 +138,26 @@ check `aud`.
 
 The second blocker turned out not to matter — see below — but the first is
 disqualifying on its own.
+
+### Two consent screens, and which asks what
+
+AuthKit runs its own consent screen — *"do you allow this app?"* — which is the
+question it is able to ask. It cannot ask ours: **which workspaces**, and what
+the app may do in them. So we ask that separately.
+
+**If AuthKit forwards `client_id` to the Login URI**, we ask before the app is
+ever connected: the flow pauses at `/oauth/consent`, the user ticks workspaces
+and permissions, and approving resumes the handshake.
+
+**If it does not** — the documented contract carries only `external_auth_id` — we
+cannot ask, because we do not yet know which app is asking, and guessing would
+bind the grant to the wrong client and let one connected app act through
+another's permissions. So the connection completes with **no workspaces**, the
+first tool call returns a `403` naming `/integrations`, and the app appears there
+with a **Finish setup** button.
+
+Both paths end at the same row. The second costs the user one extra click; it
+never costs them a wrong grant.
 
 ### Why the token carries so little
 

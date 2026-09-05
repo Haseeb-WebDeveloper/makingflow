@@ -32,6 +32,8 @@ export type ConsentFormProps = {
   clientName: string | null;
   redirectUri: string | null;
   state: string | null;
+  /** Set when the consent screen interrupted a live authorization request. */
+  externalAuthId: string | null;
   workspaces: { id: string; name: string }[];
 };
 
@@ -40,6 +42,7 @@ export function ConsentForm({
   clientName,
   redirectUri,
   state,
+  externalAuthId,
   workspaces,
 }: ConsentFormProps) {
   const [scopes, setScopes] = React.useState<string[]>([...DEFAULT_SCOPES]);
@@ -68,17 +71,28 @@ export function ConsentForm({
         return;
       }
 
-      // Hand control back to the authorization server, which finishes the OAuth
-      // dance and redirects the client. `state` is echoed untouched — it is the
-      // AS's, and mangling it breaks the flow's CSRF protection.
+      // Resume the authorization the AS paused for our question. Back through
+      // the Login URI, which completes the handshake and forwards the user
+      // wherever the AS says next — we never invent that destination ourselves.
+      if (externalAuthId) {
+        const resume = new URL("/api/mcp/oauth/login", window.location.origin);
+        resume.searchParams.set("external_auth_id", externalAuthId);
+        resume.searchParams.set("consented", "1");
+        window.location.assign(resume.toString());
+        return;
+      }
+
+      // Some flows hand us an explicit return. `state` is echoed untouched — it
+      // belongs to the AS, and mangling it breaks the flow's CSRF protection.
       if (redirectUri) {
         const target = new URL(redirectUri);
         if (state) target.searchParams.set("state", state);
         window.location.assign(target.toString());
         return;
       }
-      // No redirect to return to — the user started this from our own settings,
-      // so show them the result rather than a dead end.
+
+      // Nothing to return to — the user reached this from our own settings, so
+      // show them the result rather than a dead end.
       window.location.assign("/integrations");
     });
   }

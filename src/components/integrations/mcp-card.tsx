@@ -242,26 +242,51 @@ export function McpCard({
                       </Button>
                     </div>
 
-                    <dl className="mt-3 space-y-1.5 text-xs">
-                      <div className="flex gap-2">
-                        <dt className="w-24 shrink-0 text-muted-foreground">Workspaces</dt>
-                        <dd className="min-w-0 text-foreground">
-                          {app.workspaces.map((w) => w.name).join(", ")}
-                        </dd>
+                    {/* An app that connected before we knew which app it was:
+                        the grant exists but reaches nothing until the user says
+                        where. It shows here rather than failing silently in
+                        their assistant with nothing to click. */}
+                    {app.workspaces.length === 0 ? (
+                      <div className="mt-3 rounded-md border border-border bg-muted/40 p-3">
+                        <p className="text-xs text-muted-foreground">
+                          This app is connected but can&apos;t reach anything yet. Choose its
+                          workspaces and permissions to finish.
+                        </p>
+                        <Button
+                          size="sm"
+                          className="mt-2.5"
+                          onClick={() => {
+                            const url = new URL("/oauth/consent", window.location.origin);
+                            url.searchParams.set("client_id", app.clientId);
+                            if (app.clientName) url.searchParams.set("client_name", app.clientName);
+                            window.location.assign(url.toString());
+                          }}
+                        >
+                          Finish setup
+                        </Button>
                       </div>
-                      <div className="flex gap-2">
-                        <dt className="w-24 shrink-0 text-muted-foreground">Permissions</dt>
-                        <dd className="min-w-0 text-foreground">
-                          {app.scopes.map(scopeLabel).join(", ")}
-                        </dd>
-                      </div>
-                      <div className="flex gap-2">
-                        <dt className="w-24 shrink-0 text-muted-foreground">Last used</dt>
-                        <dd className="text-foreground">
-                          {app.lastUsedAt ? new Date(app.lastUsedAt).toLocaleString() : "Never"}
-                        </dd>
-                      </div>
-                    </dl>
+                    ) : (
+                      <dl className="mt-3 space-y-1.5 text-xs">
+                        <div className="flex gap-2">
+                          <dt className="w-24 shrink-0 text-muted-foreground">Workspaces</dt>
+                          <dd className="min-w-0 text-foreground">
+                            {app.workspaces.map((w) => w.name).join(", ")}
+                          </dd>
+                        </div>
+                        <div className="flex gap-2">
+                          <dt className="w-24 shrink-0 text-muted-foreground">Permissions</dt>
+                          <dd className="min-w-0 text-foreground">
+                            {app.scopes.map(scopeLabel).join(", ")}
+                          </dd>
+                        </div>
+                        <div className="flex gap-2">
+                          <dt className="w-24 shrink-0 text-muted-foreground">Last used</dt>
+                          <dd className="text-foreground">
+                            {app.lastUsedAt ? new Date(app.lastUsedAt).toLocaleString() : "Never"}
+                          </dd>
+                        </div>
+                      </dl>
+                    )}
                   </div>
                 ))}
                 {keys.length > 0 ? (

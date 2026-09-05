@@ -48,6 +48,7 @@ export default async function ConsentPage({
     client_name?: string
     redirect_uri?: string
     state?: string
+    external_auth_id?: string
   }>
 }) {
   if (!isOauthConfigured()) {
@@ -106,6 +107,9 @@ export default async function ConsentPage({
         clientName={params.client_name ?? null}
         redirectUri={params.redirect_uri ?? null}
         state={params.state ?? null}
+        // Present when this ran mid-flow: approving resumes the handshake
+        // rather than dropping the user on a settings page.
+        externalAuthId={params.external_auth_id ?? null}
         workspaces={workspaces.map((w) => ({ id: w.id, name: w.name }))}
       />
     </AuthShell>
