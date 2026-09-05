@@ -15,7 +15,7 @@ export function AuthShell({
 }) {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-background px-5 pb-12 pt-8">
-      <div className="w-full max-w-md">
+      <div className="w-full max-w-xl">
         <div className="mb-2 flex justify-center">
           <Link
             href="/"

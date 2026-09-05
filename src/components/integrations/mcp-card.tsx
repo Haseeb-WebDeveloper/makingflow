@@ -1,22 +1,31 @@
 "use client";
 
 /**
- * The "Connect an AI assistant" card.
+ * The "Connect an AI assistant" card, and the flow behind it.
  *
- * The whole flow lives here: create a key, see it exactly once, copy the
- * ready-made connect command, and revoke.
+ * IT ASKS WHICH APP FIRST, and that is the whole design. There are two ways to
+ * connect and they are not interchangeable: ChatGPT and Claude speak only OAuth
+ * and have nowhere to put a key, while Claude Code, Cursor and VS Code take a
+ * header and need one. Before this asked, everyone got a key and a Claude Code
+ * command — which meant a ChatGPT user received a credential their client
+ * cannot accept, with nothing erroring and no way to finish. The answer decides
+ * whether there is anything to do here at all, so it has to come first.
  *
- * Two things drive the design.
+ * For OAuth clients the honest answer is "nothing to set up here", said out
+ * loud, with the URL to paste into their settings. No key is minted and no
+ * permissions are asked, because those are chosen on the consent screen when
+ * the app sends the user back to us.
  *
- * The secret is shown ONCE and cannot be recovered — the database holds only an
- * HMAC of it. That is a real constraint, not a UI preference, so the reveal
- * step is a deliberate stop with a copy button rather than a line of text a
- * user might scroll past.
+ * For key clients, the secret is shown ONCE and cannot be recovered — the
+ * database holds only an HMAC. That is a real constraint, not a UI preference,
+ * so the reveal is a deliberate stop rather than a line of text to scroll past.
+ * Where the client supports a one-click install (Cursor, VS Code) it is offered
+ * first: the single most common way this flow has broken is a token pasted
+ * across two lines, which puts a newline in the HTTP header, and a deeplink
+ * removes that failure mode rather than warning about it.
  *
- * The command is assembled for the user, key included. Every person who has hit
- * this flow so far broke it by pasting the token across two lines, which puts a
- * newline inside the HTTP header and fails with an unhelpful error. One
- * copy-to-clipboard removes that failure mode entirely.
+ * Per-app copy lives in @/lib/mcp/client-catalog, shared with the public docs
+ * page so setup instructions cannot drift between the two.
  */
 
 import * as React from "react";
@@ -55,6 +64,7 @@ import { CardShell } from "@/components/integrations/cards";
 import { createMcpKey, revokeMcpKey } from "@/lib/actions/mcp-keys";
 import { disconnectApp } from "@/lib/actions/mcp-oauth";
 import { PERMISSION_CHOICES, DEFAULT_SCOPES, scopeLabel } from "@/lib/mcp/scope-catalog";
+import { MCP_CLIENTS, type McpClientInfo } from "@/lib/mcp/client-catalog";
 import type { ConnectedApp } from "@/lib/mcp/oauth/grants";
 import type { KeySummary } from "@/lib/core/mcp-keys";
 
@@ -94,7 +104,11 @@ export function McpCard({
   isOwner,
   endpoint,
 }: McpCardProps) {
-  const [createOpen, setCreateOpen] = React.useState(false);
+  // The connect flow is a small state machine: pick an app, then either follow
+  // its OAuth steps or create a key and install it. `client` is what says which
+  // branch we are on, so it drives which dialog is open.
+  const [createOpen, setCreateOpen] = React.useState(false)
+  const [client, setClient] = React.useState<McpClientInfo | null>(null);
   const [detailsOpen, setDetailsOpen] = React.useState(false);
   const [revoking, setRevoking] = React.useState<KeySummary | null>(null);
   const [disconnecting, setDisconnecting] = React.useState<ConnectedApp | null>(null);
@@ -161,8 +175,19 @@ export function McpCard({
     showToast(`${what} copied`, { type: "success" });
   }
 
-  const connectCommand = (token: string) =>
-    `claude mcp add --scope user --transport http makingflow ${endpoint} --header "Authorization: Bearer ${token}"`;
+  /** Leave the whole flow, whichever step it is on. */
+  function closeCreate() {
+    setCreateOpen(false);
+    setClient(null);
+    setCreated(null);
+    reset();
+  }
+
+  // Install instructions for the app the user actually picked. Built here
+  // rather than in the catalogue because it needs the token, which exists only
+  // in this one render after creation.
+  const guide =
+    created && client?.install ? client.install({ endpoint, token: created.token }) : null;
 
   return (
     <>
@@ -327,13 +352,122 @@ export function McpCard({
         </SheetContent>
       </Sheet>
 
-      {/* ── Create ─────────────────────────────────────────────────────── */}
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+      {/* ── Step 1: which app? ─────────────────────────────────────────
+          Asked FIRST because the answer decides whether there is anything to
+          do here at all. ChatGPT and Claude cannot accept a key — their flow
+          starts in their own settings — so handing them one is a dead end the
+          user cannot detect: nothing errors, and there is no way to finish. */}
+      <Dialog open={createOpen && !client} onOpenChange={closeCreate}>
         <DialogContent className="thin-scroll sm:max-w-lg [&>*]:min-w-0">
           <DialogHeader>
-            <DialogTitle>Connect an AI assistant</DialogTitle>
+            <DialogTitle>Where do you want to use MakingFlow?</DialogTitle>
             <DialogDescription>
-              Creates a key your AI client uses to act on your behalf. You can revoke it at any
+              How you connect depends on the app. Pick yours and we&rsquo;ll show the steps for it.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            {MCP_CLIENTS.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => {
+                  setClient(c)
+                  // Pre-named after the app they picked. The field is there so
+                  // connections can be told apart later, and "Cursor" is a
+                  // better default than an empty box the user must invent
+                  // something for.
+                  if (c.method === "api-key") setName(c.name)
+                }}
+                className="rounded-lg border border-border p-3 text-left transition-colors hover:border-foreground/30 hover:bg-muted/50"
+              >
+                <span className="block text-sm font-medium text-foreground">{c.name}</span>
+                <span className="mt-0.5 block text-xs leading-snug text-muted-foreground">
+                  {c.blurb}
+                </span>
+              </button>
+            ))}
+          </div>
+
+          <p className="text-xs text-muted-foreground">
+            Not sure? Claude and ChatGPT sign in with your MakingFlow account. Everything else
+            uses a key you create here.
+          </p>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Step 2A: an OAuth client — nothing to set up here ───────────
+          Said out loud, because a user who came looking for a button will
+          otherwise keep hunting for one. No key is minted and no permissions
+          are asked: those are chosen on the consent screen, mid-flow, once
+          the app sends them back to us. */}
+      <Dialog
+        open={Boolean(client && client.method === "oauth")}
+        onOpenChange={closeCreate}
+      >
+        <DialogContent className="thin-scroll sm:max-w-lg [&>*]:min-w-0">
+          <DialogHeader>
+            <DialogTitle>Connect {client?.name}</DialogTitle>
+            <DialogDescription>
+              Nothing to set up here — {client?.name} starts the connection from its own settings.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="min-w-0 space-y-4">
+            <ol className="space-y-2.5 text-sm text-muted-foreground">
+              {client?.steps?.map((step, i) => (
+                <li key={i} className="flex gap-2.5">
+                  <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium text-foreground">
+                    {i + 1}
+                  </span>
+                  <span className="min-w-0">{step}</span>
+                </li>
+              ))}
+            </ol>
+
+            <div className="min-w-0 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <Label>Server URL</Label>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="shrink-0"
+                  onClick={() => copy(endpoint, "URL")}
+                >
+                  <Icon name="paper" className="size-3.5" />
+                  Copy URL
+                </Button>
+              </div>
+              <code className="block w-full thin-scroll overflow-x-auto rounded-md border border-border bg-muted px-3 py-2 font-mono text-xs whitespace-nowrap">
+                {endpoint}
+              </code>
+            </div>
+
+            <p className="rounded-md border border-border bg-muted/40 p-3 text-xs text-muted-foreground">
+              You&rsquo;ll choose which workspaces and permissions {client?.name} gets when it
+              sends you back here to sign in. Nothing is granted until you do.
+            </p>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setClient(null)}>
+              Back
+            </Button>
+            <Button onClick={closeCreate}>Done</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Step 2B: a client that takes a key ─────────────────────────── */}
+      <Dialog
+        open={Boolean(client && client.method === "api-key" && !created)}
+        onOpenChange={closeCreate}
+      >
+        <DialogContent className="thin-scroll sm:max-w-lg [&>*]:min-w-0">
+          <DialogHeader>
+            <DialogTitle>Connect {client?.name}</DialogTitle>
+            <DialogDescription>
+              Creates a key {client?.name} uses to act on your behalf. You can revoke it at any
               time.
             </DialogDescription>
           </DialogHeader>
@@ -413,8 +547,8 @@ export function McpCard({
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setCreateOpen(false)} disabled={pending}>
-              Cancel
+            <Button variant="outline" onClick={() => setClient(null)} disabled={pending}>
+              Back
             </Button>
             <Button
               onClick={submit}
@@ -451,26 +585,48 @@ export function McpCard({
              * thing that scrolls away.
              */
             <div className="min-w-0 space-y-4">
+              {guide?.deeplink ? (
+                /*
+                 * One click, where the client offers it. This removes the whole
+                 * class of paste errors the note below warns about — which has
+                 * been the single most common way this flow breaks.
+                 *
+                 * The copyable config still sits underneath, never behind a
+                 * disclosure: a protocol handler is exactly the sort of thing
+                 * that silently does not fire, and a user whose button did
+                 * nothing must not be left with nothing.
+                 */
+                <Button asChild className="w-full">
+                  <a href={guide.deeplink}>
+                    <Icon name="swap" className="size-4" />
+                    {guide.deeplinkLabel}
+                  </a>
+                </Button>
+              ) : null}
+
               <div className="min-w-0 space-y-2">
                 <div className="flex items-center justify-between gap-2">
-                  <Label>Connect Claude Code</Label>
+                  <Label>
+                    {guide?.deeplink
+                      ? "Or paste this configuration"
+                      : `Connect ${client?.name ?? "your client"}`}
+                  </Label>
                   <Button
                     size="sm"
                     variant="outline"
                     className="shrink-0"
-                    onClick={() => copy(connectCommand(created.token), "Command")}
+                    onClick={() => copy(guide?.code ?? "", "Configuration")}
                   >
                     <Icon name="paper" className="size-3.5" />
-                    Copy command
+                    Copy
                   </Button>
                 </div>
                 <pre className="w-full thin-scroll overflow-x-auto rounded-md border border-border bg-muted p-3 text-xs leading-relaxed">
-                  <code>{connectCommand(created.token)}</code>
+                  <code>{guide?.code}</code>
                 </pre>
-                <p className="text-xs text-muted-foreground">
-                  Paste it as a single line. A line break inside the quotes puts a newline in the
-                  header, and the connection fails with an unhelpful error.
-                </p>
+                {guide?.note ? (
+                  <p className="text-xs text-muted-foreground">{guide.note}</p>
+                ) : null}
               </div>
 
               <div className="min-w-0 space-y-2">
