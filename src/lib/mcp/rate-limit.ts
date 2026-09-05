@@ -72,6 +72,8 @@ export async function rateLimitApiKey(
       returning "hits"
     `)
 
+    void sweepExpiredWindows()
+
     const hits = Number(row?.hits ?? 0)
     if (hits <= limit) return { ok: true, retryAfterSeconds: 0 }
 
@@ -80,6 +82,36 @@ export async function rateLimitApiKey(
   } catch (error) {
     console.error("[mcp] rate limit check failed; allowing the request", error)
     return { ok: true, retryAfterSeconds: 0 }
+  }
+}
+
+/**
+ * Occasionally delete counters from windows that have closed.
+ *
+ * A row per key × budget × minute is roughly 4,300 rows per key per day, and
+ * nothing was ever removing them. There is no cron anywhere in this repo, and
+ * adding scheduled infrastructure for a table that only ever needs the current
+ * minute would be disproportionate — so this piggybacks on the writes, the same
+ * shape as the sweep already in src/lib/rate-limit.ts.
+ *
+ * Probabilistic rather than every call: the work is worth doing eventually, not
+ * on the hot path of every tool invocation. Old rows are harmless while they
+ * wait, since every read is scoped to the current window.
+ */
+const SWEEP_PROBABILITY = 0.01
+
+async function sweepExpiredWindows(): Promise<void> {
+  if (Math.random() > SWEEP_PROBABILITY) return
+  try {
+    // Two windows back, so a request in flight across a window boundary can
+    // never have its counter deleted mid-flight.
+    const cutoff = new Date(Date.now() - WINDOW_MS * 2).toISOString()
+    await db.execute(sql`
+      delete from "mcp_rate_limits" where "window_start" < ${cutoff}::timestamptz
+    `)
+  } catch (error) {
+    // Housekeeping must never affect the request that triggered it.
+    console.error("[mcp] rate limit sweep failed", error)
   }
 }
 

@@ -703,3 +703,141 @@ describe("multi-workspace keys", () => {
     ).toBeDefined()
   })
 })
+
+/**
+ * Transport-level defects found by probing the deployed server.
+ *
+ * Every one of these was invisible to the existing suite because the suite
+ * calls the route handler directly and never looks at CORS, discovery paths, or
+ * how a page walk behaves across many rows. They are cheap to assert and each
+ * one, when broken, fails silently rather than loudly.
+ */
+describe("transport surface", () => {
+  test("preflight advertises the protocol's own headers", async () => {
+    const { OPTIONS } = await import("@/app/api/mcp/route")
+    const response = OPTIONS(
+      new Request(ENDPOINT, {
+        method: "OPTIONS",
+        headers: {
+          origin: "https://claude.ai",
+          "access-control-request-method": "POST",
+          "access-control-request-headers": "authorization,mcp-method,mcp-name",
+        },
+      }),
+    )
+
+    expect(response.status).toBe(204)
+    const allowed = response.headers.get("access-control-allow-headers") ?? ""
+    // A header missing from this list is stripped by the browser before the
+    // request is sent, so the server sees a malformed request rather than a
+    // CORS error — a genuinely confusing way to fail.
+    expect(allowed).toContain("Authorization")
+    expect(allowed).toContain("Mcp-Method")
+    expect(allowed).toContain("Mcp-Name")
+    expect(allowed).toContain("MCP-Protocol-Version")
+    expect(response.headers.get("access-control-allow-origin")).toBe("*")
+  })
+
+  test("Mcp-Param-* headers are reflected, and nothing else is", async () => {
+    const { OPTIONS } = await import("@/app/api/mcp/route")
+    const response = OPTIONS(
+      new Request(ENDPOINT, {
+        method: "OPTIONS",
+        headers: {
+          origin: "https://claude.ai",
+          "access-control-request-headers": "mcp-param-form-id,x-sneaky-header",
+        },
+      }),
+    )
+    const allowed = response.headers.get("access-control-allow-headers") ?? ""
+    // Per-tool param names are unknowable up front, so they are reflected —
+    // but only ones matching the protocol's own prefix.
+    expect(allowed).toContain("mcp-param-form-id")
+    expect(allowed).not.toContain("x-sneaky-header")
+  })
+
+  test("the 401 carries CORS, or a browser client never reads the challenge", async () => {
+    const { status, headers } = await rpc(null, "tools/list")
+    expect(status).toBe(401)
+    expect(headers.get("access-control-allow-origin")).toBe("*")
+    // WWW-Authenticate is the whole point of the 401; it must be readable
+    // cross-origin or the client cannot discover where to authenticate.
+    expect(headers.get("access-control-expose-headers")).toContain("WWW-Authenticate")
+  })
+
+  test("discovery is served at BOTH the root and the path-suffixed URL", async () => {
+    const root = await import("@/app/.well-known/oauth-protected-resource/route")
+    const suffixed = await import("@/app/.well-known/oauth-protected-resource/[...path]/route")
+
+    const request = new Request("http://localhost:3000/.well-known/oauth-protected-resource")
+    const a = await root.GET(request).json()
+    const b = await suffixed.GET(request).json()
+
+    // RFC 9728 §3.1: a client whose resource URL has a path tries the suffixed
+    // form FIRST. Serving only the root 404s for spec-strict clients.
+    expect(b).toEqual(a)
+    expect(a.resource).toMatch(/\/api\/mcp$/)
+  })
+})
+
+describe("submission paging", () => {
+  test("walks every response exactly once, with no duplicates or gaps", async () => {
+    const alice = await seedTenantWithKey("alice", [
+      "forms:read",
+      "forms:write",
+      "submissions:read",
+    ])
+    const saved = await formsCore.saveAiForm(alice.ctx, {
+      form: { title: "Survey", fields: [] },
+    })
+    if (!saved.success) throw new Error("setup failed")
+
+    const TOTAL = 12
+    for (let i = 0; i < TOTAL; i++) {
+      await db.insert(submissions).values({
+        formId: saved.id,
+        workspaceId: alice.workspaceId,
+        status: "completed",
+        completedAt: new Date(),
+      })
+    }
+
+    const seen: string[] = []
+    let cursor: string | null = null
+    let guard = 0
+    do {
+      const args: Record<string, unknown> = { formId: saved.id, limit: 5 }
+      if (cursor) args.cursor = cursor
+      const result = structured((await callTool(alice.token, "makingflow_list_submissions", args)).body) as {
+        submissions: { id: string }[]
+        nextCursor: string | null
+        counts: { completed: number }
+      }
+      seen.push(...result.submissions.map((s) => s.id))
+      cursor = result.nextCursor
+      // The true total never depends on the page size.
+      expect(result.counts.completed).toBe(TOTAL)
+    } while (cursor && ++guard < 10)
+
+    expect(seen).toHaveLength(TOTAL)
+    // Keyset paging exists so a row can neither repeat nor be skipped.
+    expect(new Set(seen).size).toBe(TOTAL)
+  })
+
+  test("a mangled cursor starts over rather than failing the call", async () => {
+    const alice = await seedTenantWithKey("alice", ["forms:read", "submissions:read"])
+    const saved = await formsCore.saveAiForm(
+      testContext({ userId: alice.userId, workspaceId: alice.workspaceId }),
+      { form: { title: "Survey", fields: [] } },
+    )
+    if (!saved.success) throw new Error("setup failed")
+
+    const { body } = await callTool(alice.token, "makingflow_list_submissions", {
+      formId: saved.id,
+      cursor: "not-a-real-cursor",
+    })
+    // It is an opaque token we handed out; failing the whole call because it
+    // was mangled helps nobody.
+    expect(structured(body)).toBeDefined()
+  })
+})

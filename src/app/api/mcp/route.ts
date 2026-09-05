@@ -22,6 +22,7 @@ import { principalFromBearer, touchApiKey, unauthorized } from "@/lib/mcp/auth"
 import { buildServer } from "@/lib/mcp/server"
 import { rateLimitApiKey, tooManyRequests } from "@/lib/mcp/rate-limit"
 import { budgetFor, TOOLS_BY_NAME } from "@/lib/mcp/registry"
+import { preflight, withCors } from "@/lib/mcp/cors"
 
 // NOTE: no `export const runtime`. Under `cacheComponents` Next rejects the
 // segment config outright ("not compatible with nextConfig.cacheComponents"),
@@ -61,14 +62,20 @@ export async function POST(request: Request): Promise<Response> {
   const rejected =
     hostHeaderValidationResponse(request, allowedHostnames(request)) ??
     originValidationResponse(request, allowedHostnames(request))
-  if (rejected) return rejected
+  if (rejected) return withCors(rejected, request)
 
   const auth = await principalFromBearer(request)
   if (!auth.ok) {
     if (auth.status === 403) {
-      return Response.json({ error: "forbidden", error_description: auth.error }, { status: 403 })
+      return withCors(
+        Response.json({ error: "forbidden", error_description: auth.error }, { status: 403 }),
+        request,
+      )
     }
-    return unauthorized(resourceMetadataUrl(request), ["forms:read"])
+    // CORS matters most on the 401: it is the response that carries
+    // `WWW-Authenticate`, and a browser client that cannot read that header
+    // never discovers where to authenticate.
+    return withCors(unauthorized(resourceMetadataUrl(request), ["forms:read"]), request)
   }
 
   const principal = auth.principal
@@ -84,17 +91,28 @@ export async function POST(request: Request): Promise<Response> {
   const toolName = request.headers.get("mcp-name")
   const tool = toolName ? TOOLS_BY_NAME.get(toolName) : undefined
   const limit = await rateLimitApiKey(principal.apiKeyId, tool ? budgetFor(tool) : "read")
-  if (!limit.ok) return tooManyRequests(limit.retryAfterSeconds)
+  if (!limit.ok) return withCors(tooManyRequests(limit.retryAfterSeconds), request)
 
   // Bookkeeping, off the response path — never fail a call over it.
   after(() => touchApiKey(principal.apiKeyId))
 
   const handler = createMcpHandler(() => buildServer(principal))
   try {
-    return await handler.fetch(request)
+    return withCors(await handler.fetch(request), request)
   } finally {
     await handler.close()
   }
+}
+
+/**
+ * Preflight. This was missing entirely — the endpoint answered OPTIONS with a
+ * bare 204 and no `Access-Control-Allow-*`, so a browser-based client's
+ * preflight "succeeded" while telling it nothing was permitted. The fetch then
+ * failed with an opaque TypeError, which clients treat as "this server does not
+ * speak the modern protocol" and silently downgrade.
+ */
+export function OPTIONS(request: Request): Response {
+  return preflight(request)
 }
 
 /**

@@ -12,6 +12,9 @@ const PUBLIC_PATHS = [
   '/', // marketing home (exact match only — see isPublicPath)
   '/terms', // legal: terms of service (marketing, no protected route here)
   '/privacy', // legal: privacy policy (marketing, no protected route here)
+  '/docs', // MCP connection docs — advertised as resource_documentation in the
+  // discovery document, so it must be readable without an account. No protected
+  // route lives at this URL.
   '/sandbox', // dev-only state gallery (no protected route at this URL)
   '/f', // public form-fill runtime: /f/[formId]
   '/invite', // workspace invitation landing: /invite/[token] (handles its own auth)

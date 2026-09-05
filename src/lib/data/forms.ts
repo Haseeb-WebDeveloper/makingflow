@@ -1,5 +1,5 @@
 import { cacheLife, cacheTag } from "next/cache"
-import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm"
+import { and, desc, eq, inArray, isNull, lt, or, sql } from "drizzle-orm"
 import { db } from "@/lib/db"
 import {
   forms,
@@ -269,6 +269,151 @@ export type SubmissionRowData = {
 export type SubmissionsTable = {
   columns: SubmissionColumn[]
   rows: SubmissionRowData[]
+}
+
+export type SubmissionsPage = {
+  columns: SubmissionColumn[]
+  rows: SubmissionRowData[]
+  /** Opaque cursor for the next page, or null at the end. */
+  nextCursor: string | null
+}
+
+/** `(createdAt, id)` — unique and matching the sort, so it cannot skip or repeat. */
+function encodeCursor(row: { submittedAt: Date; id: string }): string {
+  return Buffer.from(`${row.submittedAt.toISOString()}|${row.id}`).toString("base64url")
+}
+
+function decodeCursor(cursor: string): { createdAt: Date; id: string } | null {
+  try {
+    const [iso, id] = Buffer.from(cursor, "base64url").toString("utf8").split("|")
+    const createdAt = new Date(iso)
+    if (!id || Number.isNaN(createdAt.getTime())) return null
+    return { createdAt, id }
+  } catch {
+    return null
+  }
+}
+
+/**
+ * One page of submissions, newest first, by keyset cursor.
+ *
+ * Separate from `getFormSubmissions` below, which the dashboard table uses and
+ * which is capped rather than paged. This exists for the MCP surface, where a
+ * model walks a form's responses: offset paging there meant fetching
+ * `offset + limit` rows and discarding the first `offset` of them on every
+ * call, so page 20 read twenty pages' worth of answers to return one.
+ *
+ * The cursor is `(created_at, id)`, matching the CSV export route — unique and
+ * aligned with the ordering, so a submission arriving mid-walk can neither
+ * duplicate a row nor push one past the reader unseen. An unreadable cursor is
+ * treated as "start from the beginning" rather than an error: it is an opaque
+ * token the caller was handed, and failing the whole call because it was
+ * mangled helps nobody.
+ */
+export async function getFormSubmissionsPage(
+  id: string,
+  workspaceId: string,
+  options: { limit?: number; cursor?: string | null; withAnswers?: boolean } = {},
+): Promise<SubmissionsPage | null> {
+  const limit = Math.min(Math.max(options.limit ?? 25, 1), 200)
+  const cursor = options.cursor ? decodeCursor(options.cursor) : null
+
+  const [formRows, fields, subs] = await Promise.all([
+    db
+      .select({ id: forms.id })
+      .from(forms)
+      .where(and(eq(forms.id, id), eq(forms.workspaceId, workspaceId), isNull(forms.deletedAt)))
+      .limit(1),
+    db
+      .select({
+        id: formFields.id,
+        label: formFields.label,
+        type: formFields.type,
+        options: formFields.options,
+      })
+      .from(formFields)
+      .where(and(eq(formFields.formId, id), isNull(formFields.deletedAt)))
+      .orderBy(formFields.position),
+    db
+      .select({
+        id: submissions.id,
+        submittedAt: submissions.createdAt,
+        aiSummary: submissions.aiSummary,
+        aiScore: submissions.aiScore,
+        aiScreenReason: submissions.aiScreenReason,
+      })
+      .from(submissions)
+      .where(
+        and(
+          eq(submissions.formId, id),
+          eq(submissions.status, "completed"),
+          // Descending order, so "after this cursor" means strictly older.
+          cursor
+            ? or(
+                lt(submissions.createdAt, cursor.createdAt),
+                and(eq(submissions.createdAt, cursor.createdAt), lt(submissions.id, cursor.id)),
+              )
+            : undefined,
+        ),
+      )
+      .orderBy(desc(submissions.createdAt), desc(submissions.id))
+      // One extra row tells us whether another page exists without a count query.
+      .limit(limit + 1),
+  ])
+  if (!formRows[0]) return null
+
+  const hasMore = subs.length > limit
+  const page = hasMore ? subs.slice(0, limit) : subs
+
+  const columns: SubmissionColumn[] = fields
+    .filter((f) => !NON_ANSWER_TYPES.has(f.type))
+    .map((f) => ({
+      id: f.id,
+      label: f.label,
+      type: f.type,
+      options: f.options ? f.options.map((o) => ({ id: o.id, label: o.label })) : null,
+    }))
+
+  const nextCursor = hasMore && page.length > 0 ? encodeCursor(page[page.length - 1]) : null
+  if (page.length === 0) return { columns, rows: [], nextCursor: null }
+
+  // Answers are the expensive half and usually unwanted in a listing, so they
+  // are opt-in — a page of 25 responses to a 40-question form is 1,000 rows.
+  const byId = new Map<string, Record<string, AnswerValue>>()
+  for (const s of page) byId.set(s.id, {})
+  if (options.withAnswers) {
+    const ans = await db
+      .select({
+        submissionId: answers.submissionId,
+        fieldId: answers.fieldId,
+        value: answers.value,
+      })
+      .from(answers)
+      .where(
+        inArray(
+          answers.submissionId,
+          page.map((s) => s.id),
+        ),
+      )
+    for (const a of ans) {
+      if (!a.fieldId) continue
+      const bucket = byId.get(a.submissionId)
+      if (bucket) bucket[a.fieldId] = a.value
+    }
+  }
+
+  return {
+    columns,
+    rows: page.map((s) => ({
+      id: s.id,
+      submittedAt: s.submittedAt,
+      values: byId.get(s.id) ?? {},
+      aiSummary: s.aiSummary,
+      aiScore: s.aiScore,
+      aiScreenReason: s.aiScreenReason,
+    })),
+    nextCursor,
+  }
 }
 
 /**

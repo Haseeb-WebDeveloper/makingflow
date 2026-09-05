@@ -21,7 +21,11 @@ import "server-only"
  */
 
 import * as z from "zod"
-import { getFormSubmissionCounts, getFormSubmissions } from "@/lib/data/forms"
+import {
+  getFormSubmissionCounts,
+  getFormSubmissions,
+  getFormSubmissionsPage,
+} from "@/lib/data/forms"
 import * as submissionsCore from "@/lib/core/submissions"
 import { defineTool, ToolError, type RegisteredMcpTool } from "@/lib/mcp/define-tool"
 
@@ -41,7 +45,10 @@ export const submissionTools: RegisteredMcpTool[] = [
     inputSchema: z.object({
       formId: z.string(),
       limit: z.number().int().min(1).max(200).default(25),
-      offset: z.number().int().min(0).default(0),
+      cursor: z
+        .string()
+        .optional()
+        .describe("Pass `nextCursor` from the previous call to fetch the next page."),
       includeAnswers: z
         .boolean()
         .default(false)
@@ -53,6 +60,7 @@ export const submissionTools: RegisteredMcpTool[] = [
       formId: z.string(),
       counts: z.object({ completed: z.number().int(), partial: z.number().int() }),
       returned: z.number().int(),
+      nextCursor: z.string().nullable().describe("null when there are no more responses."),
       columns: z.array(z.object({ id: z.string(), label: z.string(), type: z.string() })),
       submissions: z.array(
         z.object({
@@ -68,22 +76,31 @@ export const submissionTools: RegisteredMcpTool[] = [
     readOnly: true,
     idempotent: true,
     async handler(ctx, args) {
-      // Counts come from getFormSubmissionCounts, not from rows.length: the row
-      // read is capped, and reporting the cap as the total is exactly the
-      // regression that read "100" for a form with 150 responses.
-      const [counts, table] = await Promise.all([
+      // Keyset paging, not offset. Offset meant fetching `offset + limit` rows
+      // and throwing the first `offset` away on every call, so walking to page
+      // 20 read twenty pages' worth of answers to return one — and a response
+      // arriving mid-walk shifted every subsequent page by one.
+      //
+      // Counts come from getFormSubmissionCounts rather than rows.length: the
+      // page is bounded, and reporting its size as the total is the regression
+      // that once said 100 for a form with 150 responses.
+      const [counts, page] = await Promise.all([
         getFormSubmissionCounts(args.formId, ctx.workspaceId),
-        getFormSubmissions(args.formId, ctx.workspaceId, args.offset + args.limit),
+        getFormSubmissionsPage(args.formId, ctx.workspaceId, {
+          limit: args.limit,
+          cursor: args.cursor,
+          withAnswers: args.includeAnswers,
+        }),
       ])
-      if (!counts || !table) throw new ToolError("Form not found")
+      if (!counts || !page) throw new ToolError("Form not found")
 
-      const page = table.rows.slice(args.offset, args.offset + args.limit)
       return {
         formId: args.formId,
         counts,
-        returned: page.length,
-        columns: table.columns.map((c) => ({ id: c.id, label: c.label, type: c.type })),
-        submissions: page.map((r) => ({
+        returned: page.rows.length,
+        nextCursor: page.nextCursor,
+        columns: page.columns.map((c) => ({ id: c.id, label: c.label, type: c.type })),
+        submissions: page.rows.map((r) => ({
           id: r.id,
           submittedAt: r.submittedAt.toISOString(),
           aiSummary: r.aiSummary,
