@@ -2,6 +2,7 @@ import { and, asc, eq, gt, inArray, isNull, or } from "drizzle-orm"
 import { db } from "@/lib/db"
 import { answers, formFields, forms, submissions, type AnswerValue } from "@/lib/db/schema"
 import { getDefaultWorkspace } from "@/lib/auth/session"
+import { verifyExportToken } from "@/lib/mcp/export-token"
 import { NON_ANSWER_TYPES } from "@/lib/builder/logic"
 import { answerToCell } from "@/lib/submissions/answer-format"
 import { csvFileName, csvRow } from "@/lib/submissions/csv"
@@ -10,6 +11,30 @@ export const maxDuration = 60
 
 /** Submissions pulled (and streamed) per round-trip. */
 const PAGE = 500
+
+/**
+ * Which workspace may download this export.
+ *
+ * Two ways in. A browser session is the ordinary one. A `?token=` handle is for
+ * links minted by `makingflow_export_submissions`, where the person opening it
+ * may not be signed in at all — that is the whole reason the handle exists.
+ *
+ * The token names its own form, and it is checked against the requested id
+ * rather than trusted to be the right one: a valid handle for form A must not
+ * download form B. Its workspace then goes through the SAME tenancy query as a
+ * session's, so a signed URL is a shortcut past the login page and nothing more.
+ */
+async function authorizeExport(request: Request, formId: string): Promise<string | null> {
+  const token = new URL(request.url).searchParams.get("token")
+  if (token) {
+    const grant = verifyExportToken(token)
+    if (!grant || grant.formId !== formId) return null
+    return grant.workspaceId
+  }
+
+  const workspace = await getDefaultWorkspace()
+  return workspace?.id ?? null
+}
 
 /**
  * CSV export of EVERY completed response to a form.
@@ -24,12 +49,12 @@ const PAGE = 500
  * responses are the table that grows without limit.
  */
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params
-  const workspace = await getDefaultWorkspace()
-  if (!workspace) return new Response("Unauthorized", { status: 401 })
+  const workspaceId = await authorizeExport(request, id)
+  if (!workspaceId) return new Response("Unauthorized", { status: 401 })
 
   // Tenancy: the form must belong to the caller's workspace. Same guard as
   // getFormSubmissions — an id from another tenant is indistinguishable from
@@ -37,7 +62,7 @@ export async function GET(
   const [form] = await db
     .select({ id: forms.id, title: forms.title })
     .from(forms)
-    .where(and(eq(forms.id, id), eq(forms.workspaceId, workspace.id), isNull(forms.deletedAt)))
+    .where(and(eq(forms.id, id), eq(forms.workspaceId, workspaceId), isNull(forms.deletedAt)))
     .limit(1)
   if (!form) return new Response("Not found", { status: 404 })
 

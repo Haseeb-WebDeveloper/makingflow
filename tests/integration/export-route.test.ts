@@ -21,6 +21,7 @@ vi.mock("@/lib/auth/session", () => ({
     session.workspaceId ? { id: session.workspaceId, name: "T", slug: "t", plan: "free", role: "owner", logoUrl: null } : null,
 }))
 
+const { mintExportToken, EXPORT_TOKEN_TTL_MS } = await import("@/lib/mcp/export-token")
 const { GET } = await import("@/app/api/forms/[id]/export/route")
 
 let seq = 0
@@ -75,10 +76,10 @@ async function seed(rowCount: number, extra?: { source?: string }) {
   return { workspaceId: ws.id, formId: form.id }
 }
 
-const exportCsv = async (formId: string) => {
-  const res = await GET(new Request(`http://localhost/api/forms/${formId}/export`), {
-    params: Promise.resolve({ id: formId }),
-  })
+const exportCsv = async (formId: string, token?: string) => {
+  const url = new URL(`http://localhost/api/forms/${formId}/export`)
+  if (token) url.searchParams.set("token", token)
+  const res = await GET(new Request(url), { params: Promise.resolve({ id: formId }) })
   return { res, body: await res.text() }
 }
 
@@ -136,5 +137,92 @@ describe("GET /api/forms/[id]/export", () => {
     const { body } = await exportCsv(f.formId)
     expect(body.trim().split("\n")).toHaveLength(1)
     expect(body).toContain(`"Submitted","Name","Notes"`)
+  })
+
+  /**
+   * The second way in, for links minted by `makingflow_export_submissions`.
+   *
+   * `session.workspaceId` stays null throughout: the person opening one of
+   * these may not be signed in at all, which is the entire reason the handle
+   * exists. So these tests are also the proof that a signed URL is a shortcut
+   * past the login page and NOT past the tenancy check.
+   */
+  describe("signed download handles", () => {
+    test("downloads without a session", async () => {
+      const f = await seed(3)
+      session.workspaceId = null
+
+      const token = mintExportToken({
+        formId: f.formId,
+        workspaceId: f.workspaceId,
+        userId: "someone",
+        apiKeyId: null,
+      })
+      const { res, body } = await exportCsv(f.formId, token)
+
+      expect(res.status).toBe(200)
+      expect(body.trim().split("\n")).toHaveLength(4)
+    })
+
+    test("a handle for one form cannot download another", async () => {
+      // Both forms belong to the same workspace, so tenancy alone would let
+      // this through — the formId check in the route is what refuses it.
+      const mine = await seed(1)
+      const [other] = await db
+        .insert(forms)
+        .values({
+          workspaceId: mine.workspaceId,
+          title: "Salaries",
+          publicId: `exp-alt-${Date.now()}`,
+          status: "published",
+        })
+        .returning({ id: forms.id })
+      session.workspaceId = null
+
+      const token = mintExportToken({
+        formId: mine.formId,
+        workspaceId: mine.workspaceId,
+        userId: "someone",
+        apiKeyId: null,
+      })
+      const { res } = await exportCsv(other.id, token)
+      expect(res.status).toBe(401)
+    })
+
+    test("an expired handle is refused", async () => {
+      const f = await seed(1)
+      session.workspaceId = null
+
+      const stale = mintExportToken(
+        { formId: f.formId, workspaceId: f.workspaceId, userId: "someone", apiKeyId: null },
+        Date.now() - 2 * EXPORT_TOKEN_TTL_MS,
+      )
+      const { res } = await exportCsv(f.formId, stale)
+      expect(res.status).toBe(401)
+    })
+
+    test("a handle naming a workspace that does not own the form gets nothing", async () => {
+      // A valid signature over the wrong pairing. The route re-runs the same
+      // tenancy query a session would, so the signature buys no authority.
+      const mine = await seed(1)
+      const theirs = await seed(1)
+      session.workspaceId = null
+
+      const token = mintExportToken({
+        formId: theirs.formId,
+        workspaceId: mine.workspaceId,
+        userId: "someone",
+        apiKeyId: null,
+      })
+      const { res } = await exportCsv(theirs.formId, token)
+      expect(res.status).toBe(404) // indistinguishable from "doesn't exist"
+    })
+
+    test("a forged handle is refused", async () => {
+      const f = await seed(1)
+      session.workspaceId = null
+      const { res } = await exportCsv(f.formId, "made.up")
+      expect(res.status).toBe(401)
+    })
   })
 })

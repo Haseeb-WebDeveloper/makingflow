@@ -17,11 +17,17 @@ import type { RegisteredMcpTool } from "@/lib/mcp/define-tool"
 import { formTools } from "@/lib/mcp/tools/forms"
 import { submissionTools } from "@/lib/mcp/tools/submissions"
 import { analyticsTools } from "@/lib/mcp/tools/analytics"
+import { integrationTools } from "@/lib/mcp/tools/integrations"
+import { workspaceTools } from "@/lib/mcp/tools/workspace"
+import { dataTools } from "@/lib/mcp/tools/data"
 
 export const TOOLS: readonly RegisteredMcpTool[] = [
   ...formTools,
   ...submissionTools,
   ...analyticsTools,
+  ...integrationTools,
+  ...workspaceTools,
+  ...dataTools,
 ]
 
 export const TOOLS_BY_NAME: ReadonlyMap<string, RegisteredMcpTool> = new Map(
