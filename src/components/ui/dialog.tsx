@@ -76,7 +76,9 @@ function DialogContent({
       <DialogPrimitive.Content
         data-slot="dialog-content"
         className={cn(
-          "fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-6 lg:gap-[24px] rounded-md lg:rounded-[8px] bg-popover p-6 lg:p-[24px] text-sm lg:text-[14px] text-popover-foreground ring-1 ring-foreground/5 duration-100 outline-none data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
+          // max-h caps the height; overflow-y-auto is what makes that useful
+          // rather than simply clipping a tall dialog's footer off.
+          "fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] max-h-[95dvh] overflow-y-auto -translate-x-1/2 -translate-y-1/2 gap-6 lg:gap-[24px] rounded-md lg:rounded-[8px] bg-popover p-6 lg:p-[24px] text-sm lg:text-[14px] text-popover-foreground ring-1 ring-foreground/5 duration-100 outline-none data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
           className
         )}
         {...props}

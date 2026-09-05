@@ -4,15 +4,21 @@
  * Shared by the /integrations UI, the `pnpm mcp:key` CLI and the tests, so a
  * key made any of those ways is identical.
  *
- * WHO MAY MINT: owners only. Nothing in the app's permission model previously
- * covered this, so the choice is worth stating. A key can read every response
- * in every workspace it is granted — CVs, email addresses, phone numbers — and
- * it keeps working from anywhere until revoked. That is the same weight as
- * inviting a teammate, which is already owner-only, so it is gated on the same
- * `manage_team` action rather than inventing a parallel rule.
+ * WHO MAY MINT: any member.
  *
- * Members are not locked out of their own credentials: they can see and revoke
- * keys they created. They just cannot issue new ones.
+ * A key can never exceed the person who created it. Its role is re-read from
+ * `workspace_members` on every request, its scopes only ever narrow that, and
+ * it can only reach workspaces its creator belongs to. So a member issuing
+ * themselves a key gains nothing they could not already do in the browser —
+ * gating it to owners would only stop people using their own access from a
+ * different tool.
+ *
+ * What it does change is that a credential now leaves the browser, which is why
+ * expiry is offered, revocation is immediate, and every call is audited.
+ *
+ * Revocation is asymmetric on purpose: anyone may revoke a key they created,
+ * and an owner may additionally revoke any key that reaches their workspace —
+ * that is the workspace-hygiene power, and it is the one that stays owner-only.
  */
 
 import { and, desc, eq, inArray, isNull } from "drizzle-orm"
@@ -121,9 +127,6 @@ export async function createKey(
   ctx: AuthContext,
   input: { name: string; scopes: string[]; workspaceIds: string[]; expiresInDays?: number | null },
 ): Promise<CreateKeyResult> {
-  const denied = authorize(ctx, { action: "manage_team" })
-  if (denied) return { success: false, error: "Only owners can create API keys" }
-
   const name = input.name.trim().slice(0, 80)
   if (!name) return { success: false, error: "Give the key a name so you can recognise it later." }
 

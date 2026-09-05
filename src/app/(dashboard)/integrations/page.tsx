@@ -38,9 +38,9 @@ export default async function IntegrationsPage() {
             keys,
             workspaces: workspaces.map((w) => ({ id: w.id, name: w.name })),
             currentWorkspaceId: session.ctx.workspaceId,
-            // Minting a key that can read every response is the same weight as
-            // inviting a teammate, which is already owner-only.
-            canCreate: session.ctx.role === "owner",
+            // Anyone may create a key — it can never exceed its creator. Owners can
+            // additionally revoke keys other people made.
+            isOwner: session.ctx.role === "owner",
             endpoint: `${process.env.NEXT_PUBLIC_SITE_URL ?? ""}/api/mcp`,
           }}
         />
