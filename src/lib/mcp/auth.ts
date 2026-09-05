@@ -41,10 +41,8 @@ import {
   type Role,
   type Scope,
 } from "@/lib/auth/context"
-import { canonicalResource } from "@/lib/mcp/metadata"
-import { oauthConfig } from "@/lib/mcp/oauth/config"
-import { verifyAccessToken } from "@/lib/mcp/oauth/verify"
-import { grantForToken } from "@/lib/mcp/oauth/grants"
+import { accessTokenGrant } from "@/lib/mcp/oauth/tokens"
+import { grantForAccessToken } from "@/lib/mcp/oauth/grants"
 
 /** Visible prefix, so a leaked key is recognisable in logs and search. */
 const KEY_PREFIX = "mf_sk_live_"
@@ -94,7 +92,7 @@ export type GrantedWorkspace = {
  */
 export type Credential =
   | { kind: "api-key"; apiKeyId: string }
-  | { kind: "oauth"; grantId: string; clientId: string }
+  | { kind: "oauth"; grantId: string }
 
 export type McpPrincipal = {
   userId: string
@@ -135,19 +133,16 @@ export function bearerToken(request: Request): string | null {
 /**
  * Verify whatever credential was presented and resolve what it can reach.
  *
- * The two token families are told apart by our own prefix, not by guessing: a
- * key always starts `mf_sk_live_`, so anything else is offered to the OAuth
- * verifier. That ordering matters — trying to parse a key as a JWT produces a
- * confusing "signature invalid" where "invalid API key" is the truth.
- *
- * When OAuth is not configured, a non-key token is refused as a bad key, which
- * is exactly what it is on such a deployment.
+ * The two credential families are told apart by our own prefixes rather than by
+ * guessing: a key starts `mf_sk_live_`, an access token `mf_at_`. Both are
+ * looked up the same way — HMAC, one hit on a primary key — so past this
+ * function nothing downstream can tell which door a caller came through.
  */
 export async function principalFromBearer(request: Request): Promise<PrincipalResult> {
   const token = bearerToken(request)
   if (!token) return { ok: false, status: 401, error: "Missing bearer token" }
   if (!token.startsWith(KEY_PREFIX)) {
-    return principalFromOauthToken(token, request)
+    return principalFromOauthToken(token)
   }
 
   const presented = hashApiKey(token)
@@ -231,41 +226,32 @@ export async function principalFromBearer(request: Request): Promise<PrincipalRe
 }
 
 /**
- * The OAuth half: verify the JWT, then resolve the consent behind it.
+ * The OAuth half: look the access token up, then resolve what its grant reaches.
  *
- * Deliberately two steps with two different owners. The token is checked against
- * the authorization server's keys and, critically, against OUR audience — see
- * oauth/verify.ts. What that verified identity may then reach is answered
- * entirely from our own tables, so no vendor needs to model our permissions and
- * a token minted last week cannot outrun a membership change made this morning.
+ * Two steps on purpose. The first says which consent this token belongs to; the
+ * second says what that consent may CURRENTLY reach, re-read from live
+ * membership. Keeping them apart is what stops a token issued last week from
+ * outrunning a permission change made this morning.
+ *
+ * These tokens are opaque — a random string looked up by HMAC, exactly like an
+ * API key — because we issue them ourselves. A signed token earns its complexity
+ * only when the verifier cannot ask the issuer, and here they are the same
+ * request handler. The lookup also buys the thing a user actually cares about:
+ * pressing Disconnect stops the app on its very next call, rather than whenever
+ * its token happened to expire.
  */
-async function principalFromOauthToken(
-  token: string,
-  request: Request,
-): Promise<PrincipalResult> {
-  const config = oauthConfig(canonicalResource(request))
-  if (!config) {
-    // No authorization server on this deployment, so a non-key token is simply
-    // not a credential here. Reported as a bad key rather than as an OAuth
-    // failure, because there is no OAuth to have failed.
-    return { ok: false, status: 401, error: "Invalid API key" }
-  }
+async function principalFromOauthToken(token: string): Promise<PrincipalResult> {
+  const lookup = await accessTokenGrant(token)
+  if (!lookup.ok) return { ok: false, status: 401, error: lookup.error }
 
-  const verified = await verifyAccessToken(token, config)
-  if (!verified.ok) return { ok: false, status: 401, error: verified.error }
-
-  const resolved = await grantForToken(verified.token)
+  const resolved = await grantForAccessToken(lookup.grantId)
   if (!resolved.ok) return resolved
 
   return {
     ok: true,
     principal: {
       userId: resolved.grant.userId,
-      credential: {
-        kind: "oauth",
-        grantId: resolved.grant.grantId,
-        clientId: verified.token.clientId,
-      },
+      credential: { kind: "oauth", grantId: resolved.grant.grantId },
       scopes: resolved.grant.scopes,
       workspaces: resolved.grant.workspaces,
     },

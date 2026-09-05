@@ -30,10 +30,11 @@ import { DEFAULT_SCOPES, PERMISSION_CHOICES } from "@/lib/mcp/scope-catalog";
 export type ConsentFormProps = {
   clientId: string;
   clientName: string | null;
-  redirectUri: string | null;
+  redirectUri: string;
+  /** PKCE challenge from /authorize. Absent when reached from settings. */
+  codeChallenge: string | null;
   state: string | null;
-  /** Set when the consent screen interrupted a live authorization request. */
-  externalAuthId: string | null;
+  resource: string | null;
   workspaces: { id: string; name: string }[];
 };
 
@@ -41,8 +42,9 @@ export function ConsentForm({
   clientId,
   clientName,
   redirectUri,
+  codeChallenge,
   state,
-  externalAuthId,
+  resource,
   workspaces,
 }: ConsentFormProps) {
   const [scopes, setScopes] = React.useState<string[]>([...DEFAULT_SCOPES]);
@@ -62,7 +64,10 @@ export function ConsentForm({
     startTransition(async () => {
       const result = await approveConnection({
         clientId,
-        clientName,
+        redirectUri,
+        codeChallenge,
+        state,
+        resource,
         scopes,
         workspaceIds: selected,
       });
@@ -71,29 +76,11 @@ export function ConsentForm({
         return;
       }
 
-      // Resume the authorization the AS paused for our question. Back through
-      // the Login URI, which completes the handshake and forwards the user
-      // wherever the AS says next — we never invent that destination ourselves.
-      if (externalAuthId) {
-        const resume = new URL("/api/mcp/oauth/login", window.location.origin);
-        resume.searchParams.set("external_auth_id", externalAuthId);
-        resume.searchParams.set("consented", "1");
-        window.location.assign(resume.toString());
-        return;
-      }
-
-      // Some flows hand us an explicit return. `state` is echoed untouched — it
-      // belongs to the AS, and mangling it breaks the flow's CSRF protection.
-      if (redirectUri) {
-        const target = new URL(redirectUri);
-        if (state) target.searchParams.set("state", state);
-        window.location.assign(target.toString());
-        return;
-      }
-
-      // Nothing to return to — the user reached this from our own settings, so
-      // show them the result rather than a dead end.
-      window.location.assign("/integrations");
+      // The server decides where this goes — it holds the authorization code,
+      // and it is the only party that has re-validated the redirect against the
+      // client's registration. Building the destination here would mean trusting
+      // a value that arrived in our own URL.
+      window.location.assign(result.redirectTo);
     });
   }
 

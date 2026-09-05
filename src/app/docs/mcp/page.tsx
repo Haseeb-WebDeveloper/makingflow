@@ -143,8 +143,9 @@ export default function McpDocsPage() {
         <p>
           These authenticate connectors through OAuth rather than an API key — there is nowhere to
           paste one — so they use a different route. Add{" "}
-          <code className="font-mono text-xs">{`${base}/api/mcp`}</code> as a custom connector and
-          the client will send you here to sign in and choose what it may reach.
+          <code className="font-mono text-xs">{`${base}/api/mcp`}</code> as a custom connector.
+          The client discovers the rest on its own and sends you here to sign in and choose what it
+          may reach. There is nothing to paste and no key to keep.
         </p>
         <p>
           You pick the permissions and workspaces on that screen, exactly as you would for a key,

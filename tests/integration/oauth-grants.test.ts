@@ -1,24 +1,25 @@
 /**
  * Consent records, and the rule that makes them safe to hold.
  *
- * A grant is a snapshot of what a user agreed to. The token that rides on it is
- * a snapshot too, minted once and valid for as long as its expiry says. Neither
- * knows that someone was removed from a workspace this morning — which is why
- * NEITHER is trusted to answer "what may this call reach". The grant is
- * intersected with live `workspace_members` on every request, exactly as an API
- * key's grant is, so it can lose reach and can never gain it.
+ * A grant is a snapshot of what a user agreed to, and the token riding on it is
+ * a reference to that snapshot. Neither knows that someone was removed from a
+ * workspace this morning — which is why NEITHER is trusted to answer "what may
+ * this call reach". The grant is intersected with live `workspace_members` on
+ * every request, exactly as an API key's grant is, so it can lose reach and can
+ * never gain it.
  *
- * The other property worth pinning is client binding. A user may connect several
- * apps with different permissions, and a token issued to one must not be able to
- * act through another's consent — otherwise the narrowest grant on the account
- * is decorative.
+ * Because we issue the tokens ourselves, a token points straight at one grant
+ * row. There is no subject to resolve and no client id to cross-check, so the
+ * "token from app A riding on the consent given to app B" failure is not
+ * defended against here — it is structurally impossible.
  */
 
 import { randomUUID } from "node:crypto"
 import { beforeEach, describe, expect, test } from "vitest"
-import { and, eq } from "drizzle-orm"
+import { eq } from "drizzle-orm"
 import { db } from "@/lib/db"
 import {
+  mcpOauthClients,
   mcpOauthGrantWorkspaces,
   mcpOauthGrants,
   users,
@@ -26,12 +27,11 @@ import {
   workspaces,
 } from "@/lib/db/schema"
 import {
-  grantForToken,
+  grantForAccessToken,
   listConnectedApps,
   recordConsent,
   revokeGrant,
 } from "@/lib/mcp/oauth/grants"
-import type { VerifiedToken } from "@/lib/mcp/oauth/verify"
 
 let seq = 0
 
@@ -54,86 +54,121 @@ async function seedWorkspace(userId: string, name: string, role: "owner" | "memb
   return ws.id
 }
 
-function token(subject: string, clientId = "client_abc"): VerifiedToken {
-  return { subject, clientId, expiresAt: new Date(Date.now() + 600_000) }
+async function seedClient(name: string) {
+  const [client] = await db
+    .insert(mcpOauthClients)
+    .values({ clientName: name, redirectUris: ["https://client.example/callback"] })
+    .returning({ id: mcpOauthClients.id })
+  return client.id
 }
 
 describe("oauth grants", () => {
   let userId: string
   let alphaId: string
   let betaId: string
+  let clientId: string
 
   beforeEach(async () => {
     userId = await seedUser("owner")
     alphaId = await seedWorkspace(userId, "Alpha")
     betaId = await seedWorkspace(userId, "Beta")
+    clientId = await seedClient("Claude")
   })
 
   describe("recording consent", () => {
     test("writes the scopes and workspaces the user chose", async () => {
       const { grantId } = await recordConsent({
         userId,
-        clientId: "client_abc",
+        clientId,
         clientName: "Claude",
         scopes: ["forms:read", "forms:write"],
         workspaceIds: [alphaId],
       })
 
-      const resolved = await grantForToken(token(userId))
+      const resolved = await grantForAccessToken(grantId)
       if (!resolved.ok) throw new Error(resolved.error)
-      expect(resolved.grant.grantId).toBe(grantId)
       expect([...resolved.grant.scopes].sort()).toEqual(["forms:read", "forms:write"])
       expect(resolved.grant.workspaces.map((w) => w.name)).toEqual(["Alpha"])
       expect(resolved.grant.workspaces[0].role).toBe("owner")
+      expect(resolved.grant.userId).toBe(userId)
     })
 
     test("re-consenting REPLACES rather than accumulates", async () => {
       await recordConsent({
         userId,
-        clientId: "client_abc",
+        clientId,
         clientName: "Claude",
         scopes: ["forms:read", "forms:write", "submissions:read"],
         workspaceIds: [alphaId, betaId],
       })
       // The user reconnects and this time picks less. A union here would turn
       // every re-consent into a widening — the opposite of what they just did.
-      await recordConsent({
+      const { grantId } = await recordConsent({
         userId,
-        clientId: "client_abc",
+        clientId,
         clientName: "Claude",
         scopes: ["forms:read"],
         workspaceIds: [betaId],
       })
 
-      const resolved = await grantForToken(token(userId))
+      const resolved = await grantForAccessToken(grantId)
       if (!resolved.ok) throw new Error(resolved.error)
       expect([...resolved.grant.scopes]).toEqual(["forms:read"])
       expect(resolved.grant.workspaces.map((w) => w.name)).toEqual(["Beta"])
 
       // And it is still one row, not two.
-      expect(await db.select().from(mcpOauthGrants).where(eq(mcpOauthGrants.userId, userId)))
-        .toHaveLength(1)
+      expect(
+        await db.select().from(mcpOauthGrants).where(eq(mcpOauthGrants.userId, userId)),
+      ).toHaveLength(1)
     })
 
     test("re-consenting un-revokes, because the user is saying yes again", async () => {
       const { grantId } = await recordConsent({
         userId,
-        clientId: "client_abc",
+        clientId,
         clientName: "Claude",
         scopes: ["forms:read"],
         workspaceIds: [alphaId],
       })
       await revokeGrant(userId, grantId)
-      expect((await grantForToken(token(userId))).ok).toBe(false)
+      expect((await grantForAccessToken(grantId)).ok).toBe(false)
 
       await recordConsent({
         userId,
-        clientId: "client_abc",
+        clientId,
         clientName: "Claude",
         scopes: ["forms:read"],
         workspaceIds: [alphaId],
       })
-      expect((await grantForToken(token(userId))).ok).toBe(true)
+      expect((await grantForAccessToken(grantId)).ok).toBe(true)
+    })
+
+    test("two clients get two grants, with independent permissions", async () => {
+      // The narrowest grant on an account must not be decorative.
+      const other = await seedClient("Some other app")
+      const mine = await recordConsent({
+        userId,
+        clientId,
+        clientName: "Claude",
+        scopes: ["forms:read", "forms:write"],
+        workspaceIds: [alphaId, betaId],
+      })
+      const theirs = await recordConsent({
+        userId,
+        clientId: other,
+        clientName: "Some other app",
+        scopes: ["forms:read"],
+        workspaceIds: [betaId],
+      })
+
+      expect(mine.grantId).not.toBe(theirs.grantId)
+      const a = await grantForAccessToken(mine.grantId)
+      const b = await grantForAccessToken(theirs.grantId)
+      if (!a.ok || !b.ok) throw new Error("expected both to resolve")
+
+      expect(a.grant.workspaces).toHaveLength(2)
+      expect(b.grant.workspaces.map((w) => w.name)).toEqual(["Beta"])
+      expect([...b.grant.scopes]).toEqual(["forms:read"])
     })
 
     test("a workspace the user does not belong to is never written", async () => {
@@ -143,9 +178,9 @@ describe("oauth grants", () => {
       const stranger = await seedUser("stranger")
       const theirs = await seedWorkspace(stranger, "Theirs")
 
-      await recordConsent({
+      const { grantId } = await recordConsent({
         userId,
-        clientId: "client_abc",
+        clientId,
         clientName: "Claude",
         scopes: ["forms:read"],
         workspaceIds: [alphaId, theirs],
@@ -154,6 +189,7 @@ describe("oauth grants", () => {
       const rows = await db
         .select({ workspaceId: mcpOauthGrantWorkspaces.workspaceId })
         .from(mcpOauthGrantWorkspaces)
+        .where(eq(mcpOauthGrantWorkspaces.grantId, grantId))
       expect(rows.map((r) => r.workspaceId)).toEqual([alphaId])
     })
 
@@ -164,7 +200,7 @@ describe("oauth grants", () => {
       await expect(
         recordConsent({
           userId,
-          clientId: "client_abc",
+          clientId,
           clientName: "Claude",
           scopes: ["forms:read"],
           workspaceIds: [theirs],
@@ -173,68 +209,17 @@ describe("oauth grants", () => {
     })
   })
 
-  describe("resolving a token", () => {
+  describe("resolving a grant", () => {
+    let grantId: string
+
     beforeEach(async () => {
-      await recordConsent({
+      ;({ grantId } = await recordConsent({
         userId,
-        clientId: "client_abc",
+        clientId,
         clientName: "Claude",
         scopes: ["forms:read", "forms:write"],
         workspaceIds: [alphaId, betaId],
-      })
-    })
-
-    test("a token for a different client does not ride on this consent", async () => {
-      // The narrowest grant on an account would be decorative if it did. The
-      // second client gets its OWN grant, empty, rather than inheriting the
-      // first one's workspaces.
-      const resolved = await grantForToken(token(userId, "client_other"))
-      expect(resolved).toMatchObject({ ok: false, status: 403 })
-      if (resolved.ok) throw new Error("expected a refusal")
-      expect(resolved.error).toMatch(/isn't set up yet/)
-
-      const rows = await db
-        .select({ clientId: mcpOauthGrants.clientId })
-        .from(mcpOauthGrants)
-        .where(eq(mcpOauthGrants.userId, userId))
-      expect(rows.map((r) => r.clientId).sort()).toEqual(["client_abc", "client_other"])
-
-      // And the new one reaches nothing.
-      const [placeholder] = await db
-        .select({ id: mcpOauthGrants.id })
-        .from(mcpOauthGrants)
-        .where(
-          and(eq(mcpOauthGrants.userId, userId), eq(mcpOauthGrants.clientId, "client_other")),
-        )
-      expect(
-        await db
-          .select()
-          .from(mcpOauthGrantWorkspaces)
-          .where(eq(mcpOauthGrantWorkspaces.grantId, placeholder.id)),
-      ).toHaveLength(0)
-    })
-
-    test("an unknown client's placeholder does not resurrect a revoked grant", async () => {
-      // Disconnecting must actually disconnect. If the "never seen this client"
-      // path re-created rows indiscriminately, revoking would do nothing from
-      // the very next request onwards.
-      const [grant] = await db
-        .select({ id: mcpOauthGrants.id })
-        .from(mcpOauthGrants)
-        .where(eq(mcpOauthGrants.userId, userId))
-      await revokeGrant(userId, grant.id)
-
-      expect(await grantForToken(token(userId))).toEqual({
-        ok: false,
-        status: 401,
-        error: "Access for this app has been revoked",
-      })
-
-      const [after] = await db
-        .select({ revokedAt: mcpOauthGrants.revokedAt })
-        .from(mcpOauthGrants)
-        .where(eq(mcpOauthGrants.id, grant.id))
-      expect(after.revokedAt).not.toBeNull()
+      }))
     })
 
     test("losing membership drops that workspace on the very next call", async () => {
@@ -242,7 +227,7 @@ describe("oauth grants", () => {
       // live membership is what makes that true.
       await db.delete(workspaceMembers).where(eq(workspaceMembers.workspaceId, alphaId))
 
-      const resolved = await grantForToken(token(userId))
+      const resolved = await grantForAccessToken(grantId)
       if (!resolved.ok) throw new Error(resolved.error)
       expect(resolved.grant.workspaces.map((w) => w.name)).toEqual(["Beta"])
     })
@@ -252,11 +237,7 @@ describe("oauth grants", () => {
       // help, and telling the client to try would send it into a loop.
       await db.delete(workspaceMembers).where(eq(workspaceMembers.userId, userId))
 
-      expect(await grantForToken(token(userId))).toEqual({
-        ok: false,
-        status: 403,
-        error: "This app's workspace access has been removed",
-      })
+      expect(await grantForAccessToken(grantId)).toMatchObject({ ok: false, status: 403 })
     })
 
     test("a demoted owner loses owner powers without the grant changing", async () => {
@@ -265,31 +246,26 @@ describe("oauth grants", () => {
         .set({ role: "member" })
         .where(eq(workspaceMembers.workspaceId, alphaId))
 
-      const resolved = await grantForToken(token(userId))
+      const resolved = await grantForAccessToken(grantId)
       if (!resolved.ok) throw new Error(resolved.error)
       // The role is read live, never cached on the grant.
       expect(resolved.grant.workspaces.find((w) => w.name === "Alpha")?.role).toBe("member")
     })
 
     test("a revoked grant stops working immediately", async () => {
-      const [grant] = await db
-        .select({ id: mcpOauthGrants.id })
-        .from(mcpOauthGrants)
-        .where(eq(mcpOauthGrants.userId, userId))
-      await revokeGrant(userId, grant.id)
-
-      expect(await grantForToken(token(userId))).toEqual({
+      await revokeGrant(userId, grantId)
+      expect(await grantForAccessToken(grantId)).toEqual({
         ok: false,
         status: 401,
         error: "Access for this app has been revoked",
       })
     })
 
-    test("a token for an account that no longer exists resolves to nothing", async () => {
-      expect(await grantForToken(token(randomUUID()))).toEqual({
+    test("a grant that no longer exists resolves to nothing", async () => {
+      expect(await grantForAccessToken(randomUUID())).toEqual({
         ok: false,
         status: 401,
-        error: "Unknown account",
+        error: "This connection no longer exists",
       })
     })
 
@@ -299,11 +275,16 @@ describe("oauth grants", () => {
       await db
         .update(mcpOauthGrants)
         .set({ scopes: ["forms:read", "not-a-real-scope", "admin:*"] })
-        .where(eq(mcpOauthGrants.userId, userId))
+        .where(eq(mcpOauthGrants.id, grantId))
 
-      const resolved = await grantForToken(token(userId))
+      const resolved = await grantForAccessToken(grantId)
       if (!resolved.ok) throw new Error(resolved.error)
       expect([...resolved.grant.scopes]).toEqual(["forms:read"])
+    })
+
+    test("deleting the client takes its grants with it", async () => {
+      await db.delete(mcpOauthClients).where(eq(mcpOauthClients.id, clientId))
+      expect(await grantForAccessToken(grantId)).toMatchObject({ ok: false, status: 401 })
     })
   })
 
@@ -311,7 +292,7 @@ describe("oauth grants", () => {
     test("only the owner of a grant can revoke it", async () => {
       const { grantId } = await recordConsent({
         userId,
-        clientId: "client_abc",
+        clientId,
         clientName: "Claude",
         scopes: ["forms:read"],
         workspaceIds: [alphaId],
@@ -320,16 +301,16 @@ describe("oauth grants", () => {
 
       // A grant id is not a capability.
       expect(await revokeGrant(stranger, grantId)).toBe(false)
-      expect((await grantForToken(token(userId))).ok).toBe(true)
+      expect((await grantForAccessToken(grantId)).ok).toBe(true)
 
       expect(await revokeGrant(userId, grantId)).toBe(true)
-      expect((await grantForToken(token(userId))).ok).toBe(false)
+      expect((await grantForAccessToken(grantId)).ok).toBe(false)
     })
 
     test("the row survives revocation, so the audit trail still resolves", async () => {
       const { grantId } = await recordConsent({
         userId,
-        clientId: "client_abc",
+        clientId,
         clientName: "Claude",
         scopes: ["forms:read"],
         workspaceIds: [alphaId],
@@ -348,14 +329,15 @@ describe("oauth grants", () => {
     test("shows live grants with their workspaces, and hides revoked ones", async () => {
       await recordConsent({
         userId,
-        clientId: "client_abc",
+        clientId,
         clientName: "Claude",
         scopes: ["forms:read"],
         workspaceIds: [alphaId, betaId],
       })
+      const other = await seedClient("Something else")
       const { grantId: gone } = await recordConsent({
         userId,
-        clientId: "client_zzz",
+        clientId: other,
         clientName: "Something else",
         scopes: ["forms:read"],
         workspaceIds: [alphaId],
@@ -371,7 +353,7 @@ describe("oauth grants", () => {
     test("does not show another user's connections", async () => {
       await recordConsent({
         userId,
-        clientId: "client_abc",
+        clientId,
         clientName: "Claude",
         scopes: ["forms:read"],
         workspaceIds: [alphaId],

@@ -13,7 +13,8 @@ owner has in the browser. 27 tools, MCP revision **2026-07-28**, served at
 | Works with | Claude Code, Cursor, VS Code | ChatGPT, claude.ai |
 | Credential | `Authorization: Bearer mf_sk_live_…` | access token from an authorization server |
 | Set up from | `/integrations` → Connect | the client's "add connector" flow |
-| Needs config | nothing | `MCP_OAUTH_ISSUER` + `WORKOS_API_KEY` |
+| Credential lifetime | until revoked | 1h access, 30d rotating refresh |
+| Needs config | nothing | nothing |
 
 The second is not a nicer version of the first. OpenAI's connector docs are
 explicit that ChatGPT "does not support machine-to-machine OAuth grants such as
@@ -56,120 +57,83 @@ Two independent gates run per tool call:
 
 ---
 
-## Configuring OAuth
+## OAuth: we are our own authorization server
 
-OAuth is **off** unless `MCP_OAUTH_ISSUER` is set. A deployment without it keeps
-working exactly as it does today and advertises no `authorization_servers` in its
-discovery document, which is the honest answer for a self-hosted install.
+There is nothing to configure and no vendor to sign up with. `/api/mcp` and the
+authorization server are the same deployment, which is what makes the rest of
+this section simple.
 
-```bash
-# Required. Your AuthKit domain, exactly as it appears in tokens as `iss`.
-# This alone switches OAuth on.
-MCP_OAUTH_ISSUER=https://your-authkit-domain.workos.com
+| Endpoint | What it is |
+| --- | --- |
+| `/.well-known/oauth-authorization-server` | discovery (RFC 8414) |
+| `/api/oauth/register` | client registration (RFC 7591) — **JSON** |
+| `/api/oauth/authorize` | consent, then an authorization code |
+| `/api/oauth/token` | code → tokens, and refresh — **form-urlencoded** |
+| `/api/oauth/revoke` | revocation (RFC 7009) |
 
-# Required to COMPLETE a connection. Without it we can verify tokens but the
-# Login URI cannot hand identity back, so users get stuck mid-connect.
-WORKOS_API_KEY=sk_live_...
+Two parsers, deliberately: RFC 7591 says JSON and RFC 6749 says form-urlencoded.
+A server that uses one for both returns 415 to every real client, after the rest
+of the flow appeared to work perfectly.
 
-# Optional. Defaults to <issuer>/oauth2/jwks.
-MCP_OAUTH_JWKS_URI=https://your-authkit-domain.workos.com/oauth2/jwks
-```
+### Why not a hosted authorization server
 
-`APP_ENCRYPTION_KEY` and `NEXT_PUBLIC_SITE_URL` must already be set — the first
-signs export links, the second is the canonical resource identifier.
+The obvious candidates were ruled out for different reasons.
 
-### Do not half-configure it
-
-A client that reads a non-empty `authorization_servers` **commits** to the OAuth
-flow and never falls back to the header it would otherwise have used. Pointing at
-an issuer that cannot mint tokens for us therefore breaks clients that were
-working. Either configure it fully or leave it unset.
-
-### What to set up at the authorization server
-
-Using WorkOS AuthKit in **Standalone Connect** mode (Supabase stays as the only
-thing that ever sees a password):
-
-1. **Login URI** → `https://<your-domain>/api/mcp/oauth/login`
-   AuthKit sends users here with an `external_auth_id` — a short-lived handle for
-   one authorization request. We resolve who is signed in, then **POST that
-   handle back** to `https://api.workos.com/authkit/oauth2/complete` with our own
-   `users.id`, and send the user to the `redirect_uri` that call returns.
-
-   The direction matters and is easy to get backwards: step three is a
-   server-to-server POST authenticated with `WORKOS_API_KEY`, **not** a redirect
-   with the id appended. Because we send our own `users.id`, the token's `sub`
-   resolves directly against `users` with no mapping table.
-
-2. **Resource URL** → `https://<your-domain>/api/mcp`
-   Must match `NEXT_PUBLIC_SITE_URL + /api/mcp` **byte for byte** — no trailing
-   slash. This is what clients send as `resource` (RFC 8707) and what lands in
-   `aud`. Changing it is a breaking change for every issued token.
-
-3. **Enable** Dynamic Client Registration and Client ID Metadata Documents.
-   Claude falls back to DCR unless it sees both
-   `client_id_metadata_document_supported: true` and
-   `token_endpoint_auth_methods_supported: ["none"]`.
-
-4. **Redirect URIs** the real clients use:
-   - `https://claude.ai/api/mcp/auth_callback`
-   - `https://chatgpt.com/connector_platform_oauth_redirect`
-   - `https://chatgpt.com/connector/oauth/*`
-   - `http://localhost/callback` and `http://127.0.0.1/callback` **with the port
-     ignored** — Claude Code binds an ephemeral loopback port.
-
-### Why not Supabase's OAuth server
-
-Two blockers, verified in shipping code rather than inferred:
-
-- **No RFC 8707 audience binding.** `authorize.go` validates and persists the
-  `resource` parameter and `handlers.go` cross-checks it at token exchange — then
-  `tokens/service.go` mints `Audience: jwt.ClaimStrings{params.User.Aud}`, which
-  is always `"authenticated"`. The string `resource` appears nowhere in that file.
-  The MCP spec says a server MUST validate that tokens were issued for it; with
-  this we cannot, and a token from any client registered on the project would
-  pass — a live confused-deputy exposure.
-- **No custom scopes.** `models/oauth_scope.go` hard-codes five OIDC scopes and
-  rejects everything else.
+**Supabase's**, on inspection of shipping code: `authorize.go` validates and
+persists the RFC 8707 `resource` parameter and `handlers.go` cross-checks it at
+token exchange — then `tokens/service.go` mints `Audience:
+jwt.ClaimStrings{params.User.Aud}`, which is always `"authenticated"`. The MCP
+spec says a server MUST validate that tokens were issued for it; with that we
+cannot, and a token from any client on the project would pass. It also hard-codes
+five OIDC scopes in `models/oauth_scope.go` and rejects everything else.
 
 **The trap worth naming:** the `resource` parameter round-trips cleanly, so
 integration testing *looks* like it works right up until you decode a token and
 check `aud`.
 
-The second blocker turned out not to matter — see below — but the first is
-disqualifying on its own.
+**WorkOS** does all of that correctly, but production needs billing. It also
+would not have removed much work: identity is Supabase's, consent and the
+workspace grant are ours either way, so the vendor was only ever supplying four
+endpoints.
 
-### Two consent screens, and which asks what
+### Tokens are opaque, not JWTs
 
-AuthKit runs its own consent screen — *"do you allow this app?"* — which is the
-question it is able to ask. It cannot ask ours: **which workspaces**, and what
-the app may do in them. So we ask that separately.
+A signed token earns its complexity when the verifier cannot ask the issuer.
+Here they are the same request handler, so a signature would buy nothing and cost
+key management, rotation, and the audience check above.
 
-**If AuthKit forwards `client_id` to the Login URI**, we ask before the app is
-ever connected: the flow pauses at `/oauth/consent`, the user ticks workspaces
-and permissions, and approving resumes the handshake.
+An opaque random string looked up by HMAC — exactly how API keys already work —
+is simpler and strictly better where it counts: **Disconnect takes effect on the
+app's very next request**, rather than whenever its token happened to expire.
 
-**If it does not** — the documented contract carries only `external_auth_id` — we
-cannot ask, because we do not yet know which app is asking, and guessing would
-bind the grant to the wrong client and let one connected app act through
-another's permissions. So the connection completes with **no workspaces**, the
-first tool call returns a `403` naming `/integrations`, and the app appears there
-with a **Finish setup** button.
+Access tokens live an hour; refresh tokens thirty days and **rotate** on every
+use. Nothing is stored in the clear.
 
-Both paths end at the same row. The second costs the user one extra click; it
-never costs them a wrong grant.
+### The refusals that matter
 
-### Why the token carries so little
+An authorization server is mostly a set of refusals, each stopping a specific way
+of stealing an account. Every one is covered in `tests/integration/oauth-flow.test.ts`.
 
-It answers exactly two questions: **which user**, and **which client**. Scopes
-and workspaces live in `mcp_oauth_grants`, our own table, re-read every request.
+- **Redirect URIs match as exact strings.** Prefix matching is the classic
+  mistake: `https://good.test/cb` also prefixes `https://good.test/cb.evil.test`.
+  The one carve-out is loopback, where RFC 8252 requires the port to be ignored
+  because a desktop client cannot know its port in advance.
+- **An unknown client or unmatched redirect is SHOWN, never followed.** Redirecting
+  to an unvalidated URI is the open redirect this endpoint exists not to be.
+- **PKCE (S256) is mandatory.** It is what replaces a client secret for software
+  that cannot hold one. `plain` is refused — the challenge would be the verifier.
+- **A code redeemed twice revokes everything it produced.** Harsher than refusing
+  the replay, on purpose: refusing only the second attempt leaves whoever
+  redeemed first — quite possibly the attacker — holding live tokens.
+- **A reused refresh token kills the whole connection**, for the same reason.
 
-That is not a workaround, it is the correct design. A token is a snapshot taken
-at consent, and a snapshot of authority goes stale — so authority has to come
-from rows we control. It also means no authorization server needs to model our
-eight scopes to be usable here, which is what keeps the vendor choice reversible.
+### Consent
 
----
+Being our own authorization server means we always know which client is asking,
+so `/oauth/consent` can ask the question a hosted server cannot: **which
+workspaces**, and what may the app do in them. Nothing is pre-ticked, and reading
+responses is off by default — it is the permission that hands respondent PII to a
+third party.
 
 ## Secrets that must never reach a model
 

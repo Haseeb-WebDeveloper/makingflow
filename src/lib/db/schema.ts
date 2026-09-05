@@ -597,6 +597,107 @@ export const mcpKeyWorkspaces = pgTable(
   ],
 )
 
+// OAuth clients that registered themselves with us.
+//
+// ChatGPT and claude.ai discover a server and register on the spot (RFC 7591),
+// because there is no human to pre-arrange credentials with. So this table is
+// written by an UNAUTHENTICATED endpoint, which sets the security posture for
+// everything below: a row here means "some software asked for an id", nothing
+// more. It confers no access at all — access comes from a user consenting, in
+// mcp_oauth_grants.
+//
+// That is why there is no client secret. These are PUBLIC clients: the software
+// runs on someone else's servers or someone's laptop, so a secret shipped to it
+// is a secret published. OAuth 2.1 answers this with PKCE instead, which proves
+// the app redeeming a code is the same one that requested it, without any shared
+// secret. `token_endpoint_auth_methods_supported: ["none"]`.
+//
+// `client_name` is display text written by whoever registered. It is shown to
+// users on the consent screen and must never be treated as an identity — an
+// impostor is free to call itself anything.
+export const mcpOauthClients = pgTable(
+  'mcp_oauth_clients',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    clientName: text('client_name'),
+    clientUri: text('client_uri'),
+    // Exact strings, matched byte for byte at /authorize. A prefix or wildcard
+    // match here is the classic open-redirect that turns an authorization
+    // server into a way to steal codes.
+    redirectUris: text('redirect_uris').array().notNull(),
+    ...timestamps,
+  },
+  (table) => [index('mcp_oauth_clients_created_idx').on(table.createdAt)],
+)
+
+// Authorization codes: the one-time ticket a client swaps for a token.
+//
+// Everything about this row is designed around the assumption that the code
+// LEAKS. It travels in a URL, through a browser, into history and referrer
+// headers and screenshots — so it is short-lived (one minute), single-use, and
+// useless without the PKCE verifier that only the requesting client holds.
+//
+// `code_hash`, not the code: the same reasoning as API keys. A database dump
+// yields nothing redeemable.
+export const mcpOauthCodes = pgTable(
+  'mcp_oauth_codes',
+  {
+    codeHash: text('code_hash').primaryKey(),
+    clientId: uuid('client_id')
+      .notNull()
+      .references(() => mcpOauthClients.id, { onDelete: 'cascade' }),
+    grantId: uuid('grant_id')
+      .notNull()
+      .references(() => mcpOauthGrants.id, { onDelete: 'cascade' }),
+    // Bound to the exact redirect used at /authorize and re-checked at /token,
+    // so a code cannot be redeemed against a different destination.
+    redirectUri: text('redirect_uri').notNull(),
+    codeChallenge: text('code_challenge').notNull(),
+    // The resource the client asked for (RFC 8707), carried onto the token.
+    resource: text('resource'),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    // Set on redemption. Kept rather than deleted so a REPLAY is detectable:
+    // a second attempt is evidence the code leaked, and the response is to kill
+    // every token that came from it.
+    usedAt: timestamp('used_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index('mcp_oauth_codes_expires_idx').on(table.expiresAt)],
+)
+
+// Access and refresh tokens, stored as hashes.
+//
+// OPAQUE, not JWTs. A signed token is what you reach for when the party
+// verifying it cannot ask the party that issued it — but here they are the same
+// service, so the signature would buy nothing and cost key management, rotation,
+// and an audience-binding check that is easy to get wrong. A random string
+// looked up in this table is simpler and strictly better on revocation: a
+// disconnected app stops working on its very next request rather than whenever
+// its token happened to expire.
+//
+// Refresh tokens ROTATE. Each refresh issues a new pair and revokes the old
+// refresh token, so a stolen one is good for at most one use — and reuse of an
+// already-rotated token is a strong signal of theft.
+export const mcpOauthTokens = pgTable(
+  'mcp_oauth_tokens',
+  {
+    tokenHash: text('token_hash').primaryKey(),
+    grantId: uuid('grant_id')
+      .notNull()
+      .references(() => mcpOauthGrants.id, { onDelete: 'cascade' }),
+    kind: text('kind').notNull(), // access | refresh
+    // Which access token a refresh token replaced, so rotation is traceable.
+    replacesTokenHash: text('replaces_token_hash'),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('mcp_oauth_tokens_grant_idx').on(table.grantId),
+    index('mcp_oauth_tokens_expires_idx').on(table.expiresAt),
+  ],
+)
+
 // An OAuth client's standing grant over a user's workspaces.
 //
 // The API-key path and the OAuth path exist side by side because they solve
@@ -624,12 +725,16 @@ export const mcpOauthGrants = pgTable(
     userId: uuid('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
-    // The OAuth client this was granted to, as the authorization server names
-    // it. Compared against the token's `client_id` on every request, so a token
-    // for a different client cannot ride on this grant.
-    clientId: text('client_id').notNull(),
-    // Human-readable, for the "you have connected these apps" list. Supplied by
-    // the client at registration, so it is untrusted display text.
+    // The client this was granted to. One grant per (user, client), so a token
+    // issued to one connected app can never ride on another's consent —
+    // otherwise the narrowest grant on an account would be decorative.
+    clientId: uuid('client_id')
+      .notNull()
+      .references(() => mcpOauthClients.id, { onDelete: 'cascade' }),
+    // Snapshot of the client's name AS THE USER SAW IT when they consented.
+    // Denormalised on purpose: a client can rewrite its own registration, and a
+    // list of connected apps that silently renames itself afterwards is a
+    // phishing surface rather than a record of what was agreed.
     clientName: text('client_name'),
     scopes: text('scopes').array().notNull().default(sql`'{}'::text[]`),
     lastUsedAt: timestamp('last_used_at', { withTimezone: true }),

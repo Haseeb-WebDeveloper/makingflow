@@ -9,16 +9,14 @@ import "server-only"
  * intersected with live workspace membership. The grant can lose reach; it can
  * never gain it.
  *
- * Which makes the token's job small: subject and client, bound to our resource.
- * Everything else is here. A user removed from a workspace this morning still
- * holds a valid token minted last week, and this is what makes that harmless.
+ * Which makes the token's job small: it is a reference to a row here, nothing
+ * more. A user removed from a workspace this morning still holds a token issued
+ * last week, and this is what makes that harmless.
  *
- * IDENTITY MAPPING. The authorization server's `sub` is not our `users.id`. With
- * Standalone Connect the user authenticates against Supabase first and we hand
- * the AS an `external_auth_id` — our id — so `sub` comes back as that. This
- * module treats the mapping as one lookup with a single rule: no user row, no
- * principal. It never creates a user from a token, because a token from a
- * misconfigured issuer would then mint accounts.
+ * There is no identity mapping to do. We issue the tokens, so a token points
+ * straight at the grant that authorised it — no subject to resolve against
+ * `users`, and no client id to cross-check, because the grant already records
+ * both. A token cannot be aimed at a consent given to a different app.
  */
 
 import { and, eq, inArray, isNull } from "drizzle-orm"
@@ -26,13 +24,11 @@ import { db } from "@/lib/db"
 import {
   mcpOauthGrantWorkspaces,
   mcpOauthGrants,
-  users,
   workspaceMembers,
   workspaces,
 } from "@/lib/db/schema"
 import { isScope, type Role, type Scope } from "@/lib/auth/context"
 import type { GrantedWorkspace } from "@/lib/mcp/auth"
-import type { VerifiedToken } from "@/lib/mcp/oauth/verify"
 
 /** Where a user finishes setting up a connection. Named in refusal messages. */
 function settingsUrl(): string {
@@ -51,68 +47,34 @@ export type GrantFailure = { ok: false; status: 401 | 403; error: string }
 export type GrantResult = { ok: true; grant: ResolvedGrant } | GrantFailure
 
 /**
- * Resolve a verified token to the standing grant behind it.
+ * Resolve an access token's grant to what it may currently reach.
  *
- * Every refusal is deliberate about its status: 401 means "this credential is no
+ * Because we issue the tokens ourselves, the token IS a reference to this row —
+ * there is no subject to look up and no client id to match, since the grant
+ * already records both. That removes a whole class of mistake: a token simply
+ * cannot be pointed at a consent that was given to a different app.
+ *
+ * Every refusal is deliberate about its status. 401 means "this credential is no
  * good, get another", which a client answers by re-authorising; 403 means "the
  * credential is fine, the access is not", which re-authorising will not fix.
  * Getting that backwards sends clients into a re-auth loop that cannot succeed.
  */
-export async function grantForToken(token: VerifiedToken): Promise<GrantResult> {
-  // The subject is our own user id, handed to the AS as external_auth_id. It is
-  // still checked against a real row: a token from a misconfigured issuer must
-  // not conjure a principal for an id that no longer exists.
-  const [user] = await db
-    .select({ id: users.id })
-    .from(users)
-    .where(eq(users.id, token.subject))
-    .limit(1)
-  if (!user) return { ok: false, status: 401, error: "Unknown account" }
-
+export async function grantForAccessToken(grantId: string): Promise<GrantResult> {
   const [grant] = await db
     .select({
       id: mcpOauthGrants.id,
+      userId: mcpOauthGrants.userId,
       scopes: mcpOauthGrants.scopes,
       revokedAt: mcpOauthGrants.revokedAt,
     })
     .from(mcpOauthGrants)
-    .where(
-      and(
-        eq(mcpOauthGrants.userId, user.id),
-        // Bound to the CLIENT, not just the user. Without this, a token issued
-        // to one connected app would ride on the consent given to another.
-        eq(mcpOauthGrants.clientId, token.clientId),
-      ),
-    )
+    .where(eq(mcpOauthGrants.id, grantId))
     .limit(1)
 
-  if (!grant) {
-    // A verified token for a client we never saw at consent time.
-    //
-    // This is the normal path when the authorization server's Login URI does
-    // not forward `client_id` — we could not ask which workspaces before the
-    // app connected, because we did not yet know which app was asking. Guessing
-    // is not an option: a grant bound to the wrong client would let one
-    // connected app act through another's permissions.
-    //
-    // So the grant is created here, empty, and the user finishes the job. That
-    // makes the app visible in /integrations immediately rather than leaving
-    // them with a failing assistant and nothing to click.
-    await db
-      .insert(mcpOauthGrants)
-      .values({ userId: user.id, clientId: token.clientId, scopes: [] })
-      .onConflictDoNothing()
-
-    return {
-      ok: false,
-      status: 403,
-      error: `This app isn't set up yet. Open ${settingsUrl()} and choose which workspaces it may reach.`,
-    }
-  }
+  // The token pointed at a grant that no longer exists — the user was deleted,
+  // or the client was. Nothing to re-authorise against.
+  if (!grant) return { ok: false, status: 401, error: "This connection no longer exists" }
   if (grant.revokedAt) {
-    // Deliberately NOT re-created above: the row exists, and the user put it in
-    // this state on purpose. Auto-reviving a revoked grant on the next request
-    // would make disconnecting an app do nothing.
     return { ok: false, status: 401, error: "Access for this app has been revoked" }
   }
 
@@ -121,12 +83,13 @@ export async function grantForToken(token: VerifiedToken): Promise<GrantResult> 
     .from(mcpOauthGrantWorkspaces)
     .where(eq(mcpOauthGrantWorkspaces.grantId, grant.id))
   if (granted.length === 0) {
-    // Either the placeholder above, still unfinished, or a grant whose every
-    // workspace has since been deleted. Same message: the fix is the same page.
+    // Consent always names at least one workspace, so this means every one of
+    // them has since been deleted. 403 rather than 401: the credential is fine
+    // and re-authorising would not conjure a workspace back.
     return {
       ok: false,
       status: 403,
-      error: `This app isn't set up yet. Open ${settingsUrl()} and choose which workspaces it may reach.`,
+      error: `This app reaches no workspace any more. Open ${settingsUrl()} to reconnect it.`,
     }
   }
 
@@ -144,7 +107,7 @@ export async function grantForToken(token: VerifiedToken): Promise<GrantResult> 
     .innerJoin(workspaces, eq(workspaces.id, workspaceMembers.workspaceId))
     .where(
       and(
-        eq(workspaceMembers.userId, user.id),
+        eq(workspaceMembers.userId, grant.userId),
         inArray(
           workspaceMembers.workspaceId,
           granted.map((g) => g.workspaceId),
@@ -160,7 +123,7 @@ export async function grantForToken(token: VerifiedToken): Promise<GrantResult> 
     ok: true,
     grant: {
       grantId: grant.id,
-      userId: user.id,
+      userId: grant.userId,
       scopes: new Set(grant.scopes.filter(isScope)),
       workspaces: reachable.map((w) => ({
         id: w.id,
