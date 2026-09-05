@@ -48,6 +48,19 @@ function shouldSkipEntirely(pathname: string): boolean {
   // reports as a baffling HTML response.
   if (pathname.startsWith('/api/mcp')) return true
   if (pathname.startsWith('/.well-known')) return true
+  // The OAuth endpoints, for two different reasons.
+  //
+  // /register, /token and /revoke are machine-to-machine: there is no browser
+  // and no cookie, so gating them on a session redirects an HTTP client to an
+  // HTML login page — which it reports as a parse failure, or worse, treats as
+  // a successful 200.
+  //
+  // /authorize IS a browser request and does need a session, but it must handle
+  // that itself. This gate drops the query string when it redirects, and those
+  // parameters — client_id, redirect_uri, code_challenge, state — are the entire
+  // authorization request. Losing them turns a working flow into a login page
+  // that leads nowhere.
+  if (pathname.startsWith('/api/oauth')) return true
   return false
 }
 
@@ -71,7 +84,13 @@ export function handleProxyAuth(request: NextRequest): NextResponse {
 
   if (!hasSession) {
     const url = new URL('/auth/login', request.url)
-    url.searchParams.set('redirectTo', pathname)
+    // Path AND query. Dropping the query silently breaks any page whose
+    // parameters ARE the request — /oauth/consent without its client_id and
+    // code_challenge is a form with nothing to submit — and the failure looks
+    // like "login worked but the page is broken" rather than like a lost
+    // redirect. Still same-origin-relative, so the login form's own check on
+    // this value is unaffected.
+    url.searchParams.set('redirectTo', pathname + request.nextUrl.search)
     return NextResponse.redirect(url)
   }
 
