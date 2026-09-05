@@ -141,8 +141,16 @@ export default function McpDocsPage() {
 
       <Section title="ChatGPT and Claude on the web">
         <p>
-          These authenticate connectors through OAuth rather than an API key, and support for that
-          is in progress. Claude Code, Cursor and VS Code work today.
+          These authenticate connectors through OAuth rather than an API key — there is nowhere to
+          paste one — so they use a different route. Add{" "}
+          <code className="font-mono text-xs">{`${base}/api/mcp`}</code> as a custom connector and
+          the client will send you here to sign in and choose what it may reach.
+        </p>
+        <p>
+          You pick the permissions and workspaces on that screen, exactly as you would for a key,
+          and the connection covers only the workspaces you tick — joining another one later
+          won&apos;t widen it. Disconnect any app from <strong>Integrations</strong> →{" "}
+          <strong>View details</strong>; it stops working on its very next request.
         </p>
       </Section>
     </main>

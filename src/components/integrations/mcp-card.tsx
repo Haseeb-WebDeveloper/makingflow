@@ -53,29 +53,15 @@ import { Icon } from "@/components/ui/icon";
 import { showToast } from "@/components/ui/toast";
 import { CardShell } from "@/components/integrations/cards";
 import { createMcpKey, revokeMcpKey } from "@/lib/actions/mcp-keys";
+import { disconnectApp } from "@/lib/actions/mcp-oauth";
+import { PERMISSION_CHOICES, DEFAULT_SCOPES, scopeLabel } from "@/lib/mcp/scope-catalog";
+import type { ConnectedApp } from "@/lib/mcp/oauth/grants";
 import type { KeySummary } from "@/lib/core/mcp-keys";
 
-/**
- * The permissions offered in the UI.
- *
- * `destructive` is deliberately ABSENT. It permanently deletes forms and every
- * response with them, and there is no undo — that is not something anyone
- * should be able to grant with a stray click while skimming a checkbox list.
- * It stays available through `pnpm mcp:key` for the rare case that wants it.
- */
-const PERMISSIONS: { scope: string; label: string; help: string }[] = [
-  { scope: "forms:read", label: "Read forms", help: "See forms, fields and settings" },
-  { scope: "forms:write", label: "Build and edit forms", help: "Create, edit and publish" },
-  {
-    scope: "submissions:read",
-    label: "Read responses",
-    help: "Includes names, emails and anything else respondents submitted",
-  },
-  { scope: "submissions:write", label: "Analyse responses", help: "Run AI summaries and scoring" },
-  { scope: "analytics:read", label: "Read analytics", help: "Views, completion and drop-off" },
-];
-
-const DEFAULT_SCOPES = ["forms:read", "forms:write", "analytics:read"];
+// The permission list lives in @/lib/mcp/scope-catalog, shared with the OAuth
+// consent screen. Two copies would drift on the first hurried edit, and the
+// failure is quiet: someone reads "Read responses" on one screen and something
+// subtly different on the other, and grants what they did not mean to.
 
 const EXPIRY_OPTIONS = [
   { days: 30, label: "30 days" },
@@ -86,6 +72,12 @@ const EXPIRY_OPTIONS = [
 
 export type McpCardProps = {
   keys: KeySummary[];
+  /**
+   * Apps connected through OAuth — ChatGPT, claude.ai, anything that
+   * authenticates a connector rather than taking a header. Always empty on a
+   * deployment with no authorization server configured.
+   */
+  apps: ConnectedApp[];
   /** Workspaces the viewer belongs to, so one key can cover several. */
   workspaces: { id: string; name: string }[];
   currentWorkspaceId: string;
@@ -96,6 +88,7 @@ export type McpCardProps = {
 
 export function McpCard({
   keys,
+  apps,
   workspaces,
   currentWorkspaceId,
   isOwner,
@@ -104,19 +97,20 @@ export function McpCard({
   const [createOpen, setCreateOpen] = React.useState(false);
   const [detailsOpen, setDetailsOpen] = React.useState(false);
   const [revoking, setRevoking] = React.useState<KeySummary | null>(null);
+  const [disconnecting, setDisconnecting] = React.useState<ConnectedApp | null>(null);
   const [created, setCreated] = React.useState<{ token: string; name: string } | null>(null);
   const [pending, startTransition] = React.useTransition();
 
   const [name, setName] = React.useState("");
-  const [scopes, setScopes] = React.useState<string[]>(DEFAULT_SCOPES);
+  const [scopes, setScopes] = React.useState<string[]>([...DEFAULT_SCOPES]);
   const [chosen, setChosen] = React.useState<string[]>([currentWorkspaceId]);
   const [days, setDays] = React.useState(90);
 
-  const connected = keys.length > 0;
+  const connected = keys.length + apps.length > 0;
 
   function reset() {
     setName("");
-    setScopes(DEFAULT_SCOPES);
+    setScopes([...DEFAULT_SCOPES]);
     setChosen([currentWorkspaceId]);
     setDays(90);
   }
@@ -153,6 +147,15 @@ export function McpCard({
     });
   }
 
+  function disconnect(app: ConnectedApp) {
+    startTransition(async () => {
+      const result = await disconnectApp(app.id);
+      if (result.success) showToast(`"${app.clientName || "App"}" disconnected`, { type: "success" });
+      else showToast(result.error, { type: "error" });
+      setDisconnecting(null);
+    });
+  }
+
   async function copy(text: string, what: string) {
     await navigator.clipboard.writeText(text);
     showToast(`${what} copied`, { type: "success" });
@@ -171,7 +174,7 @@ export function McpCard({
           {connected ? (
             <span className="inline-flex items-center gap-1 rounded-full bg-success-bg px-2 py-0.5 text-[11px] font-medium text-success-foreground">
               <span className="size-1.5 rounded-full bg-success" />
-              {keys.length} connected
+              {keys.length + apps.length} connected
             </span>
           ) : null}
         </div>
@@ -208,6 +211,65 @@ export function McpCard({
           </SheetHeader>
 
           <div className="space-y-3 px-4 pb-6">
+            {/* Apps connected through OAuth — ChatGPT, claude.ai and anything
+                else that authenticates a connector rather than taking a header.
+                Listed alongside keys because a user does not care which
+                mechanism an assistant used; they care what is connected and how
+                to stop it. */}
+            {apps.length > 0 ? (
+              <>
+                <p className="pt-1 text-xs font-medium text-muted-foreground">Connected apps</p>
+                {apps.map((app) => (
+                  <div key={app.id} className="rounded-lg border border-border p-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        {/* Chosen by whoever registered the client, so shown as
+                            plain text with the id beneath it. */}
+                        <p className="truncate text-sm font-medium text-foreground">
+                          {app.clientName || "Unnamed app"}
+                        </p>
+                        <p className="truncate font-mono text-xs text-muted-foreground">
+                          {app.clientId}
+                        </p>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="shrink-0 text-muted-foreground hover:text-destructive"
+                        onClick={() => setDisconnecting(app)}
+                      >
+                        Disconnect
+                      </Button>
+                    </div>
+
+                    <dl className="mt-3 space-y-1.5 text-xs">
+                      <div className="flex gap-2">
+                        <dt className="w-24 shrink-0 text-muted-foreground">Workspaces</dt>
+                        <dd className="min-w-0 text-foreground">
+                          {app.workspaces.map((w) => w.name).join(", ")}
+                        </dd>
+                      </div>
+                      <div className="flex gap-2">
+                        <dt className="w-24 shrink-0 text-muted-foreground">Permissions</dt>
+                        <dd className="min-w-0 text-foreground">
+                          {app.scopes.map(scopeLabel).join(", ")}
+                        </dd>
+                      </div>
+                      <div className="flex gap-2">
+                        <dt className="w-24 shrink-0 text-muted-foreground">Last used</dt>
+                        <dd className="text-foreground">
+                          {app.lastUsedAt ? new Date(app.lastUsedAt).toLocaleString() : "Never"}
+                        </dd>
+                      </div>
+                    </dl>
+                  </div>
+                ))}
+                {keys.length > 0 ? (
+                  <p className="pt-2 text-xs font-medium text-muted-foreground">API keys</p>
+                ) : null}
+              </>
+            ) : null}
+
             {keys.map((key) => (
               <div key={key.id} className="rounded-lg border border-border p-3">
                 <div className="flex items-start justify-between gap-2">
@@ -242,7 +304,7 @@ export function McpCard({
                     <dt className="w-24 shrink-0 text-muted-foreground">Permissions</dt>
                     <dd className="min-w-0 text-foreground">
                       {key.scopes
-                        .map((s) => PERMISSIONS.find((p) => p.scope === s)?.label ?? s)
+                        .map((s) => scopeLabel(s))
                         .join(", ")}
                     </dd>
                   </div>
@@ -313,7 +375,7 @@ export function McpCard({
             <div className="space-y-2">
               <Label>Permissions</Label>
               <div className="space-y-2.5 rounded-md border border-border p-3">
-                {PERMISSIONS.map((p) => (
+                {PERMISSION_CHOICES.map((p) => (
                   <label key={p.scope} className="flex items-start gap-2.5 text-sm">
                     <Checkbox
                       className="mt-0.5"
@@ -454,6 +516,32 @@ export function McpCard({
               disabled={pending}
             >
               Revoke
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={Boolean(disconnecting)}
+        onOpenChange={(open) => !open && setDisconnecting(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Disconnect &ldquo;{disconnecting?.clientName || "this app"}&rdquo;?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              It stops working on its very next request, even if it still holds a valid token.
+              Your forms and responses are not affected, and you can reconnect at any time.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => disconnecting && disconnect(disconnecting)}
+              disabled={pending}
+            >
+              Disconnect
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
