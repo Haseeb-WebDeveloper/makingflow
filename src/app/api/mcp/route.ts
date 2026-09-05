@@ -18,11 +18,10 @@
 
 import { createMcpHandler, hostHeaderValidationResponse, originValidationResponse } from "@modelcontextprotocol/server"
 import { after } from "next/server"
-import { contextFromBearer, touchApiKey, unauthorized } from "@/lib/mcp/auth"
+import { principalFromBearer, touchApiKey, unauthorized } from "@/lib/mcp/auth"
 import { buildServer } from "@/lib/mcp/server"
 import { rateLimitApiKey, tooManyRequests } from "@/lib/mcp/rate-limit"
 import { budgetFor, TOOLS_BY_NAME } from "@/lib/mcp/registry"
-import type { AuthContext } from "@/lib/auth/context"
 
 // NOTE: no `export const runtime`. Under `cacheComponents` Next rejects the
 // segment config outright ("not compatible with nextConfig.cacheComponents"),
@@ -64,7 +63,7 @@ export async function POST(request: Request): Promise<Response> {
     originValidationResponse(request, allowedHostnames(request))
   if (rejected) return rejected
 
-  const auth = await contextFromBearer(request)
+  const auth = await principalFromBearer(request)
   if (!auth.ok) {
     if (auth.status === 403) {
       return Response.json({ error: "forbidden", error_description: auth.error }, { status: 403 })
@@ -72,7 +71,7 @@ export async function POST(request: Request): Promise<Response> {
     return unauthorized(resourceMetadataUrl(request), ["forms:read"])
   }
 
-  const ctx: AuthContext = auth.ctx
+  const principal = auth.principal
 
   // Budgeted per key, in Postgres, so the limit holds across instances.
   //
@@ -84,13 +83,13 @@ export async function POST(request: Request): Promise<Response> {
   // back to "read" for anything unnamed keeps listing calls cheap.
   const toolName = request.headers.get("mcp-name")
   const tool = toolName ? TOOLS_BY_NAME.get(toolName) : undefined
-  const limit = await rateLimitApiKey(ctx.apiKeyId!, tool ? budgetFor(tool) : "read")
+  const limit = await rateLimitApiKey(principal.apiKeyId, tool ? budgetFor(tool) : "read")
   if (!limit.ok) return tooManyRequests(limit.retryAfterSeconds)
 
   // Bookkeeping, off the response path — never fail a call over it.
-  after(() => touchApiKey(ctx.apiKeyId!))
+  after(() => touchApiKey(principal.apiKeyId))
 
-  const handler = createMcpHandler(() => buildServer(ctx))
+  const handler = createMcpHandler(() => buildServer(principal))
   try {
     return await handler.fetch(request)
   } finally {

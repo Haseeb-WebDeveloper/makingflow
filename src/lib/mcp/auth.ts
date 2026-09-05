@@ -3,23 +3,36 @@ import "server-only"
 /**
  * API-key authentication for the MCP server.
  *
- * A key proves WHO is calling. It never decides WHAT they may do — that comes
- * from re-reading `workspace_members` on every request. The consequence is the
- * property that matters most here: remove someone from a workspace, or delete
- * their account, and their keys stop working on the very next call. No
- * revocation sweep, no cached role to go stale, no window where a demoted owner
- * still acts as one.
+ * TWO THINGS, DELIBERATELY SEPARATE:
  *
- * The secret itself is never stored. `mcp_api_keys.key_hash` holds an HMAC of
- * it under APP_ENCRYPTION_KEY (see `hashApiKey`), so a SQL-level dump alone
- * yields nothing usable, and lookup is a single hit on that column's unique
- * index rather than a candidate scan.
+ *   McpPrincipal — who is calling and what they were granted. Resolved once per
+ *   request from the bearer token: the user, the key's scopes, and the
+ *   workspaces it may reach.
+ *
+ *   AuthContext — which ONE workspace a given call acts on. Built per tool call
+ *   from the principal. The core layer only ever sees this, so it stays exactly
+ *   as simple as it was when a key meant one workspace.
+ *
+ * The split exists because every user in this product belongs to more than one
+ * workspace. One key per workspace would mean registering the MCP server once
+ * per workspace, with the client seeing every tool duplicated and unable to
+ * answer anything spanning both.
+ *
+ * A key proves WHO is calling. It never decides WHAT they may do: the granted
+ * workspace list is intersected with live `workspace_members` rows on every
+ * request, so removing someone from a workspace cuts their key off on the very
+ * next call, with no revocation sweep and no stale role cached anywhere. The
+ * grant can lose reach; it can never gain it.
+ *
+ * The secret itself is never stored — `key_hash` is an HMAC of it under
+ * APP_ENCRYPTION_KEY, so a SQL-level dump yields nothing usable, and lookup is
+ * one hit on that column's unique index.
  */
 
 import { randomBytes, timingSafeEqual } from "node:crypto"
-import { and, eq } from "drizzle-orm"
+import { and, eq, inArray } from "drizzle-orm"
 import { db } from "@/lib/db"
-import { mcpApiKeys, workspaceMembers, workspaces } from "@/lib/db/schema"
+import { mcpApiKeys, mcpKeyWorkspaces, workspaceMembers, workspaces } from "@/lib/db/schema"
 import { hashApiKey } from "@/lib/integrations/crypto"
 import {
   isScope,
@@ -53,13 +66,29 @@ export function mintApiKey(): MintedKey {
   }
 }
 
+/** One workspace this key may act on, with the caller's live role in it. */
+export type GrantedWorkspace = {
+  id: string
+  name: string
+  role: Role
+  plan: string
+}
+
+export type McpPrincipal = {
+  userId: string
+  apiKeyId: string
+  scopes: ReadonlySet<Scope>
+  /** Granted ∩ still-a-member. Never empty — an empty result is a 403. */
+  workspaces: GrantedWorkspace[]
+}
+
 export type BearerFailure = {
   ok: false
-  /** 401 = no/!valid credential. 403 = valid credential, insufficient access. */
+  /** 401 = no/invalid credential. 403 = valid credential, insufficient access. */
   status: 401 | 403
   error: string
 }
-export type BearerResult = { ok: true; ctx: AuthContext } | BearerFailure
+export type PrincipalResult = { ok: true; principal: McpPrincipal } | BearerFailure
 
 /** Pull the token out of an Authorization header, or null if there isn't one. */
 export function bearerToken(request: Request): string | null {
@@ -71,14 +100,8 @@ export function bearerToken(request: Request): string | null {
   return token.length > 0 ? token : null
 }
 
-/**
- * Verify a presented key and build the caller's context.
- *
- * Note what is NOT read off the key row: the role. It is joined live from
- * `workspace_members`, so the key can never outrank — or outlive — the
- * membership behind it.
- */
-export async function contextFromBearer(request: Request): Promise<BearerResult> {
+/** Verify a presented key and resolve what it can currently reach. */
+export async function principalFromBearer(request: Request): Promise<PrincipalResult> {
   const token = bearerToken(request)
   if (!token) return { ok: false, status: 401, error: "Missing bearer token" }
   if (!token.startsWith(KEY_PREFIX)) {
@@ -87,66 +110,132 @@ export async function contextFromBearer(request: Request): Promise<BearerResult>
 
   const presented = hashApiKey(token)
 
-  // One indexed read that also joins the membership and the workspace, so a
-  // valid-but-revoked membership costs no extra round-trip.
-  const [row] = await db
+  const [key] = await db
     .select({
-      keyId: mcpApiKeys.id,
+      id: mcpApiKeys.id,
       userId: mcpApiKeys.userId,
-      workspaceId: mcpApiKeys.workspaceId,
       keyHash: mcpApiKeys.keyHash,
       scopes: mcpApiKeys.scopes,
       expiresAt: mcpApiKeys.expiresAt,
       revokedAt: mcpApiKeys.revokedAt,
-      role: workspaceMembers.role,
-      workspaceName: workspaces.name,
-      plan: workspaces.plan,
     })
     .from(mcpApiKeys)
-    .leftJoin(
-      workspaceMembers,
-      and(
-        eq(workspaceMembers.workspaceId, mcpApiKeys.workspaceId),
-        eq(workspaceMembers.userId, mcpApiKeys.userId),
-      ),
-    )
-    .leftJoin(workspaces, eq(workspaces.id, mcpApiKeys.workspaceId))
     .where(eq(mcpApiKeys.keyHash, presented))
     .limit(1)
 
-  if (!row) return { ok: false, status: 401, error: "Invalid API key" }
+  if (!key) return { ok: false, status: 401, error: "Invalid API key" }
 
-  // The lookup already matched on the hash's unique index, so this is belt and
-  // braces rather than the real check — but it costs nothing and keeps the
-  // comparison constant-time regardless of how the row was found.
-  const a = Buffer.from(row.keyHash)
+  // The lookup already matched the hash's unique index, so this is belt and
+  // braces — but it costs nothing and keeps the comparison constant-time.
+  const a = Buffer.from(key.keyHash)
   const b = Buffer.from(presented)
   if (a.length !== b.length || !timingSafeEqual(a, b)) {
     return { ok: false, status: 401, error: "Invalid API key" }
   }
 
-  if (row.revokedAt) return { ok: false, status: 401, error: "API key has been revoked" }
-  if (row.expiresAt && row.expiresAt.getTime() <= Date.now()) {
+  if (key.revokedAt) return { ok: false, status: 401, error: "API key has been revoked" }
+  if (key.expiresAt && key.expiresAt.getTime() <= Date.now()) {
     return { ok: false, status: 401, error: "API key has expired" }
   }
 
-  // THE ACCESS CHECK. A key whose owner has left the workspace (or whose
-  // account is gone) resolves to no membership row and stops working here.
-  if (!row.role || !row.workspaceName || !row.plan) {
+  const granted = await db
+    .select({ workspaceId: mcpKeyWorkspaces.workspaceId })
+    .from(mcpKeyWorkspaces)
+    .where(eq(mcpKeyWorkspaces.keyId, key.id))
+  if (granted.length === 0) {
+    return { ok: false, status: 403, error: "This key grants access to no workspace" }
+  }
+
+  // THE ACCESS CHECK. The grant is intersected with live membership, so a
+  // workspace the user has since left drops out here rather than being trusted
+  // because it was granted once.
+  const reachable = await db
+    .select({
+      id: workspaces.id,
+      name: workspaces.name,
+      plan: workspaces.plan,
+      role: workspaceMembers.role,
+    })
+    .from(workspaceMembers)
+    .innerJoin(workspaces, eq(workspaces.id, workspaceMembers.workspaceId))
+    .where(
+      and(
+        eq(workspaceMembers.userId, key.userId),
+        inArray(
+          workspaceMembers.workspaceId,
+          granted.map((g) => g.workspaceId),
+        ),
+      ),
+    )
+
+  if (reachable.length === 0) {
     return { ok: false, status: 403, error: "This key's workspace access has been removed" }
   }
 
   return {
     ok: true,
+    principal: {
+      userId: key.userId,
+      apiKeyId: key.id,
+      scopes: new Set(key.scopes.filter(isScope)),
+      workspaces: reachable.map((w) => ({
+        id: w.id,
+        name: w.name,
+        role: w.role as Role,
+        plan: w.plan,
+      })),
+    },
+  }
+}
+
+export type WorkspaceChoice =
+  | { ok: true; ctx: AuthContext }
+  | { ok: false; error: string }
+
+/**
+ * Narrow a principal to the one workspace a call acts on.
+ *
+ * With a single granted workspace the argument is unnecessary and ignored —
+ * there is nothing to choose. With several it is required, and an id outside
+ * the grant is refused with the same message as one that does not exist, so the
+ * API never confirms a workspace the caller cannot see.
+ */
+export function contextForWorkspace(
+  principal: McpPrincipal,
+  workspaceId?: string,
+): WorkspaceChoice {
+  // An explicitly named workspace is ALWAYS looked up in the grant, never
+  // defaulted away. Falling back to "the only one" when a caller named a
+  // different one is how a stale client ends up writing to the wrong workspace
+  // without anything reporting a problem.
+  const target = workspaceId
+    ? principal.workspaces.find((w) => w.id === workspaceId)
+    : principal.workspaces.length === 1
+      ? principal.workspaces[0]
+      : undefined
+
+  if (!target) {
+    return {
+      ok: false,
+      error: workspaceId
+        ? "Workspace not found"
+        : `This key covers ${principal.workspaces.length} workspaces — pass workspaceId. Available: ${principal.workspaces
+            .map((w) => `${w.name} (${w.id})`)
+            .join(", ")}`,
+    }
+  }
+
+  return {
+    ok: true,
     ctx: unsafeSealContext({
-      userId: row.userId,
-      workspaceId: row.workspaceId,
-      workspaceName: row.workspaceName,
-      role: row.role as Role,
-      plan: row.plan,
-      scopes: new Set(row.scopes.filter(isScope)),
+      userId: principal.userId,
+      workspaceId: target.id,
+      workspaceName: target.name,
+      role: target.role,
+      plan: target.plan,
+      scopes: principal.scopes,
       origin: "api-key",
-      apiKeyId: row.keyId,
+      apiKeyId: principal.apiKeyId,
       // Not a Server Action, so cache invalidation must go through
       // revalidateTag rather than updateTag. See src/lib/core/cache.ts.
       surface: "route-handler",
@@ -157,10 +246,7 @@ export async function contextFromBearer(request: Request): Promise<BearerResult>
 /** Record that a key was used. Best-effort and off the hot path. */
 export async function touchApiKey(keyId: string): Promise<void> {
   try {
-    await db
-      .update(mcpApiKeys)
-      .set({ lastUsedAt: new Date() })
-      .where(eq(mcpApiKeys.id, keyId))
+    await db.update(mcpApiKeys).set({ lastUsedAt: new Date() }).where(eq(mcpApiKeys.id, keyId))
   } catch {
     // A failed bookkeeping write must never fail the tool call it describes.
   }
@@ -177,23 +263,5 @@ export function unauthorized(resourceMetadataUrl: string, scopes?: readonly Scop
   return Response.json(
     { error: "unauthorized" },
     { status: 401, headers: { "WWW-Authenticate": parts.join(", ") } },
-  )
-}
-
-/** 403 for a valid key that simply lacks the scope for what it asked to do. */
-export function insufficientScope(
-  resourceMetadataUrl: string,
-  scopes: readonly Scope[],
-  description: string,
-): Response {
-  const challenge = [
-    'Bearer error="insufficient_scope"',
-    `scope="${scopes.join(" ")}"`,
-    `resource_metadata="${resourceMetadataUrl}"`,
-    `error_description="${description.replace(/"/g, "'")}"`,
-  ].join(", ")
-  return Response.json(
-    { error: "insufficient_scope", error_description: description },
-    { status: 403, headers: { "WWW-Authenticate": challenge } },
   )
 }
