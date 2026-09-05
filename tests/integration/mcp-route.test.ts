@@ -16,12 +16,13 @@
 
 import { randomUUID } from "node:crypto"
 import { beforeEach, describe, expect, test } from "vitest"
-import { eq } from "drizzle-orm"
+import { and, eq } from "drizzle-orm"
 import { db } from "@/lib/db"
 import {
   forms,
   mcpApiKeys,
   mcpAuditLog,
+  mcpKeyWorkspaces,
   submissions,
   users,
   workspaceMembers,
@@ -61,7 +62,6 @@ async function seedTenantWithKey(
   const [key] = await db
     .insert(mcpApiKeys)
     .values({
-      workspaceId: workspace.id,
       userId: user.id,
       name: `${label} key`,
       prefix: token.slice(0, 15),
@@ -69,6 +69,7 @@ async function seedTenantWithKey(
       scopes,
     })
     .returning({ id: mcpApiKeys.id })
+  await db.insert(mcpKeyWorkspaces).values({ keyId: key.id, workspaceId: workspace.id })
 
   return {
     token,
@@ -556,5 +557,149 @@ describe("MCP tools", () => {
 
     expect(result.range).toBe("14d")
     expect(result.totals.totalForms).toBe(0)
+  })
+})
+
+/**
+ * Multi-workspace keys.
+ *
+ * Every user in this product belongs to more than one workspace, so this is the
+ * normal case rather than an edge one. A key grants a SET of workspaces, and
+ * the tool schemas change shape accordingly: with one there is nothing to
+ * choose and the argument does not exist; with several it is required, so a
+ * model is forced to say which it means instead of having one picked for it.
+ */
+describe("multi-workspace keys", () => {
+  async function seedTwoWorkspaceUser(scopes: string[] = ["forms:read", "forms:write"]) {
+    seq += 1
+    const unique = `multi-${seq}-${Date.now()}`
+    const [user] = await db
+      .insert(users)
+      .values({ id: randomUUID(), email: `${unique}@example.test`, name: "multi" })
+      .returning({ id: users.id })
+
+    const made = []
+    for (const suffix of ["a", "b"]) {
+      const [ws] = await db
+        .insert(workspaces)
+        .values({ name: `WS ${unique}-${suffix}`, slug: `ws-${unique}-${suffix}` })
+        .returning({ id: workspaces.id })
+      await db
+        .insert(workspaceMembers)
+        .values({ workspaceId: ws.id, userId: user.id, role: "owner" })
+      made.push(ws.id)
+    }
+
+    const token = `mf_sk_live_${unique}-secret`
+    const [key] = await db
+      .insert(mcpApiKeys)
+      .values({
+        userId: user.id,
+        name: "multi key",
+        prefix: token.slice(0, 15),
+        keyHash: hashApiKey(token),
+        scopes,
+      })
+      .returning({ id: mcpApiKeys.id })
+    await db
+      .insert(mcpKeyWorkspaces)
+      .values(made.map((workspaceId) => ({ keyId: key.id, workspaceId })))
+
+    return {
+      token,
+      keyId: key.id,
+      userId: user.id,
+      a: made[0],
+      b: made[1],
+      ctxA: testContext({ userId: user.id, workspaceId: made[0] }),
+      ctxB: testContext({ userId: user.id, workspaceId: made[1] }),
+    }
+  }
+
+  test("tool schemas require workspaceId only when the key spans several", async () => {
+    const multi = await seedTwoWorkspaceUser()
+    const single = await seedTenantWithKey("single")
+
+    const multiTools = (
+      (await rpc(multi.token, "tools/list")).body as {
+        result: { tools: { name: string; inputSchema: { required?: string[] } }[] }
+      }
+    ).result.tools
+    const singleTools = (
+      (await rpc(single.token, "tools/list")).body as {
+        result: { tools: { name: string; inputSchema: { required?: string[] } }[] }
+      }
+    ).result.tools
+
+    const listMulti = multiTools.find((t) => t.name === "makingflow_list_forms")!
+    const listSingle = singleTools.find((t) => t.name === "makingflow_list_forms")!
+
+    expect(listMulti.inputSchema.required).toContain("workspaceId")
+    // A one-workspace key keeps the simpler signature — nothing to get wrong.
+    expect(listSingle.inputSchema.required ?? []).not.toContain("workspaceId")
+  })
+
+  test("one key reaches both workspaces, and keeps them apart", async () => {
+    const multi = await seedTwoWorkspaceUser()
+    await formsCore.saveAiForm(multi.ctxA, { form: { title: "In A", fields: [] } })
+    await formsCore.saveAiForm(multi.ctxB, { form: { title: "In B", fields: [] } })
+
+    const inA = structured(
+      (await callTool(multi.token, "makingflow_list_forms", { workspaceId: multi.a })).body,
+    ) as { forms: { title: string }[] }
+    const inB = structured(
+      (await callTool(multi.token, "makingflow_list_forms", { workspaceId: multi.b })).body,
+    ) as { forms: { title: string }[] }
+
+    // The point of the whole change: one credential, one MCP server, both
+    // workspaces — and each still only shows its own forms.
+    expect(inA.forms.map((f) => f.title)).toEqual(["In A"])
+    expect(inB.forms.map((f) => f.title)).toEqual(["In B"])
+  })
+
+  test("omitting workspaceId asks which one rather than guessing", async () => {
+    const multi = await seedTwoWorkspaceUser()
+    const { body } = await callTool(multi.token, "makingflow_list_forms", {})
+    const text = JSON.stringify(body).toLowerCase()
+    // Silently picking one would eventually write to the wrong workspace.
+    expect(text).toMatch(/workspaceid|required/)
+  })
+
+  test("a workspace outside the grant is refused, even if the user belongs to it", async () => {
+    const multi = await seedTwoWorkspaceUser()
+    // A third workspace the user IS a member of, but which this key never granted.
+    seq += 1
+    const [outside] = await db
+      .insert(workspaces)
+      .values({ name: `WS outside ${seq}`, slug: `ws-outside-${seq}-${Date.now()}` })
+      .returning({ id: workspaces.id })
+    await db
+      .insert(workspaceMembers)
+      .values({ workspaceId: outside.id, userId: multi.userId, role: "owner" })
+
+    const { body } = await callTool(multi.token, "makingflow_list_forms", {
+      workspaceId: outside.id,
+    })
+    // Membership is necessary but not sufficient — the grant is the ceiling, so
+    // joining a workspace later never widens an existing key.
+    expect(toolError(body)).toContain("not found")
+  })
+
+  test("losing membership drops that workspace but leaves the other working", async () => {
+    const multi = await seedTwoWorkspaceUser()
+    await db
+      .delete(workspaceMembers)
+      .where(
+        and(eq(workspaceMembers.userId, multi.userId), eq(workspaceMembers.workspaceId, multi.a)),
+      )
+
+    // The grant still names A, but membership is the live check — so A is gone
+    // while B carries on. The key narrows, it never breaks entirely.
+    expect(toolError((await callTool(multi.token, "makingflow_list_forms", { workspaceId: multi.a })).body)).toContain(
+      "not found",
+    )
+    expect(
+      structured((await callTool(multi.token, "makingflow_list_forms", { workspaceId: multi.b })).body),
+    ).toBeDefined()
   })
 })

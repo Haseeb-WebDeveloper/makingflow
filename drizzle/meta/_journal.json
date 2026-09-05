@@ -85,6 +85,13 @@
       "when": 1788530419635,
       "tag": "0011_milky_wasp",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1788535742855,
+      "tag": "0012_gifted_leper_queen",
+      "breakpoints": true
     }
   ]
 }

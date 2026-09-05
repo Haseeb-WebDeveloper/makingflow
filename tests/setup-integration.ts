@@ -168,9 +168,18 @@ beforeAll(async () => {
     )
   }
 
-  // Apply application migrations. Idempotent — drizzle skips already-applied.
+  // Apply application migrations. Idempotent — already-applied ones are skipped.
+  //
+  // Invoked through node rather than `pnpm db:migrate` for a mundane but
+  // load-bearing reason: the pnpm wrapper alone costs ~13s on Windows (measured
+  // — `pnpm exec true` takes that long), which on its own blew past this hook's
+  // timeout and made every integration run fail in setup with no useful error.
+  // Going straight to node takes the same work down to ~5s.
   try {
-    execSync('pnpm db:migrate', { stdio: 'inherit', env: { ...process.env } })
+    execSync('node --import tsx scripts/migrate.mts', {
+      stdio: 'inherit',
+      env: { ...process.env },
+    })
   } catch (err) {
     throw new Error(`Migration failed: ${err instanceof Error ? err.message : String(err)}`)
   }

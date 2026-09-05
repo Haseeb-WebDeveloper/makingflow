@@ -28,6 +28,11 @@ export default defineConfig({
           include: ['tests/integration/**/*.test.ts'],
           setupFiles: ['./vitest.setup.ts', './tests/setup-integration.ts'],
           testTimeout: 20_000,
+          // The beforeAll hook installs the Supabase stubs and runs migrations
+          // in a child process. Vitest's 10s default is not enough for that on
+          // a cold database, and when it trips the whole file fails in setup
+          // with "Hook timed out" and no clue that migrations were the cause.
+          hookTimeout: 60_000,
           // Integration tests share one Postgres DB on :54322. Running
           // them in parallel causes TRUNCATE-vs-INSERT deadlocks and
           // FK violations as state from one test leaks into another.

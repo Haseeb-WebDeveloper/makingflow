@@ -24,12 +24,15 @@ import {
 } from "@/lib/actions/integrations";
 import { CardShell, StatusBadge } from "@/components/integrations/cards";
 import type { WorkspaceIntegrations } from "@/lib/data/integrations";
+import { McpCard, type McpCardProps } from "@/components/integrations/mcp-card";
 import { SVGIcon } from "../ui/svg-icon";
 
 export function WorkspaceIntegrationsPanel({
   data,
+  mcp,
 }: {
   data: WorkspaceIntegrations;
+  mcp: McpCardProps;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -99,6 +102,9 @@ export function WorkspaceIntegrationsPanel({
   return (
     <>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {/* ── AI assistants (MCP) ── */}
+        <McpCard {...mcp} />
+
         {/* ── Google Sheets ── */}
         <CardShell>
           <div className="flex items-start justify-between gap-3">

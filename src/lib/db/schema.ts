@@ -547,9 +547,6 @@ export const mcpApiKeys = pgTable(
   'mcp_api_keys',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    workspaceId: uuid('workspace_id')
-      .notNull()
-      .references(() => workspaces.id, { onDelete: 'cascade' }),
     // The human the key acts as. Cascades, so deleting a user revokes their keys.
     userId: uuid('user_id')
       .notNull()
@@ -567,8 +564,36 @@ export const mcpApiKeys = pgTable(
   },
   (table) => [
     uniqueIndex('mcp_api_keys_hash_idx').on(table.keyHash),
-    index('mcp_api_keys_workspace_idx').on(table.workspaceId),
     index('mcp_api_keys_user_idx').on(table.userId),
+  ],
+)
+
+// Which workspaces a key may act on.
+//
+// A JOIN TABLE rather than a column on the key, because every user in this
+// product belongs to more than one workspace. With a single workspace per key,
+// managing two means minting two keys and registering two MCP servers — the
+// client then sees every tool twice, distinguished only by server name, and
+// cannot answer a question that spans both.
+//
+// The grant is a subset, never a wildcard: "all my workspaces" is stored as the
+// explicit list at mint time. That matters because membership changes. Someone
+// added to a third workspace later does NOT silently widen an existing key's
+// reach, and verification still intersects this list with live membership on
+// every request — so the key can lose access but never gain it.
+export const mcpKeyWorkspaces = pgTable(
+  'mcp_key_workspaces',
+  {
+    keyId: uuid('key_id')
+      .notNull()
+      .references(() => mcpApiKeys.id, { onDelete: 'cascade' }),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+  },
+  (table) => [
+    primaryKey({ columns: [table.keyId, table.workspaceId] }),
+    index('mcp_key_workspaces_workspace_idx').on(table.workspaceId),
   ],
 )
 
@@ -1240,6 +1265,7 @@ export type WorkspaceConnection = typeof workspaceConnections.$inferSelect
 export type CustomDomain = typeof customDomains.$inferSelect
 export type WorkspaceUsage = typeof workspaceUsage.$inferSelect
 export type McpApiKey = typeof mcpApiKeys.$inferSelect
+export type McpKeyWorkspace = typeof mcpKeyWorkspaces.$inferSelect
 export type NewMcpApiKey = typeof mcpApiKeys.$inferInsert
 export type McpAuditEntry = typeof mcpAuditLog.$inferSelect
 export type Folder = typeof folders.$inferSelect

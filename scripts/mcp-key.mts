@@ -20,7 +20,7 @@
 import "dotenv/config"
 import { and, desc, eq, isNull } from "drizzle-orm"
 import { db } from "@/lib/db"
-import { mcpApiKeys, users, workspaceMembers, workspaces } from "@/lib/db/schema"
+import { mcpApiKeys, mcpKeyWorkspaces, users, workspaceMembers, workspaces } from "@/lib/db/schema"
 import { mintApiKey } from "@/lib/mcp/auth"
 import { SCOPES, isScope, type Scope } from "@/lib/auth/context"
 
@@ -70,9 +70,16 @@ async function list() {
   }
 
   const keys = await db
-    .select()
+    .select({
+      id: mcpApiKeys.id,
+      name: mcpApiKeys.name,
+      prefix: mcpApiKeys.prefix,
+      scopes: mcpApiKeys.scopes,
+      lastUsedAt: mcpApiKeys.lastUsedAt,
+    })
     .from(mcpApiKeys)
-    .where(and(eq(mcpApiKeys.workspaceId, workspaceId), isNull(mcpApiKeys.revokedAt)))
+    .innerJoin(mcpKeyWorkspaces, eq(mcpKeyWorkspaces.keyId, mcpApiKeys.id))
+    .where(and(eq(mcpKeyWorkspaces.workspaceId, workspaceId), isNull(mcpApiKeys.revokedAt)))
     .orderBy(desc(mcpApiKeys.createdAt))
 
   console.log(`\n${keys.length} active key(s):\n`)
@@ -110,10 +117,14 @@ async function mint() {
   if (!membership) fail("That user is not a member of that workspace.")
 
   const { token, keyHash, prefix } = mintApiKey()
-  const [created] = await db
-    .insert(mcpApiKeys)
-    .values({ workspaceId, userId, name, prefix, keyHash, scopes, expiresAt })
-    .returning({ id: mcpApiKeys.id })
+  const [created] = await db.transaction(async (tx) => {
+    const rows = await tx
+      .insert(mcpApiKeys)
+      .values({ userId, name, prefix, keyHash, scopes, expiresAt })
+      .returning({ id: mcpApiKeys.id })
+    await tx.insert(mcpKeyWorkspaces).values({ keyId: rows[0].id, workspaceId })
+    return rows
+  })
 
   console.log(`
 Key created — copy it now, it is not stored and cannot be shown again.
