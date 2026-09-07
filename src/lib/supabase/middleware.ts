@@ -61,6 +61,12 @@ function shouldSkipEntirely(pathname: string): boolean {
   // authorization request. Losing them turns a working flow into a login page
   // that leads nowhere.
   if (pathname.startsWith('/api/oauth')) return true
+  // Scheduled callbacks from Postgres, authenticated by a shared secret. The
+  // caller is pg_net: no cookie, and no ability to report a redirect as a
+  // problem — it would record the 302 to /auth/login as a perfectly good
+  // response, and the sweep would appear to run every minute while doing
+  // nothing at all.
+  if (pathname.startsWith('/api/cron')) return true
   return false
 }
 

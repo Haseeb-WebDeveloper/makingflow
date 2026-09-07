@@ -19,10 +19,18 @@
 // 4. AI DEGRADES GRACEFULLY — nothing in this schema requires AI to accept a
 //    submission. AI artifacts (summary, score, follow-up answers, translation
 //    cache) are all nullable/additive.
-// 5. GDPR — respondent PII lives only in `submissions` + `answers` + `uploads`.
-//    Deleting a submission cascades its answers; uploads are detached
-//    (set null) so the app can delete the Cloudinary asset before removing
-//    the row. Form events carry no PII and survive deletion as anonymous counts.
+// 5. GDPR — respondent PII lives only in `submissions` + `answers` + `uploads`
+//    + `webhook_deliveries`. Deleting a submission cascades its answers;
+//    uploads are detached (set null) so the app can delete the Cloudinary asset
+//    before removing the row. Form events carry no PII and survive deletion as
+//    anonymous counts.
+//    `webhook_deliveries.payload` is the exception that needs watching: it
+//    holds a verbatim copy of the answers we POSTed, because a retry must send
+//    byte-identical content (the signature covers the body). It is bounded by
+//    TWO things and needs both — `submission_id` ON DELETE CASCADE, and the
+//    30-day prune in the webhook cron sweep. Do not relax either to `set null`
+//    or "keep forever for debugging": that orphans a copy of someone's answers
+//    with nothing left pointing at it.
 // 6. PLAN/BILLING — `workspaces.plan` is the single source of truth for
 //    entitlements (updated by billing webhooks). Per-plan caps are code
 //    constants (PLAN_LIMITS in src/lib/config), NOT database rows. Billing
@@ -129,6 +137,19 @@ export const integrationTypeEnum = pgEnum('integration_type', [
   'email',
   'discord',
   'notion',
+])
+
+// One outbound webhook delivery's lifecycle.
+//
+// Four states, not five: a delivery that failed but has attempts left goes back
+// to 'pending' with a later next_attempt_at. Giving "waiting to be sent" a
+// single representation is what lets the claim query be one indexed predicate
+// rather than a disjunction the planner has to reason about.
+export const webhookDeliveryStatusEnum = pgEnum('webhook_delivery_status', [
+  'pending', // owed; due at next_attempt_at
+  'sending', // claimed by a worker — reclaimed if the claim goes stale
+  'succeeded',
+  'exhausted', // gave up after the final attempt
 ])
 
 export const connectionProviderEnum = pgEnum('connection_provider', ['google', 'notion'])
@@ -261,6 +282,22 @@ export type SubmissionMeta = {
 export type WebhookIntegrationConfig = {
   url: string
   secret?: string // HMAC signing secret
+}
+
+// The body we POST to a customer's endpoint, stored verbatim on the delivery
+// row. It lives here rather than in src/lib/integrations/webhook.ts because
+// that module imports FROM this one; webhook.ts re-exports it as
+// `SubmissionPayload` so existing callers are unaffected.
+//
+// Snapshotted, not rebuilt at send time, for one reason that is not negotiable:
+// the signature covers these exact bytes, so a retry must send them unchanged.
+// Rebuilding would also be impossible once the submission is deleted, which is
+// precisely when someone is most likely to be asking what we sent.
+export type WebhookDeliveryPayload = {
+  event: string
+  form: { id: string; title: string; publicId: string }
+  submission: { id: string; submittedAt: string }
+  answers: { fieldId: string; question: string; value: AnswerValue }[]
 }
 
 export type GoogleSheetsIntegrationConfig = {
@@ -1181,6 +1218,92 @@ export const formIntegrations = pgTable(
   ],
 )
 
+// One owed webhook delivery: this event, to this endpoint, and what became of
+// it. Written in the SAME transaction as the submission, before any network
+// call — that is the whole point. Delivery used to be an action (POST, hope,
+// console.error), which made a failure both invisible and unrecoverable.
+//
+// `id` is handed to the receiver as X-MakingFlow-Delivery-Id and is stable
+// across retries, so a receiver that already processed it can discard the
+// duplicate. Retries make duplicates ordinary rather than exceptional, so
+// there has to be something to dedupe on.
+//
+// PII, and the reason submission_id cascades (see design note 5): `payload`
+// contains the respondent's answers. This is the only table outside
+// submissions/answers/uploads that holds them, and the ONLY thing keeping that
+// copy bounded is the cascade below plus the 30-day prune in the cron sweep.
+// `set null` — the pattern uploads and form_events use — would orphan a copy of
+// someone's answers permanently.
+export const webhookDeliveries = pgTable(
+  'webhook_deliveries',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    formId: uuid('form_id')
+      .notNull()
+      .references(() => forms.id, { onDelete: 'cascade' }),
+    // History is meaningless without the endpoint it was owed to.
+    integrationId: uuid('integration_id')
+      .notNull()
+      .references(() => formIntegrations.id, { onDelete: 'cascade' }),
+    submissionId: uuid('submission_id')
+      .notNull()
+      .references(() => submissions.id, { onDelete: 'cascade' }),
+    event: text('event').notNull(), // submission.created
+    // Snapshot. The endpoint's configured URL can change (or be deleted) between
+    // the first attempt and the last retry; the delivery goes where it was
+    // addressed when it was created.
+    url: text('url').notNull(),
+    payload: jsonb('payload').$type<WebhookDeliveryPayload>().notNull(),
+    status: webhookDeliveryStatusEnum('status').notNull().default('pending'),
+    attempts: integer('attempts').notNull().default(0),
+    nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true }).notNull().defaultNow(),
+    // Fencing token, issued per row by the claim and required by every write
+    // that finishes it.
+    //
+    // Without this, reclaiming a stale row is unsafe: the original worker can
+    // wake from a long stall AFTER its row was handed to somebody else, and
+    // then record its own outcome over the state of the run that legitimately
+    // owns it. `status = 'sending'` cannot fence that — the reclaiming run set
+    // it back to 'sending'. `claimed_at` cannot either: it is one value for a
+    // whole batch. `gen_random_uuid()` is VOLATILE, so the claim mints a
+    // distinct token PER ROW, and a stale writer's UPDATE matches nothing.
+    claimToken: uuid('claim_token'),
+    // When a worker claimed it. A row still 'sending' long after this was set
+    // belongs to a worker that died mid-flight, and the sweep reclaims it.
+    claimedAt: timestamp('claimed_at', { withTimezone: true }),
+    lastStatus: integer('last_status'), // HTTP status of the last attempt
+    lastError: text('last_error'),
+    lastResponseBody: text('last_response_body'), // truncated — for the UI only
+    deliveredAt: timestamp('delivered_at', { withTimezone: true }),
+    // Log-style: a delivery is never edited by a user, so no updated_at.
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    // The sweep's only query, and it runs every minute across every tenant.
+    // Partial so the index holds just the work outstanding rather than every
+    // delivery ever made — which is the difference between an index that stays
+    // small and one that grows forever.
+    index('webhook_deliveries_due_idx')
+      .on(table.nextAttemptAt)
+      .where(sql`${table.status} = 'pending'`),
+    // The UI's query: one endpoint's history, newest first.
+    index('webhook_deliveries_integration_idx').on(table.integrationId, table.createdAt),
+    index('webhook_deliveries_workspace_idx').on(table.workspaceId),
+    // One event is owed to one endpoint exactly once. The insert is
+    // onConflictDoNothing, so a submit that somehow runs twice for the same
+    // submission — a platform-level request retry, a resumed partial promoted
+    // twice — cannot enqueue a second copy and double-deliver.
+    uniqueIndex('webhook_deliveries_event_idx').on(
+      table.integrationId,
+      table.submissionId,
+      table.event,
+    ),
+  ],
+)
+
 // ---------------------------------------------------------------------------
 // Files
 // ---------------------------------------------------------------------------
@@ -1457,6 +1580,7 @@ export type Submission = typeof submissions.$inferSelect
 export type Answer = typeof answers.$inferSelect
 export type FormEvent = typeof formEvents.$inferSelect
 export type FormIntegration = typeof formIntegrations.$inferSelect
+export type WebhookDelivery = typeof webhookDeliveries.$inferSelect
 export type Upload = typeof uploads.$inferSelect
 export type Template = typeof templates.$inferSelect
 

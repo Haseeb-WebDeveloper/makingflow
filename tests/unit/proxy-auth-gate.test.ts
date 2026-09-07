@@ -33,6 +33,12 @@ describe("the proxy auth gate", () => {
       "/api/oauth/revoke",
       "/api/oauth/authorize",
       "/api/mcp",
+      // The webhook retry sweep. Its caller is pg_net, which cannot report a
+      // redirect as a problem — it would record the 302 to /auth/login as a
+      // perfectly good response, and the sweep would appear to run every minute
+      // while delivering nothing. Exactly the failure mode as the OAuth cases
+      // above, with an even quieter symptom.
+      "/api/cron/webhooks",
       "/.well-known/oauth-authorization-server",
       "/.well-known/oauth-protected-resource",
       "/.well-known/oauth-protected-resource/api/mcp",

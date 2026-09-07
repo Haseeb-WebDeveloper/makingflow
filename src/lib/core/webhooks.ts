@@ -15,10 +15,20 @@
  * whatever it reached.
  */
 
-import { and, eq } from "drizzle-orm"
+import { randomUUID } from "node:crypto"
+import { after } from "next/server"
+import { and, desc, eq } from "drizzle-orm"
 import { db } from "@/lib/db"
-import { forms, formIntegrations, type WebhookIntegrationConfig } from "@/lib/db/schema"
+import {
+  forms,
+  formIntegrations,
+  webhookDeliveries,
+  type WebhookDelivery,
+  type WebhookIntegrationConfig,
+} from "@/lib/db/schema"
 import { postWebhook, type SubmissionPayload } from "@/lib/integrations/webhook"
+import { deliveryHeaders } from "@/lib/integrations/webhook-signature"
+import { claimByIds, deliverBatch } from "@/lib/integrations/webhook-delivery"
 import type { AuthContext } from "@/lib/auth/context"
 import { invalidate } from "@/lib/core/cache"
 import { assertOwnedForm } from "@/lib/core/tenancy"
@@ -183,6 +193,173 @@ export async function sendTestWebhook(
     answers: [{ fieldId: "test_field", question: "Sample question", value: "Sample answer" }],
   }
 
-  const res = await postWebhook(checked.url, JSON.stringify({ ...sample, test: true }), cfg.secret)
+  // A test is not recorded as a delivery — there is no submission behind it and
+  // nothing to retry — but it must be signed and shaped EXACTLY like a real
+  // one, or "the test worked" stops being evidence that a real delivery will.
+  // `randomUUID` stands in for the delivery id a stored delivery would carry.
+  const body = JSON.stringify({ ...sample, test: true })
+  const res = await postWebhook(
+    checked.url,
+    body,
+    deliveryHeaders({
+      deliveryId: randomUUID(),
+      event: sample.event,
+      body,
+      secret: cfg.secret,
+    }),
+  )
   return { success: res.ok, status: res.status, error: res.error }
+}
+
+// ─── Delivery history ──────────────────────────────────────────────────────
+//
+// Reads and one write over the delivery queue, tenant-scoped. The queue itself
+// is driven from src/lib/integrations/webhook-delivery.ts, which has no
+// AuthContext because the cron sweep cannot build one; these are the functions
+// a signed-in person reaches it through.
+
+/** One delivery as a list row. Deliberately without the payload — see below. */
+export type DeliveryView = {
+  id: string
+  event: string
+  status: WebhookDelivery["status"]
+  attempts: number
+  lastStatus: number | null
+  lastError: string | null
+  createdAt: Date
+  deliveredAt: Date | null
+  nextAttemptAt: Date
+}
+
+/** A delivery opened up: what we sent, and what came back. */
+export type DeliveryDetail = DeliveryView & {
+  url: string
+  payload: unknown
+  responseBody: string | null
+}
+
+/**
+ * Recent deliveries for one endpoint.
+ *
+ * The payload and the response body are NOT selected here. A list of twenty
+ * deliveries would otherwise ship twenty copies of a respondent's answers to
+ * the browser to render a table of statuses — the detail view fetches one when
+ * someone actually opens it.
+ */
+export async function listDeliveries(
+  ctx: AuthContext,
+  integrationId: string,
+  limit = 20,
+): Promise<DeliveryView[]> {
+  return db
+    .select({
+      id: webhookDeliveries.id,
+      event: webhookDeliveries.event,
+      status: webhookDeliveries.status,
+      attempts: webhookDeliveries.attempts,
+      lastStatus: webhookDeliveries.lastStatus,
+      lastError: webhookDeliveries.lastError,
+      createdAt: webhookDeliveries.createdAt,
+      deliveredAt: webhookDeliveries.deliveredAt,
+      nextAttemptAt: webhookDeliveries.nextAttemptAt,
+    })
+    .from(webhookDeliveries)
+    .where(
+      and(
+        eq(webhookDeliveries.integrationId, integrationId),
+        eq(webhookDeliveries.workspaceId, ctx.workspaceId),
+      ),
+    )
+    .orderBy(desc(webhookDeliveries.createdAt))
+    .limit(Math.min(Math.max(limit, 1), 100))
+}
+
+/** One delivery in full. Another tenant's id is indistinguishable from absent. */
+export async function getDelivery(
+  ctx: AuthContext,
+  deliveryId: string,
+): Promise<DeliveryDetail | null> {
+  const [row] = await db
+    .select()
+    .from(webhookDeliveries)
+    .where(
+      and(
+        eq(webhookDeliveries.id, deliveryId),
+        eq(webhookDeliveries.workspaceId, ctx.workspaceId),
+      ),
+    )
+    .limit(1)
+  if (!row) return null
+
+  return {
+    id: row.id,
+    event: row.event,
+    status: row.status,
+    attempts: row.attempts,
+    lastStatus: row.lastStatus,
+    lastError: row.lastError,
+    createdAt: row.createdAt,
+    deliveredAt: row.deliveredAt,
+    nextAttemptAt: row.nextAttemptAt,
+    url: row.url,
+    payload: row.payload,
+    // The signing secret is never part of this, and the signature is not stored
+    // — the owner holds the secret and the body, so they can recompute it.
+    responseBody: row.lastResponseBody,
+  }
+}
+
+/**
+ * Send a finished delivery again.
+ *
+ * The SAME row goes back to `pending` rather than a new one being created, and
+ * that is the correct semantics rather than a shortcut: a redelivery is the
+ * same delivery, so it must keep its delivery id. A receiver that already
+ * processed it can then recognise the duplicate and discard it — which is the
+ * entire reason the id is on the wire.
+ *
+ * Attempts reset to zero, so a redelivery gets the full retry ladder rather
+ * than one attempt on an endpoint that is still coming back up.
+ */
+export async function redeliver(ctx: AuthContext, deliveryId: string): Promise<Result> {
+  const [row] = await db
+    .select({ id: webhookDeliveries.id, status: webhookDeliveries.status, formId: webhookDeliveries.formId })
+    .from(webhookDeliveries)
+    .where(
+      and(
+        eq(webhookDeliveries.id, deliveryId),
+        eq(webhookDeliveries.workspaceId, ctx.workspaceId),
+      ),
+    )
+    .limit(1)
+  if (!row) return { success: false, error: "Delivery not found" }
+
+  // Re-queueing something already queued would reset its backoff and could put
+  // it in flight twice.
+  if (row.status === "pending" || row.status === "sending") {
+    return { success: false, error: "This delivery is already queued." }
+  }
+
+  await db
+    .update(webhookDeliveries)
+    .set({
+      status: "pending",
+      nextAttemptAt: new Date(),
+      attempts: 0,
+      claimToken: null,
+      claimedAt: null,
+      lastError: null,
+    })
+    .where(eq(webhookDeliveries.id, row.id))
+
+  // Try it now rather than waiting up to a minute for the sweep. Safe to race
+  // with the sweep: both go through the same claim, so whichever gets there
+  // first is the only one that sends.
+  after(async () => {
+    const claimed = await claimByIds([row.id])
+    await deliverBatch(claimed)
+  })
+
+  refresh(ctx, row.formId)
+  return { success: true }
 }

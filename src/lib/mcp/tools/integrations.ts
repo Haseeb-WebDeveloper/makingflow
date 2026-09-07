@@ -244,11 +244,17 @@ export const integrationTools: RegisteredMcpTool[] = [
       "A secret signs deliveries so the receiver can verify they came from us. It is stored write-only: no tool ever returns it, and listing reports only whether one is set.",
       "The URL must be a public https endpoint. Private, loopback and link-local addresses are refused — a webhook is a request made from our servers, so those would reach our own infrastructure rather than yours.",
       "`test` sends a sample payload immediately and reports the status the endpoint returned.",
+      "",
+      "Every response is recorded as a delivery and retried with backoff for about eight hours if the endpoint is down. `deliveries` lists what happened to recent ones; `redeliver` queues a finished delivery to be sent again, keeping its delivery id so a receiver can recognise the duplicate.",
     ].join("\n"),
     inputSchema: z.object({
-      operation: z.enum(["add", "enable", "disable", "remove", "test"]),
+      operation: z.enum(["add", "enable", "disable", "remove", "test", "deliveries", "redeliver"]),
       formId: z.string().optional().describe("Required for `add`."),
-      webhookId: z.string().optional().describe("Required for everything except `add`."),
+      webhookId: z
+        .string()
+        .optional()
+        .describe("Required for everything except `add` and `redeliver`."),
+      deliveryId: z.string().optional().describe("Required for `redeliver`."),
       url: z.string().optional().describe("Required for `add`. A public https endpoint."),
       secret: z
         .string()
@@ -256,7 +262,7 @@ export const integrationTools: RegisteredMcpTool[] = [
         .describe("Optional signing secret for `add`. Stored, never returned."),
     }),
     outputSchema: z.object({
-      operation: z.enum(["add", "enable", "disable", "remove", "test"]),
+      operation: z.enum(["add", "enable", "disable", "remove", "test", "deliveries", "redeliver"]),
       webhooks: z
         .array(
           z.object({
@@ -275,10 +281,26 @@ export const integrationTools: RegisteredMcpTool[] = [
         })
         .nullable()
         .describe("Only for `test`."),
+      deliveries: z
+        .array(
+          z.object({
+            id: z.string(),
+            event: z.string(),
+            status: z.enum(["pending", "sending", "succeeded", "exhausted"]),
+            attempts: z.number().int(),
+            httpStatus: z.number().int().nullable(),
+            error: z.string().nullable(),
+            createdAt: z.string(),
+            deliveredAt: z.string().nullable(),
+          }),
+        )
+        .describe(
+          "Recent deliveries, newest first. Only for `deliveries`. The bodies sent and received are not included — they contain respondent answers.",
+        ),
     }),
     scopes: ["integrations:write"],
     async handler(ctx, args) {
-      const empty = { webhooks: [], delivery: null }
+      const empty = { webhooks: [], delivery: null, deliveries: [] }
 
       if (args.operation === "add") {
         if (!args.formId || !args.url) {
@@ -289,8 +311,37 @@ export const integrationTools: RegisteredMcpTool[] = [
         return { operation: args.operation, ...empty, webhooks }
       }
 
+      if (args.operation === "redeliver") {
+        if (!args.deliveryId) {
+          throw new ToolError("`redeliver` needs a deliveryId. Use `deliveries` to find one.")
+        }
+        unwrap(await webhooksCore.redeliver(ctx, args.deliveryId))
+        return { operation: args.operation, ...empty }
+      }
+
       if (!args.webhookId) {
         throw new ToolError(`\`${args.operation}\` needs a webhookId. List them first.`)
+      }
+
+      if (args.operation === "deliveries") {
+        const rows = await webhooksCore.listDeliveries(ctx, args.webhookId)
+        return {
+          operation: args.operation,
+          ...empty,
+          // Only the outcome, never the bodies: the payload is the respondent's
+          // answers and the response can echo them back. A model debugging a
+          // failing endpoint needs the status and the error, not the contents.
+          deliveries: rows.map((row) => ({
+            id: row.id,
+            event: row.event,
+            status: row.status,
+            attempts: row.attempts,
+            httpStatus: row.lastStatus,
+            error: row.lastError,
+            createdAt: row.createdAt.toISOString(),
+            deliveredAt: row.deliveredAt?.toISOString() ?? null,
+          })),
+        }
       }
 
       if (args.operation === "test") {

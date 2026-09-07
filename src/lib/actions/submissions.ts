@@ -9,13 +9,17 @@ import {
   submissions,
   answers,
   uploads,
+  formIntegrations,
+  webhookDeliveries,
   type AnswerValue,
   type SubmissionMeta,
+  type WebhookDeliveryPayload,
+  type WebhookIntegrationConfig,
 } from "@/lib/db/schema"
 import { getVisitorKey, getRespondentKey, logFormEvent } from "@/lib/analytics/track"
 import { getServerSubmissionMeta } from "@/lib/analytics/request-meta"
 import { syncSubmissionToSheets } from "@/lib/integrations/sync"
-import { deliverWebhooks } from "@/lib/integrations/webhook"
+import { claimByIds, deliverBatch } from "@/lib/integrations/webhook-delivery"
 import { sendSubmissionEmails } from "@/lib/integrations/email"
 import { deliverDiscord } from "@/lib/integrations/discord"
 import { syncSubmissionToNotion } from "@/lib/integrations/notion-sync"
@@ -27,6 +31,12 @@ import { NON_ANSWER_TYPES, isEmpty, isFieldVisible } from "@/lib/builder/logic"
 import { MAX_ANSWERS, MAX_VALUE_LEN, valueLength } from "@/lib/submissions/limits"
 import { LIMITS, rateLimit } from "@/lib/rate-limit"
 import { isUniqueViolation } from "@/lib/db/errors"
+
+// How far ahead a brand-new delivery is scheduled, so the cron sweep's
+// due-work query does not match a row the inline attempt is about to claim.
+// Not a correctness mechanism — the claim is — just a way to keep the two
+// senders out of each other's way in the ordinary case.
+const INLINE_GRACE_MS = 15_000
 
 // Server-side submit guards (the client validates too, but a crafted POST skips
 // it — never store unbounded or malformed data). Shared with /api/partial.
@@ -311,7 +321,18 @@ export async function submitForm(input: {
   if (urlParams && Object.keys(urlParams).length > 0) meta.urlParams = urlParams
   const metaValue = Object.keys(meta).length > 0 ? meta : null
 
+  // Built BEFORE the transaction because the webhook outbox rows are written
+  // inside it. Both inputs (`accepted`, `fieldById`) have been in scope since
+  // validation, so this is a move rather than new work.
+  const submittedAt = new Date()
+  const webhookAnswers = accepted.map((a) => ({
+    fieldId: a.fieldId,
+    question: fieldById.get(a.fieldId)?.label || "",
+    value: a.value,
+  }))
+
   let submissionId: string | null = null
+  let deliveryIds: string[] = []
   let overLimit = false
   try {
     await db.transaction(async (tx) => {
@@ -423,6 +444,67 @@ export async function submitForm(input: {
         }))
       })
       if (uploadRows.length > 0) await tx.insert(uploads).values(uploadRows)
+
+      // ── The webhook outbox ──
+      //
+      // IN THE TRANSACTION, ON PURPOSE. This is the entire reason a failed
+      // delivery is now recoverable: there is no instant at which a submission
+      // exists without the deliveries it owes. Writing these after the commit
+      // would leave a window where a crash loses them silently — which is the
+      // exact failure this replaced.
+      //
+      // The cost is stated plainly: an insert failure here rolls back an
+      // otherwise valid submission. It is an insert into the same Postgres that
+      // just took the answers, so the realistic failure modes were taking the
+      // submission down anyway.
+      //
+      // Nothing is SENT here. These rows are `pending`; the attempt happens in
+      // after(), and the cron sweep picks up whatever that does not finish.
+      const endpoints = await tx
+        .select({ id: formIntegrations.id, config: formIntegrations.config })
+        .from(formIntegrations)
+        .where(
+          and(
+            eq(formIntegrations.formId, form.id),
+            eq(formIntegrations.type, "webhook"),
+            eq(formIntegrations.enabled, true),
+          ),
+        )
+
+      if (endpoints.length > 0) {
+        const payload: WebhookDeliveryPayload = {
+          event: "submission.created",
+          form: { id: form.id, title: form.title, publicId: form.publicId },
+          submission: { id: sid, submittedAt: submittedAt.toISOString() },
+          answers: webhookAnswers,
+        }
+        const created = await tx
+          .insert(webhookDeliveries)
+          .values(
+            endpoints.map((endpoint) => ({
+              workspaceId: form.workspaceId,
+              formId: form.id,
+              integrationId: endpoint.id,
+              submissionId: sid,
+              event: payload.event,
+              // Snapshot: the endpoint can be edited or deleted before the last
+              // retry, and the delivery goes where it was addressed.
+              url: (endpoint.config as WebhookIntegrationConfig).url,
+              payload,
+              // Slightly in the future so the sweep's due-work query cannot
+              // match a row the inline attempt below is about to take. The
+              // claim makes overlapping senders safe either way; this just
+              // means the race almost never has to be resolved.
+              nextAttemptAt: new Date(Date.now() + INLINE_GRACE_MS),
+            })),
+          )
+          // The unique (integration, submission, event) index makes a repeated
+          // submit for the same submission a no-op rather than a second
+          // delivery of the same event.
+          .onConflictDoNothing()
+          .returning({ id: webhookDeliveries.id })
+        deliveryIds = created.map((row) => row.id)
+      }
     })
   } catch (err) {
     // The only unique constraint a submit can trip is
@@ -445,12 +527,6 @@ export async function submitForm(input: {
   // delay or fail a stored submission. Read request-scoped context (visitorKey
   // from headers) NOW, before deferring.
   const visitorKey = await getVisitorKey()
-  const submittedAt = new Date()
-  const webhookAnswers = accepted.map((a) => ({
-    fieldId: a.fieldId,
-    question: fieldById.get(a.fieldId)?.label || "",
-    value: a.value,
-  }))
   const committedId = submissionId
   const wantsIntelligence = intelligenceEnabled(form.aiConfig)
 
@@ -469,11 +545,20 @@ export async function submitForm(input: {
         submittedAt,
         committedId ?? "",
       ),
-      deliverWebhooks(
-        { id: form.id, title: form.title, publicId: form.publicId },
-        webhookAnswers,
-        { id: committedId ?? "", submittedAt },
-      ),
+      // The webhook rows are already committed, so this is an optimisation, not
+      // the delivery mechanism: it gets the common case out fast. If this never
+      // runs at all — the instance is killed, a deploy lands mid-request — the
+      // rows sit `pending` and the cron sweep picks them up within the minute.
+      // That is the durability the old fire-and-forget could not offer.
+      //
+      // It claims rather than just sending, so a sweep that got there first
+      // wins and nothing goes out twice. On failure it records and leaves the
+      // row for the sweep; there is deliberately no immediate second attempt,
+      // which only ever doubled the load on an endpoint that was already
+      // struggling.
+      deliveryIds.length > 0
+        ? claimByIds(deliveryIds).then(deliverBatch)
+        : Promise.resolve(),
       sendSubmissionEmails({ id: form.id, title: form.title }, webhookAnswers),
       deliverDiscord({ id: form.id, title: form.title }, webhookAnswers),
       syncSubmissionToNotion(
