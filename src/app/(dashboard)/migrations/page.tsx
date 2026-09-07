@@ -61,17 +61,6 @@ export default function MigrationsPage() {
           </div>
         </CardShell>
 
-        {/* Not a placeholder for its own sake: with one real card the grid reads
-            as though something failed to load, and this says the shape is
-            deliberate. No tool names — promising a source we have not built is
-            how a roadmap becomes a complaint. */}
-        <div className="flex flex-col justify-center rounded-lg border border-dashed border-border p-4">
-          <h3 className="text-sm font-semibold text-muted-foreground">More on the way</h3>
-          <p className="mt-1 text-sm text-muted-foreground">
-            We&rsquo;re adding more sources as we grow. Tell us what you&rsquo;re moving from and
-            we&rsquo;ll prioritise it.
-          </p>
-        </div>
       </div>
     </PageContainer>
   )
