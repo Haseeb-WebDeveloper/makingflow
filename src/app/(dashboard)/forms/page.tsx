@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { getFormsDashboard } from "@/lib/data/analytics";
@@ -16,6 +17,8 @@ import { BreakdownPanel } from "@/components/dashboard/breakdown-panel";
 import { FormsOverviewTable } from "@/components/dashboard/forms-overview-table";
 import { NewFormButton } from "@/components/dashboard/new-form-button";
 import { RangePicker } from "@/components/dashboard/range-picker";
+import { HomeSkeleton } from "@/components/dashboard/skeletons/home-skeleton";
+import { PAGE_META } from "@/components/dashboard/page-meta";
 
 // Code-split the recharts-backed charts (~90KB) into their own chunk — they sit
 // below the stat cards, so deferring them speeds up the dashboard's first paint.
@@ -30,7 +33,34 @@ const DevicesDonut = dynamic(() =>
 
 export const metadata: Metadata = { title: "Home · MakingFlow" };
 
-export default async function FormsPage({
+/**
+ * SYNCHRONOUS, and that is the change.
+ *
+ * This page used to await the session and the dashboard query before returning
+ * anything, so under Cache Components the whole route was one dynamic hole and
+ * `loading.tsx` blanked it — heading included. The title and description are
+ * known at build time; there is no reason for a reader to watch them appear.
+ *
+ * Now the shell prerenders and only the part that genuinely waits on a query
+ * suspends, behind a fallback shaped like the thing it is waiting for.
+ */
+export default function FormsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ range?: string }>;
+}) {
+  return (
+    <PageContainer>
+      <PageHeader {...PAGE_META.home} />
+      <Suspense fallback={<HomeSkeleton />}>
+        <HomeContent searchParams={searchParams} />
+      </Suspense>
+    </PageContainer>
+  );
+}
+
+/** Everything below the heading, once the workspace and its metrics are known. */
+async function HomeContent({
   searchParams,
 }: {
   searchParams: Promise<{ range?: string }>;
@@ -48,12 +78,7 @@ export default async function FormsPage({
   const forms = data?.forms ?? [];
 
   return (
-    <PageContainer>
-      <PageHeader
-        title="Home"
-        description="An overview of your forms and how they're performing."
-      />
-
+    <>
       {forms.length === 0 || !totals ? (
         <EmptyState
           icon="document"
@@ -147,7 +172,7 @@ export default async function FormsPage({
           </div>
         </div>
       )}
-    </PageContainer>
+    </>
   );
 }
 

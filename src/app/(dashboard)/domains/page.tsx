@@ -1,6 +1,7 @@
 import type { Metadata } from "next"
 import { redirect } from "next/navigation"
 import { PageContainer, PageHeader } from "@/components/dashboard/page-shell"
+import { PAGE_META } from "@/components/dashboard/page-meta"
 import { DomainsPanel } from "@/components/domains/domains-panel"
 import { getWorkspaceDomains } from "@/lib/data/domains"
 import { getDefaultWorkspace } from "@/lib/auth/session"
@@ -15,10 +16,7 @@ export default async function DomainsPage() {
 
   return (
     <PageContainer>
-      <PageHeader
-        title="Domains"
-        description="Serve your forms from your own subdomain, like forms.yourbrand.com/feedback."
-      />
+      <PageHeader {...PAGE_META.domains} />
       <div className="mt-6">
         <DomainsPanel data={data} />
       </div>
