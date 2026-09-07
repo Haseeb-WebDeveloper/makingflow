@@ -11,6 +11,7 @@ import {
 import { checkOutboundUrl } from "@/lib/core/outbound-url"
 import { postWebhook } from "@/lib/integrations/webhook"
 import { deliveryHeaders } from "@/lib/integrations/webhook-signature"
+import { BACKOFF_SECONDS, JITTER_RATIO } from "@/lib/integrations/webhook-policy"
 
 /**
  * Getting an owed delivery onto the wire, and writing down what happened.
@@ -35,19 +36,11 @@ import { deliveryHeaders } from "@/lib/integrations/webhook-signature"
  * `reclaimStale` is what makes that recoverable rather than a silent hole.
  */
 
-/**
- * Waits between attempts. The first attempt is inline, so this schedule starts
- * at the FIRST retry: 30s, 2m, 10m, 1h, 6h — six attempts over roughly eight
- * hours.
- *
- * The old code retried once, ~50ms later. That helps with approximately none of
- * the real failure modes: a receiver restarting takes seconds, a deploy takes a
- * minute, and a read timeout means they were slow, not absent.
- */
-const BACKOFF_SECONDS = [30, 120, 600, 3600, 21600] as const
-
-/** Attempts including the inline one. Past this a delivery is `exhausted`. */
-export const MAX_ATTEMPTS = BACKOFF_SECONDS.length + 1
+// The schedule lives in webhook-policy.ts because /docs/webhooks publishes it.
+// The old code retried once, ~50ms later, which helps with approximately none
+// of the real failure modes: a receiver restarting takes seconds, a deploy
+// takes a minute, and a read timeout means they were slow, not absent.
+export { MAX_ATTEMPTS } from "@/lib/integrations/webhook-policy"
 
 /**
  * How long a claim may sit before a sweep assumes its worker died.
@@ -82,7 +75,7 @@ export function nextAttemptDelay(attempts: number): number | null {
   const index = attempts - 1
   if (index < 0 || index >= BACKOFF_SECONDS.length) return null
   const base = BACKOFF_SECONDS[index]
-  return Math.round(base * (1 + 0.2 * (Math.random() * 2 - 1)))
+  return Math.round(base * (1 + JITTER_RATIO * (Math.random() * 2 - 1)))
 }
 
 /**

@@ -204,9 +204,21 @@ export function WebhooksCard({
           <SheetHeader>
             <SheetTitle>Webhooks</SheetTitle>
             <SheetDescription>
-              Each new submission is sent as JSON. Add a secret to receive a
-              signed <span className="font-mono">X-MakingFlow-Signature</span>{" "}
-              header.
+              Each new submission is POSTed as JSON, and retried for about eight
+              hours if your endpoint is down. Add a secret to have deliveries
+              signed.{" "}
+              {/* The person adding the endpoint is often not the person writing
+                  the code that receives it, and this is the moment they realise
+                  they need to hand something over. A public link is what they
+                  can send. */}
+              <a
+                href="/docs/webhooks"
+                target="_blank"
+                rel="noreferrer"
+                className="font-medium text-foreground underline underline-offset-4"
+              >
+                Developer guide
+              </a>
             </SheetDescription>
           </SheetHeader>
 
