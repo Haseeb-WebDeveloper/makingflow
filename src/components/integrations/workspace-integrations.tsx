@@ -27,6 +27,95 @@ import type { WorkspaceIntegrations } from "@/lib/data/integrations";
 import { McpCard, type McpCardProps } from "@/components/integrations/mcp-card";
 import { SVGIcon } from "../ui/svg-icon";
 
+/** A form in a picker: its current state for this integration, or null if unset. */
+type PickerForm = { id: string; title: string; status: React.ReactNode | null };
+
+/**
+ * The list behind a per-form integration's Manage button.
+ *
+ * IT LISTS EVERY FORM, not only the configured ones, and that is the point.
+ * These three integrations are set up per form, and the panel used to say so
+ * and then show nothing at all until something was already set up — telling you
+ * to "open a form's Integrations tab" while offering no way to reach one. The
+ * only route was to leave, find Forms, pick one and hunt for the tab, which is
+ * where people conclude the feature is missing rather than one click away.
+ *
+ * Showing the forms also explains the per-form model without a sentence about
+ * it: here are your forms, each carries its own setup.
+ *
+ * Configured forms sort to the top since they are what someone returning to
+ * this panel came to check; the rest keep their most-recently-edited order,
+ * which puts the form you were just working on within reach.
+ */
+function FormPicker({
+  forms,
+  onNavigate,
+  emptyLabel,
+}: {
+  forms: PickerForm[];
+  onNavigate: () => void;
+  /** Shown when the workspace has no forms at all — a different problem. */
+  emptyLabel: string;
+}) {
+  if (forms.length === 0) {
+    return (
+      <div className="text-sm text-muted-foreground">
+        <p>{emptyLabel}</p>
+        <Link
+          href="/forms"
+          onClick={onNavigate}
+          className="mt-3 inline-flex items-center gap-1.5 font-medium text-foreground underline-offset-4 hover:underline"
+        >
+          Create a form
+          <Icon name="discovery" className="size-4" />
+        </Link>
+      </div>
+    );
+  }
+
+  const ordered = [
+    ...forms.filter((f) => f.status !== null),
+    ...forms.filter((f) => f.status === null),
+  ];
+
+  return (
+    <ul className="divide-y divide-border">
+      {ordered.map((f) => (
+        <li key={f.id}>
+          <Link
+            href={`/forms/${f.id}/integrations`}
+            onClick={onNavigate}
+            className="group flex items-center gap-3 py-3"
+          >
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-medium text-foreground group-hover:underline">
+                {f.title}
+              </p>
+              <span className="mt-1 inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+                {f.status ?? "Not set up"}
+              </span>
+            </div>
+            <Icon
+              name="discovery"
+              className="size-4 shrink-0 text-muted-foreground group-hover:text-foreground"
+            />
+          </Link>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** The "On" pill, for a form where the integration is live. */
+function OnPill({ label = "On" }: { label?: string }) {
+  return (
+    <span className="inline-flex items-center gap-1 text-success-foreground">
+      <span className="size-1.5 rounded-full bg-success" />
+      {label}
+    </span>
+  );
+}
+
 export function WorkspaceIntegrationsPanel({
   data,
   mcp,
@@ -70,7 +159,7 @@ export function WorkspaceIntegrationsPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const { configured, connection, forms, email, webhook, discord, notion } =
+  const { configured, connection, allForms, forms, email, webhook, discord, notion } =
     data;
   const connected = Boolean(connection);
   const syncingCount = forms.filter((f) => f.status === "syncing").length;
@@ -485,51 +574,28 @@ export function WorkspaceIntegrationsPanel({
               <div>
                 <SheetTitle>Email notifications</SheetTitle>
                 <SheetDescription>
-                  Email notifications are set up per form. Open a form to manage
-                  its recipients.
+                  Set up per form. Pick one to manage its recipients.
                 </SheetDescription>
               </div>
             </div>
           </SheetHeader>
 
           <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4">
-            {email.forms.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                No form sends email notifications yet. Open a form&apos;s
-                Integrations tab to set one up.
-              </p>
-            ) : (
-              <ul className="divide-y divide-border">
-                {email.forms.map((f) => (
-                  <li key={f.id}>
-                    <Link
-                      href={`/forms/${f.id}/integrations`}
-                      onClick={() => setEmailOpen(false)}
-                      className="group flex items-center gap-3 py-3"
-                    >
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium text-foreground group-hover:underline">
-                          {f.title}
-                        </p>
-                        <span
-                          className={
-                            f.status === "on"
-                              ? "mt-1 inline-flex items-center gap-1 rounded-full bg-success-bg px-2 py-0.5 text-[11px] font-medium text-success-foreground"
-                              : "mt-1 inline-flex rounded-full border border-border px-2 py-0.5 text-[11px] font-medium text-muted-foreground"
-                          }
-                        >
-                          {f.status === "on" ? "On" : "Paused"}
-                        </span>
-                      </div>
-                      <Icon
-                        name="discovery"
-                        className="size-4 shrink-0 text-muted-foreground group-hover:text-foreground"
-                      />
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            )}
+            <FormPicker
+              onNavigate={() => setEmailOpen(false)}
+              emptyLabel="You don't have any forms yet. Email notifications are set up on a form, so there's nothing to configure until there is one."
+              forms={allForms.map((f) => {
+                const configured = email.forms.find((e) => e.id === f.id);
+                return {
+                  ...f,
+                  status: !configured
+                    ? null
+                    : configured.status === "on"
+                      ? <OnPill />
+                      : "Paused",
+                };
+              })}
+            />
           </div>
         </SheetContent>
       </Sheet>
@@ -547,45 +613,36 @@ export function WorkspaceIntegrationsPanel({
               <div>
                 <SheetTitle>Webhooks</SheetTitle>
                 <SheetDescription>
-                  Webhooks are set up per form. Open a form to manage its
-                  endpoints.
+                  Set up per form. Pick one to add or manage its endpoints.
                 </SheetDescription>
               </div>
             </div>
           </SheetHeader>
 
           <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4">
-            {webhook.forms.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                No form has webhook endpoints yet. Open a form&apos;s
-                Integrations tab to add one.
-              </p>
-            ) : (
-              <ul className="divide-y divide-border">
-                {webhook.forms.map((f) => (
-                  <li key={f.id}>
-                    <Link
-                      href={`/forms/${f.id}/integrations`}
-                      onClick={() => setWebhookOpen(false)}
-                      className="group flex items-center gap-3 py-3"
-                    >
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium text-foreground group-hover:underline">
-                          {f.title}
-                        </p>
-                        <span className="mt-1 inline-flex rounded-full border border-border px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
-                          {f.active} of {f.total} active
-                        </span>
-                      </div>
-                      <Icon
-                        name="discovery"
-                        className="size-4 shrink-0 text-muted-foreground group-hover:text-foreground"
-                      />
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            )}
+            <FormPicker
+              onNavigate={() => setWebhookOpen(false)}
+              emptyLabel="You don't have any forms yet. Webhooks are set up on a form, so there's nothing to configure until there is one."
+              forms={allForms.map((f) => {
+                const configured = webhook.forms.find((w) => w.id === f.id);
+                return {
+                  ...f,
+                  status: !configured ? null : (
+                    // "2 of 3 active" rather than a bare count: a form can have
+                    // several endpoints with some of them paused, and the
+                    // difference is exactly what someone opening this panel to
+                    // investigate a missing delivery is looking for.
+                    <>
+                      {configured.active > 0 ? (
+                        <OnPill label={`${configured.active} of ${configured.total} active`} />
+                      ) : (
+                        `${configured.total} paused`
+                      )}
+                    </>
+                  ),
+                };
+              })}
+            />
           </div>
         </SheetContent>
       </Sheet>
@@ -603,51 +660,28 @@ export function WorkspaceIntegrationsPanel({
               <div>
                 <SheetTitle>Discord</SheetTitle>
                 <SheetDescription>
-                  Discord is set up per form. Open a form to manage its channel
-                  webhook.
+                  Set up per form. Pick one to manage its channel.
                 </SheetDescription>
               </div>
             </div>
           </SheetHeader>
 
           <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4">
-            {discord.forms.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                No form posts to Discord yet. Open a form&apos;s Integrations
-                tab to set one up.
-              </p>
-            ) : (
-              <ul className="divide-y divide-border">
-                {discord.forms.map((f) => (
-                  <li key={f.id}>
-                    <Link
-                      href={`/forms/${f.id}/integrations`}
-                      onClick={() => setDiscordOpen(false)}
-                      className="group flex items-center gap-3 py-3"
-                    >
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium text-foreground group-hover:underline">
-                          {f.title}
-                        </p>
-                        <span
-                          className={
-                            f.status === "on"
-                              ? "mt-1 inline-flex items-center gap-1 rounded-full bg-success-bg px-2 py-0.5 text-[11px] font-medium text-success-foreground"
-                              : "mt-1 inline-flex rounded-full border border-border px-2 py-0.5 text-[11px] font-medium text-muted-foreground"
-                          }
-                        >
-                          {f.status === "on" ? "On" : "Paused"}
-                        </span>
-                      </div>
-                      <Icon
-                        name="discovery"
-                        className="size-4 shrink-0 text-muted-foreground group-hover:text-foreground"
-                      />
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            )}
+            <FormPicker
+              onNavigate={() => setDiscordOpen(false)}
+              emptyLabel="You don't have any forms yet. Discord posts are set up on a form, so there's nothing to configure until there is one."
+              forms={allForms.map((f) => {
+                const configured = discord.forms.find((d) => d.id === f.id);
+                return {
+                  ...f,
+                  status: !configured
+                    ? null
+                    : configured.status === "on"
+                      ? <OnPill />
+                      : "Paused",
+                };
+              })}
+            />
           </div>
         </SheetContent>
       </Sheet>

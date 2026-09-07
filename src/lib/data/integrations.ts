@@ -242,6 +242,17 @@ export type WorkspaceNotionForm = {
 export type WorkspaceIntegrations = {
   configured: boolean
   connection: { accountEmail: string } | null
+  /**
+   * Every form in the workspace, most recently edited first.
+   *
+   * The per-type `forms` lists below hold only the forms where that integration
+   * is already set up, which is what the cards' counts are built on. Webhooks,
+   * email and Discord are configured per form, so their panels need the full
+   * list too — otherwise the empty state can tell you to go open a form without
+   * being able to offer you one, which is where people conclude the feature
+   * does not work.
+   */
+  allForms: { id: string; title: string }[]
   forms: {
     id: string
     title: string
@@ -333,6 +344,7 @@ export async function getWorkspaceIntegrations(
   return {
     configured: isGoogleConfigured(),
     connection: conn ? { accountEmail: conn.accountEmail } : null,
+    allForms: formRows.map((f) => ({ id: f.id, title: title(f.title) })),
     forms: formRows.map((f) => {
       const row = byForm.get(f.id)
       const cfg = row?.config as GoogleSheetsIntegrationConfig | undefined
