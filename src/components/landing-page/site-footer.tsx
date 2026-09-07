@@ -7,6 +7,7 @@ const QUICK: FooterLink[] = [
   { name: "Features", href: "/#features" },
   { name: "Pricing", href: "/#pricing" },
   { name: "Integration", href: "/#integration" },
+  { name: "Docs", href: "/docs" },
   { name: "Terms", href: "/terms" },
   { name: "Privacy", href: "/privacy" },
 ]

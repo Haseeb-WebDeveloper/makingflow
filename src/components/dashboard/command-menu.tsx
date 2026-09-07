@@ -14,6 +14,7 @@ import {
 import { Icon } from "@/components/ui/icon";
 import { Kbd } from "@/components/ui/kbd";
 import { MAKINGFLOW_NAV } from "@/components/dashboard/dashboard-nav";
+import { DOCS_PAGES, docHref } from "@/lib/docs/pages";
 import { recordRecentForm, useRecentForms } from "@/lib/hooks/use-recent-forms";
 import { SVGIcon } from "../ui/svg-icon";
 
@@ -152,6 +153,27 @@ export function CommandMenu({
             ))}
           </CommandGroup>
         ) : null}
+
+        {/* Docs last: someone reaching for ⌘K is usually navigating the app,
+            and a reference page should not outrank their own forms. But
+            "webhook" typed in here should still find the guide rather than
+            nothing — that was the gap. DOCS_PAGES is the same registry the
+            documentation site renders, so a new page appears here by existing. */}
+        <CommandGroup heading="Documentation">
+          {DOCS_PAGES.map((page) => (
+            <CommandItem
+              key={page.slug}
+              value={`docs ${page.title} ${page.description}`}
+              onSelect={() => go(docHref(page))}
+            >
+              <Icon name={page.icon} className="size-4 text-muted-foreground" />
+              <span className="min-w-0 flex-1 truncate">{page.title}</span>
+              <span className="shrink-0 rounded border border-border px-1.5 py-px text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                Docs
+              </span>
+            </CommandItem>
+          ))}
+        </CommandGroup>
 
         <CommandGroup heading="Pages">
           {PAGES.map((p) => (

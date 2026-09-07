@@ -1,0 +1,64 @@
+Connect an AI assistant to your workspace over the Model Context Protocol. It can build forms,
+publish them, read responses and answer questions about how they are performing — from whichever
+tool you already work in.
+
+## Endpoint
+
+<McpEndpoint />
+
+Streamable HTTP, POST only. MCP revision 2026-07-28.
+
+## Two ways to connect, and which one you need [#connecting]
+
+It depends entirely on your client, so it is worth getting right before you start.
+
+**The chat assistants sign in with your MakingFlow account.** There is nothing to create on our
+side — you add the URL above as a custom connector in their settings, and they send you here to
+choose what they may reach. They have nowhere to put an API key, so making one for them would not
+help.
+
+**Everything else uses a key.** Create one in Integrations, choosing its permissions and
+workspaces, then paste it into your client's config. A key can cover several workspaces, so you set
+it up once.
+
+## Signing in with MakingFlow [#oauth]
+
+These clients handle authentication themselves. Start in their settings, not here.
+
+<McpClientGuides method="oauth" />
+
+## Connecting with a key [#api-key]
+
+Open **Integrations** in MakingFlow, choose **Connect**, and pick your app. The key is shown
+**once** — we store only a one-way hash, so it cannot be recovered. If you lose it, revoke it and
+make another.
+
+<McpClientGuides method="api-key" />
+
+## Permissions [#permissions]
+
+<McpPermissionsTable />
+
+Whichever way you connect, a connection only ever sees the tools its permissions allow, and can
+never do more than the person who set it up — its role is re-read from your workspace on every
+request, so removing someone cuts their connections off immediately.
+
+Deleting forms and responses is never offered when you connect. It stays off by design, and the
+deletion tools additionally require an explicit confirmation on every call.
+
+## What it can do [#tools]
+
+<McpToolTable />
+
+## Disconnecting [#disconnecting]
+
+**Integrations → View details** lists everything connected, whichever way it was set up, and
+disconnects any of it. That takes effect on the connection's very next request — not whenever a
+token happens to expire.
+
+## A note on responses [#prompt-injection]
+
+<Callout variant="security">
+Response content is written by the people filling in your forms. When an assistant reads it, treat
+it as data to report on — not as instructions to act on.
+</Callout>

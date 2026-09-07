@@ -1,0 +1,133 @@
+Every time someone completes one of your forms, MakingFlow POSTs the response to a URL you
+choose, as JSON. This page is everything you need to build the endpoint that receives it.
+
+Webhooks are configured **per form**, in MakingFlow under **the form → Integrations → Webhooks**.
+A form can have several endpoints, and each one gets its own copy of every response.
+
+## The short version
+
+- We POST JSON. Reply **2xx** within <Val name="webhook.timeoutSeconds" /> seconds.
+- If you set a secret, verify the signature over `timestamp.body` — not the body alone.
+- Delivery is **at least once**. Deduplicate on `X-MakingFlow-Delivery-Id`.
+- Failures retry for <Val name="webhook.retryWindow" />, then stop.
+
+## What we send [#payload]
+
+One POST per completed response, per endpoint. Only completed responses — a partially filled form
+that is never submitted does not fire.
+
+<WebhookPayloadSample />
+
+`value` takes the shape of the field that produced it: a string, a number, a boolean, an array of
+strings for multi-select, or an object for structured fields like file uploads. Write your handler
+to tolerate all of them.
+
+`question` is the field's label at the time of submission, included so a delivery reads on its own.
+It changes if the form is edited, so key your logic on `fieldId`, which does not.
+
+<Callout variant="security">
+Answers are written by whoever filled in your form. Treat every value as untrusted input: escape it
+before rendering, never pass it to a shell or a query without parameterising.
+</Callout>
+
+## Headers
+
+<WebhookHeadersTable />
+
+## Verifying the signature [#verify]
+
+Optional but strongly recommended. Without it, anyone who learns your endpoint URL can post fake
+responses to it. Add a secret when you create the webhook, and we sign every delivery with it.
+
+<Callout variant="warning">
+The signature covers `` `${timestamp}.${body}` `` — the timestamp from the header, a full stop, then
+the raw body. Signing the body alone is the single most common mistake, and it fails every time
+with no clue why.
+</Callout>
+
+Two more things that will cost you an afternoon if missed:
+
+- **Use the raw request body.** Parsing the JSON and re-serialising it reorders keys and changes
+  whitespace, so the HMAC will not match even though the data is identical.
+- **Check the timestamp.** Reject anything more than <Val name="webhook.replayWindowMinutes" />
+  minutes old. Skip this and a captured delivery can be replayed at you forever, which is the entire
+  reason the timestamp is in there.
+
+<WebhookReceiver runtime="node" />
+
+<WebhookReceiver runtime="python" />
+
+## Retries, and why you may see a delivery twice [#retries]
+
+Anything that is not a 2xx is retried. A 3xx counts as a failure — we do not follow redirects, so
+point the webhook at its final URL.
+
+<WebhookRetryTable />
+
+Intervals are jittered by up to <Val name="webhook.jitterPercent" /> so that a receiver coming back
+up is not hit by every queued delivery in the same instant. After attempt
+<Val name="webhook.maxAttempts" /> we stop and mark the delivery failed; the form owner can still
+resend it by hand.
+
+<Callout>
+Delivery is **at least once**, not exactly once. If you accept a delivery but your response is slow
+enough for us to time out, we will retry one you already processed. Keep a record of handled
+`X-MakingFlow-Delivery-Id` values and ignore repeats — the id is stable across retries, and across a
+manual resend.
+</Callout>
+
+**Order is not guaranteed.** A delivery that needed three attempts arrives after one that succeeded
+first time, even if it was submitted earlier. Sort by `submission.submittedAt` rather than arrival
+order.
+
+## Responding
+
+Reply **2xx** as soon as you have the delivery safely stored, then do the real work. We wait
+**<Val name="webhook.timeoutSeconds" /> seconds** and treat anything slower as a failure — so an
+endpoint that finishes the job before replying gets retried, and processes everything twice.
+
+Your response body is kept and shown to the form owner, truncated, so a short error message here is
+the fastest way to tell them what went wrong.
+
+## Testing your endpoint
+
+**Send test** in the webhook settings posts a sample payload immediately and shows the status you
+returned. The test body carries an extra `"test": true` field and is signed exactly like a real
+delivery, so it exercises your verification code properly. It is not recorded as a delivery and is
+never retried.
+
+While developing, a request-inspector service such as webhook.site gives you a public URL you can
+point at and watch. Note the next section before reaching for a tunnel to your laptop.
+
+## Which URLs we can reach
+
+The request comes from our servers, not from the browser of the person filling in your form. So the
+URL has to be reachable from the public internet: a `localhost` address points at our machine, not
+yours, and private and link-local ranges are refused outright.
+
+For local development, use a tunnel that gives you a public hostname. And plan without a firewall
+allowlist: we run on serverless infrastructure with no fixed egress addresses, so there is no stable
+set of IPs to permit.
+
+## What we don't do yet
+
+Stated plainly so you can design around it rather than discover it:
+
+- **One event.** `submission.created` is all we send. Publishing a form, editing one, or deleting a
+  response fire nothing.
+- **Per form, not per workspace.** A form created later starts with no webhooks — it does not
+  inherit them.
+- **No delivery API.** Delivery history is visible in the app; there is no endpoint to poll for it.
+- Delivery records, including the body we sent, are kept for **<Val name="webhook.retentionDays" />
+  days**. Deleting a response deletes its delivery records with it, so a resend is no longer
+  possible.
+
+## A note on the older signature
+
+Deliveries currently carry a second header, `X-MakingFlow-Signature`, in the format `sha256=<hex>`,
+signing the body alone. It exists only so integrations built before the timestamped format keep
+working, and it will be removed.
+
+Do not build against it. It cannot express a replay window, so a delivery captured once can be
+replayed at your endpoint indefinitely. If you are verifying it today, move to
+`X-MakingFlow-Signature-V2`, which is already being sent alongside.

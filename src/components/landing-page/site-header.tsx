@@ -5,12 +5,16 @@ import Link from "next/link"
 import { cn } from "@/lib/utils"
 import { SVGIcon } from "../ui/svg-icon"
 
-// Anchors map to real sections on the landing page.
+// Anchors map to real sections on the landing page. "Docs" is the exception
+// and is a real route: a developer evaluating the integration should not have
+// to scroll to the footer to find how it works. Both the desktop nav and the
+// mobile menu render this list, so one entry covers both.
 const LINKS = [
   { name: "Features", href: "#features" },
   { name: "How it works", href: "#how" },
   { name: "Pricing", href: "#pricing" },
   { name: "Integration", href: "#integration" },
+  { name: "Docs", href: "/docs" },
 ]
 
 export function SiteHeader({ isAuthed = false }: { isAuthed?: boolean }) {

@@ -376,6 +376,28 @@
   border-radius: 9999px;
 }
 
+/* ── Syntax highlighting in the docs ───────────────────────────────────────
+   Shiki renders both themes in one pass: the light colours land inline, the
+   dark ones as --shiki-dark custom properties on the same elements. Swapping
+   them here means one copy of the markup serves both themes, with no second
+   render and no flash when the toggle flips.
+
+   `.dark` is the class next-themes sets on <html>, matching the @custom-variant
+   at the top of this file. */
+.dark .shiki,
+.dark .shiki span {
+  color: var(--shiki-dark) !important;
+  font-style: var(--shiki-dark-font-style) !important;
+  font-weight: var(--shiki-dark-font-weight) !important;
+  text-decoration: var(--shiki-dark-text-decoration) !important;
+}
+
+/* The block's own background comes from the CodeBlock wrapper, so Shiki's
+   theme background is suppressed in both modes rather than fighting it. */
+.shiki {
+  background-color: transparent !important;
+}
+
 /* ── Moving gradient border ────────────────────────────────────────────────
    A brand-hued conic gradient that rotates around the element's edge. The
    interior is painted by a padding-box layer (--gb-fill), so only the ring

@@ -30,6 +30,7 @@
 
 import * as React from "react";
 import dynamic from "next/dynamic";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -568,7 +569,18 @@ export function McpCard({
 
           <p className="text-xs text-muted-foreground">
             Not sure? The chat assistants sign in with your MakingFlow account.
-            Everything else uses a key you create here.
+            Everything else uses a key you create here.{" "}
+            {/* The dialog gives the steps for one app; the guide covers the
+                permissions, the tool surface and what a connection can never
+                do. Someone deciding whether to connect at all needs the
+                second, and this is where they are standing. */}
+            <Link
+              href="/docs/mcp"
+              target="_blank"
+              className="font-medium text-foreground underline underline-offset-4"
+            >
+              Read the full guide
+            </Link>
           </p>
         </DialogContent>
       </Dialog>
