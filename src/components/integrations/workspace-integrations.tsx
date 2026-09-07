@@ -197,7 +197,21 @@ export function WorkspaceIntegrationsPanel({
           undersold what it is. */}
       <McpCard {...mcp} />
 
-      <div className="mt-8 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      {/* ── Two groups, because these behave differently ──
+          Sheets and Notion are connected once and cover every form, forever.
+          Webhooks, email and Discord are configured on one form at a time.
+          Presented as six identical cards, only the first two could actually
+          be set up from this page and nothing said so until you clicked — a
+          heading does that work before anyone has to find out the hard way. */}
+      <section className="mt-10">
+        <h2 className="text-sm font-semibold text-foreground">
+          Connected once, used everywhere
+        </h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Connect the account and every form in this workspace uses it —
+          including forms you make later.
+        </p>
+        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {/* ── Google Sheets ── */}
         <CardShell>
           <div className="flex items-start justify-between gap-3">
@@ -265,131 +279,6 @@ export function WorkspaceIntegrationsPanel({
           </div>
         </CardShell>
 
-        {/* ── Email notifications (per-form; managed from each form) ── */}
-        <CardShell>
-          <div className="flex items-start justify-between gap-3">
-            <SVGIcon src="/logo/email.svg" preserveColors className="size-9" />
-            {emailActive ? (
-              <span className="inline-flex items-center gap-1 rounded-full bg-success-bg px-2 py-0.5 text-[11px] font-medium text-success-foreground">
-                <span className="size-1.5 rounded-full bg-success" />
-                On
-              </span>
-            ) : null}
-          </div>
-
-          <h3 className="mt-3 text-sm font-semibold text-foreground">
-            Email notifications
-          </h3>
-          <p className="mt-1 flex-1 text-sm text-muted-foreground">
-            Get an email the moment a form gets a response. Set up per form,
-            with the answers included.
-          </p>
-
-          <div className="mt-4 flex items-center justify-between gap-3 border-t border-border pt-3">
-            <span className="text-xs text-muted-foreground">
-              {!email.configured
-                ? "Not available"
-                : email.forms.length === 0
-                ? "Not set up on any form"
-                : `${email.forms.length} form${
-                    email.forms.length === 1 ? "" : "s"
-                  } configured`}
-            </span>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={!email.configured}
-              onClick={() => setEmailOpen(true)}
-            >
-              Manage
-            </Button>
-          </div>
-        </CardShell>
-
-        {/* ── Webhooks (per-form; managed from each form) ── */}
-        <CardShell>
-          <div className="flex items-start justify-between gap-3">
-            <SVGIcon
-              src="/logo/webhook.svg"
-              preserveColors
-              className="size-9"
-            />
-            {webhookActive > 0 ? (
-              <span className="inline-flex items-center gap-1 rounded-full bg-success-bg px-2 py-0.5 text-[11px] font-medium text-success-foreground">
-                <span className="size-1.5 rounded-full bg-success" />
-                {webhookActive} active
-              </span>
-            ) : null}
-          </div>
-
-          <h3 className="mt-3 text-sm font-semibold text-foreground">
-            Webhooks
-          </h3>
-          <p className="mt-1 flex-1 text-sm text-muted-foreground">
-            POST each new submission to your own endpoint, optionally signed.
-            Set up per form.
-          </p>
-
-          <div className="mt-4 flex items-center justify-between gap-3 border-t border-border pt-3">
-            <span className="text-xs text-muted-foreground">
-              {webhook.forms.length === 0
-                ? "Not set up on any form"
-                : `${webhook.forms.length} form${
-                    webhook.forms.length === 1 ? "" : "s"
-                  } configured`}
-            </span>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setWebhookOpen(true)}
-            >
-              Manage
-            </Button>
-          </div>
-        </CardShell>
-
-        {/* ── Discord (per-form; managed from each form) ── */}
-        <CardShell>
-          <div className="flex items-start justify-between gap-3">
-            <SVGIcon
-              src="/logo/discord.svg"
-              preserveColors
-              className="size-9"
-            />
-            {discordActive ? (
-              <span className="inline-flex items-center gap-1 rounded-full bg-success-bg px-2 py-0.5 text-[11px] font-medium text-success-foreground">
-                <span className="size-1.5 rounded-full bg-success" />
-                On
-              </span>
-            ) : null}
-          </div>
-
-          <h3 className="mt-3 text-sm font-semibold text-foreground">
-            Discord
-          </h3>
-          <p className="mt-1 flex-1 text-sm text-muted-foreground">
-            Post each new response to a Discord channel via an incoming webhook.
-            Set up per form.
-          </p>
-
-          <div className="mt-4 flex items-center justify-between gap-3 border-t border-border pt-3">
-            <span className="text-xs text-muted-foreground">
-              {discord.forms.length === 0
-                ? "Not set up on any form"
-                : `${discord.forms.length} form${
-                    discord.forms.length === 1 ? "" : "s"
-                  } configured`}
-            </span>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setDiscordOpen(true)}
-            >
-              Manage
-            </Button>
-          </div>
-        </CardShell>
-
         {/* ── Notion ── */}
         <CardShell>
           <div className="flex items-start justify-between gap-3">
@@ -450,7 +339,141 @@ export function WorkspaceIntegrationsPanel({
             )}
           </div>
         </CardShell>
-      </div>
+        </div>
+      </section>
+
+      <section className="mt-10">
+        <h2 className="text-sm font-semibold text-foreground">Set up per form</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Each form has its own — a new form starts with none. Choose a form to
+          configure it.
+        </p>
+        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {/* ── Email notifications (per-form; managed from each form) ── */}
+        <CardShell>
+          <div className="flex items-start justify-between gap-3">
+            <SVGIcon src="/logo/email.svg" preserveColors className="size-9" />
+            {emailActive ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-success-bg px-2 py-0.5 text-[11px] font-medium text-success-foreground">
+                <span className="size-1.5 rounded-full bg-success" />
+                On
+              </span>
+            ) : null}
+          </div>
+
+          <h3 className="mt-3 text-sm font-semibold text-foreground">
+            Email notifications
+          </h3>
+          <p className="mt-1 flex-1 text-sm text-muted-foreground">
+            Get an email the moment a form gets a response. Set up per form,
+            with the answers included.
+          </p>
+
+          <div className="mt-4 flex items-center justify-between gap-3 border-t border-border pt-3">
+            <span className="text-xs text-muted-foreground">
+              {!email.configured
+                ? "Not available"
+                : email.forms.length === 0
+                ? "Not set up on any form"
+                : `${email.forms.length} form${
+                    email.forms.length === 1 ? "" : "s"
+                  } configured`}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!email.configured}
+              onClick={() => setEmailOpen(true)}
+            >
+              Choose a form
+            </Button>
+          </div>
+        </CardShell>
+
+        {/* ── Webhooks (per-form; managed from each form) ── */}
+        <CardShell>
+          <div className="flex items-start justify-between gap-3">
+            <SVGIcon
+              src="/logo/webhook.svg"
+              preserveColors
+              className="size-9"
+            />
+            {webhookActive > 0 ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-success-bg px-2 py-0.5 text-[11px] font-medium text-success-foreground">
+                <span className="size-1.5 rounded-full bg-success" />
+                {webhookActive} active
+              </span>
+            ) : null}
+          </div>
+
+          <h3 className="mt-3 text-sm font-semibold text-foreground">
+            Webhooks
+          </h3>
+          <p className="mt-1 flex-1 text-sm text-muted-foreground">
+            POST each new submission to your own endpoint, signed and retried
+            if it fails.
+          </p>
+
+          <div className="mt-4 flex items-center justify-between gap-3 border-t border-border pt-3">
+            <span className="text-xs text-muted-foreground">
+              {webhook.forms.length === 0
+                ? "Not set up on any form"
+                : `${webhook.forms.length} form${
+                    webhook.forms.length === 1 ? "" : "s"
+                  } configured`}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setWebhookOpen(true)}
+            >
+              Choose a form
+            </Button>
+          </div>
+        </CardShell>
+
+        {/* ── Discord (per-form; managed from each form) ── */}
+        <CardShell>
+          <div className="flex items-start justify-between gap-3">
+            <SVGIcon
+              src="/logo/discord.svg"
+              preserveColors
+              className="size-9"
+            />
+            {discordActive ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-success-bg px-2 py-0.5 text-[11px] font-medium text-success-foreground">
+                <span className="size-1.5 rounded-full bg-success" />
+                On
+              </span>
+            ) : null}
+          </div>
+
+          <h3 className="mt-3 text-sm font-semibold text-foreground">
+            Discord
+          </h3>
+          <p className="mt-1 flex-1 text-sm text-muted-foreground">
+            Post each new response to a Discord channel via an incoming webhook.
+          </p>
+
+          <div className="mt-4 flex items-center justify-between gap-3 border-t border-border pt-3">
+            <span className="text-xs text-muted-foreground">
+              {discord.forms.length === 0
+                ? "Not set up on any form"
+                : `${discord.forms.length} form${
+                    discord.forms.length === 1 ? "" : "s"
+                  } configured`}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setDiscordOpen(true)}
+            >
+              Choose a form
+            </Button>
+          </div>
+        </CardShell>
+        </div>
+      </section>
 
       {/* ── Right-side details: per-form sync ── */}
       <Sheet open={detailsOpen} onOpenChange={setDetailsOpen}>
