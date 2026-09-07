@@ -151,6 +151,23 @@ describe("POST /api/cron/webhooks", () => {
     expect(summary).toMatchObject({ claimed: 1, sent: 1, failed: 0 })
   })
 
+  test("says what is wrong when CRON_SECRET is missing, rather than a bare 500", async () => {
+    // How this actually failed in production. pg_net stores the response body
+    // and nothing else, and pg_cron reports `succeeded` either way — so an
+    // uncaught throw arrives as a 500 with a null body, which reads as "the app
+    // is broken" and sends you to inspect the Supabase job rather than the
+    // environment variable that is genuinely missing.
+    vi.stubEnv("CRON_SECRET", "")
+    const { POST } = await import("@/app/api/cron/webhooks/route")
+
+    const response = await POST(sweep("Bearer anything"))
+    const body = await response.json()
+
+    expect(response.status).toBe(500)
+    expect(body.error).toBe("misconfigured")
+    expect(body.detail).toContain("CRON_SECRET")
+  })
+
   test("is a no-op when there is nothing due", async () => {
     const { POST } = await import("@/app/api/cron/webhooks/route")
     const response = await POST(sweep(`Bearer ${SECRET}`))

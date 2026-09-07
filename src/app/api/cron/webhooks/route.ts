@@ -33,22 +33,51 @@ export const maxDuration = 60
 const PRUNE_MINUTE = 7
 
 export async function POST(request: Request) {
-  if (!isCronRequest(request)) {
+  // EVERY EXIT FROM THIS ROUTE CARRIES A BODY, including the failures.
+  //
+  // pg_net stores the response and nothing else, and pg_cron reports the job as
+  // `succeeded` regardless of what came back. So an uncaught throw here — the
+  // shape a missing env var takes — reaches an operator as a bare 500 with a
+  // null body, which is indistinguishable from the app being broken and sends
+  // them to inspect the Supabase job instead of the environment. Ask me how I
+  // know.
+  let authorized: boolean
+  try {
+    authorized = isCronRequest(request)
+  } catch (error) {
+    // Misconfiguration, not a bad caller. The message is a fixed string naming
+    // the variable — no secret in it, and it is the difference between a
+    // five-second fix and an afternoon.
+    return Response.json(
+      { error: "misconfigured", detail: (error as Error).message },
+      { status: 500 },
+    )
+  }
+
+  if (!authorized) {
     return Response.json({ error: "unauthorized" }, { status: 401 })
   }
 
-  // Before claiming: return anything stranded in `sending` by a worker that
-  // died mid-flight. Without this those rows are owed forever and invisible to
-  // the due-work query.
-  const reclaimed = await reclaimStale()
+  try {
+    // Before claiming: return anything stranded in `sending` by a worker that
+    // died mid-flight. Without this those rows are owed forever and invisible
+    // to the due-work query.
+    const reclaimed = await reclaimStale()
 
-  const due = await claimDue()
-  const { sent, failed } = await deliverBatch(due)
+    const due = await claimDue()
+    const { sent, failed } = await deliverBatch(due)
 
-  // Half of what bounds the copy of respondent answers in `payload` — see
-  // design note 5 in the schema. Deterministic rather than sampled, so an
-  // operator wondering why nothing was pruned can reason about it.
-  const pruned = new Date().getUTCMinutes() === PRUNE_MINUTE ? await pruneDeliveries() : 0
+    // Half of what bounds the copy of respondent answers in `payload` — see
+    // design note 5 in the schema. Deterministic rather than sampled, so an
+    // operator wondering why nothing was pruned can reason about it.
+    const pruned = new Date().getUTCMinutes() === PRUNE_MINUTE ? await pruneDeliveries() : 0
 
-  return Response.json({ reclaimed, claimed: due.length, sent, failed, pruned })
+    return Response.json({ reclaimed, claimed: due.length, sent, failed, pruned })
+  } catch (error) {
+    // Logged in full, reported in outline: a database error can carry table and
+    // query text, and this response lands in a table any project member can
+    // read.
+    console.error("[cron/webhooks] sweep failed", error)
+    return Response.json({ error: "sweep_failed" }, { status: 500 })
+  }
 }
