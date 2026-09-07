@@ -4,8 +4,8 @@
  * THE DISTINCTION THAT ORGANISES THIS FILE: which client you use decides
  * whether there is anything to do on our side at all.
  *
- * ChatGPT and Claude authenticate connectors through OAuth and have no field
- * anywhere in their UI for an API key. Their flow starts in THEIR settings, not
+ * Claude, ChatGPT, Le Chat and Perplexity authenticate connectors through
+ * OAuth and have no field anywhere in their UI for an API key. Their flow starts in THEIR settings, not
  * ours — so offering those users a key is not merely unhelpful, it is a dead
  * end they cannot detect: they get a credential, nothing errors, and there is
  * no way to finish. That is what `method: "oauth"` exists to prevent.
@@ -108,6 +108,33 @@ export const MCP_CLIENTS: readonly McpClientInfo[] = [
       "Open ChatGPT → Settings → Connectors.",
       "Choose Add custom connector and paste the URL below.",
       "ChatGPT sends you back here to sign in and choose what it may reach.",
+    ],
+  },
+  {
+    id: "lechat",
+    name: "Le Chat",
+    blurb: "Mistral's assistant — a workspace admin adds connectors",
+    icon: "/logo/mistral.svg",
+    preserveColors: true,
+    method: "oauth",
+    steps: [
+      "Open Le Chat → Connectors, then + Add Connector.",
+      "Switch to the Custom MCP Connector tab. Give it a name without spaces, and paste the URL below as the server URL.",
+      "Choose Connect. Le Chat detects the authentication itself — there is no client id or secret to supply — and sends you back here to sign in and choose what it may reach.",
+    ],
+  },
+  {
+    id: "perplexity",
+    name: "Perplexity",
+    blurb: "Custom connectors need Pro, Max or Enterprise",
+    icon: "/logo/perplexity.svg",
+    preserveColors: true,
+    method: "oauth",
+    steps: [
+      "Open Perplexity → Settings → Connectors, then Add a connector → Custom MCP server.",
+      "Paste the URL below. Open Advanced settings and leave the transport on Streamable HTTP — we do not serve SSE.",
+      "Leave the authentication on OAuth with the client fields empty: we register Perplexity ourselves, so an id and secret typed in here are ones nothing issued.",
+      "Tick the risk acknowledgement and choose Add. Perplexity sends you back here to sign in and choose what it may reach.",
     ],
   },
   {

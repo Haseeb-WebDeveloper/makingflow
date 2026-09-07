@@ -4,9 +4,9 @@
  * The "Connect an AI assistant" card, and the flow behind it.
  *
  * IT ASKS WHICH APP FIRST, and that is the whole design. There are two ways to
- * connect and they are not interchangeable: ChatGPT and Claude speak only OAuth
- * and have nowhere to put a key, while Claude Code, Cursor and VS Code take a
- * header and need one. Before this asked, everyone got a key and a Claude Code
+ * connect and they are not interchangeable: the chat assistants speak only
+ * OAuth and have nowhere to put a key, while Claude Code, Cursor and VS Code
+ * take a header and need one. Before this asked, everyone got a key and a Claude Code
  * command — which meant a ChatGPT user received a credential their client
  * cannot accept, with nothing erroring and no way to finish. The answer decides
  * whether there is anything to do here at all, so it has to come first.
@@ -529,11 +529,11 @@ export function McpCard({
 
       {/* ── Step 1: which app? ─────────────────────────────────────────
           Asked FIRST because the answer decides whether there is anything to
-          do here at all. ChatGPT and Claude cannot accept a key — their flow
+          do here at all. The chat assistants cannot accept a key — their flow
           starts in their own settings — so handing them one is a dead end the
           user cannot detect: nothing errors, and there is no way to finish. */}
       <Dialog open={createOpen && !client} onOpenChange={closeCreate}>
-        <DialogContent className="thin-scroll sm:max-w-xl [&>*]:min-w-0">
+        <DialogContent className="thin-scroll sm:max-w-2xl [&>*]:min-w-0">
           <DialogHeader>
             <DialogTitle>Where do you want to use MakingFlow?</DialogTitle>
             <DialogDescription>
@@ -567,7 +567,7 @@ export function McpCard({
           </div>
 
           <p className="text-xs text-muted-foreground">
-            Not sure? Claude and ChatGPT sign in with your MakingFlow account.
+            Not sure? The chat assistants sign in with your MakingFlow account.
             Everything else uses a key you create here.
           </p>
         </DialogContent>

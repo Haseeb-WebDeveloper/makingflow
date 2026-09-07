@@ -10,7 +10,7 @@ owner has in the browser. 27 tools, MCP revision **2026-07-28**, served at
 
 | | API key | OAuth |
 | --- | --- | --- |
-| Works with | Claude Code, Cursor, VS Code | ChatGPT, claude.ai |
+| Works with | Claude Code, Cursor, VS Code | claude.ai, ChatGPT, Le Chat, Perplexity |
 | Credential | `Authorization: Bearer mf_sk_live_…` | access token from an authorization server |
 | Set up from | `/integrations` → Connect | the client's "add connector" flow |
 | Credential lifetime | until revoked | 1h access, 30d rotating refresh |

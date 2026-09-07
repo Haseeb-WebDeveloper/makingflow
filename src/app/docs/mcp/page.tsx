@@ -154,7 +154,7 @@ export default function McpDocsPage() {
           It depends entirely on your client, so it is worth getting right before you start.
         </p>
         <p>
-          <strong className="text-foreground">Claude and ChatGPT sign in with your MakingFlow
+          <strong className="text-foreground">The chat assistants sign in with your MakingFlow
           account.</strong>{" "}
           There is nothing to create on our side — you add the URL above as a custom connector in
           their settings, and they send you here to choose what they may reach. They have nowhere
