@@ -14,6 +14,8 @@
  * payloads are decoded back here and checked, rather than pattern-matched.
  */
 
+import { existsSync } from "node:fs"
+import { join } from "node:path"
 import { describe, expect, test } from "vitest"
 import {
   MCP_CLIENTS,
@@ -59,6 +61,20 @@ describe("the client catalogue", () => {
   test("the header-based clients take a key", () => {
     for (const id of ["claude-code", "cursor", "vscode", "other"]) {
       expect(clientById(id)?.method).toBe("api-key")
+    }
+  })
+
+  test("every logo file actually exists", () => {
+    // A wrong path renders an empty box and nothing else: no console error, no
+    // layout shift, no failing request anyone looks at. Both the connect panel
+    // and the public docs page render these, so a typo ships a client with no
+    // mark on two surfaces at once.
+    for (const client of MCP_CLIENTS) {
+      expect(client.icon).toMatch(/^\/logo\/[a-z0-9-]+\.svg$/)
+      expect(
+        existsSync(join(process.cwd(), "public", client.icon)),
+        `missing logo for ${client.name}: public${client.icon}`,
+      ).toBe(true)
     }
   })
 

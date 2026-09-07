@@ -43,6 +43,18 @@ export type McpClientInfo = {
   name: string
   /** What it is, for someone who has not heard of it. */
   blurb: string
+  /** Whether to preserve the original colors of the icon. */
+  preserveColors?: boolean
+  /**
+   * Brand mark under /public/logo, rendered with `preserveColors`.
+   *
+   * Each file is a self-contained square: chatgpt.svg and cursor.svg carry
+   * their own full-bleed background rect (white and black respectively), so
+   * they must NOT be recoloured or mask-rendered — a white-on-transparent
+   * glyph would vanish on the light picker, a black one on the dark panel.
+   * That is why these are `preserveColors` everywhere they appear.
+   */
+  icon: string
   method: ConnectMethod
   /** OAuth clients: what the user does in THAT app. */
   steps?: string[]
@@ -76,6 +88,8 @@ export const MCP_CLIENTS: readonly McpClientInfo[] = [
     id: "claude",
     name: "Claude",
     blurb: "claude.ai, and the desktop and mobile apps",
+    icon: "/logo/claude.svg",
+    preserveColors: true,
     method: "oauth",
     steps: [
       "Open claude.ai → Settings → Connectors.",
@@ -87,6 +101,8 @@ export const MCP_CLIENTS: readonly McpClientInfo[] = [
     id: "chatgpt",
     name: "ChatGPT",
     blurb: "Requires developer mode for custom connectors",
+    icon: "/logo/chatgpt.svg",
+    preserveColors: false,
     method: "oauth",
     steps: [
       "Open ChatGPT → Settings → Connectors.",
@@ -98,6 +114,8 @@ export const MCP_CLIENTS: readonly McpClientInfo[] = [
     id: "claude-code",
     name: "Claude Code",
     blurb: "Anthropic's terminal and IDE agent",
+    icon: "/logo/claude-code.svg",
+    preserveColors: true,
     method: "api-key",
     install: ({ endpoint, token }) => ({
       code: `claude mcp add --scope user --transport http makingflow ${endpoint} --header "Authorization: Bearer ${token}"`,
@@ -109,6 +127,8 @@ export const MCP_CLIENTS: readonly McpClientInfo[] = [
     id: "cursor",
     name: "Cursor",
     blurb: "The AI code editor",
+    icon: "/logo/cursor.svg",
+    preserveColors: true,
     method: "api-key",
     install: ({ endpoint, token }) => ({
       deeplink: `cursor://anysphere.cursor-deeplink/mcp/install?name=makingflow&config=${encodeURIComponent(
@@ -128,6 +148,8 @@ export const MCP_CLIENTS: readonly McpClientInfo[] = [
     id: "vscode",
     name: "VS Code",
     blurb: "With GitHub Copilot's agent mode",
+    icon: "/logo/vscode.svg",
+    preserveColors: true,
     method: "api-key",
     install: ({ endpoint, token }) => ({
       deeplink: `vscode:mcp/install?${encodeURIComponent(
@@ -147,6 +169,8 @@ export const MCP_CLIENTS: readonly McpClientInfo[] = [
     id: "other",
     name: "Something else",
     blurb: "Any MCP client that can send a header",
+    icon: "/logo/mcp.svg",
+    preserveColors: false,
     method: "api-key",
     install: ({ endpoint, token }) => ({
       code: `${endpoint}\n\nAuthorization: Bearer ${token}`,

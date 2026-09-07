@@ -5,6 +5,7 @@ import {
   type McpClientInfo,
 } from "@/lib/mcp/client-catalog"
 import { PERMISSION_CHOICES } from "@/lib/mcp/scope-catalog"
+import { SVGIcon } from "@/components/ui/svg-icon"
 
 /**
  * Connection documentation for the MCP server.
@@ -70,13 +71,23 @@ function ClientGuide({ client, endpoint }: { client: McpClientInfo; endpoint: st
 
   return (
     <div className="mt-6 rounded-lg border border-border p-4">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h3 className="text-sm font-semibold text-foreground">{client.name}</h3>
-        <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <SVGIcon
+            src={client.icon}
+            preserveColors={client.preserveColors}
+            className="size-7 rounded-md border border-border"
+            aria-hidden
+          />
+          <div className="min-w-0">
+            <h3 className="text-sm font-semibold text-foreground">{client.name}</h3>
+            <p className="text-xs text-muted-foreground">{client.blurb}</p>
+          </div>
+        </div>
+        <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
           {client.method === "oauth" ? "Signs in with MakingFlow" : "Uses an API key"}
         </span>
       </div>
-      <p className="mt-1 text-xs text-muted-foreground">{client.blurb}</p>
 
       {client.steps ? (
         <ol className="mt-3 space-y-2 text-sm text-muted-foreground">

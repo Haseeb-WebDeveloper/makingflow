@@ -101,10 +101,14 @@ export function WorkspaceIntegrationsPanel({
 
   return (
     <>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {/* ── AI assistants (MCP) ── */}
-        <McpCard {...mcp} />
+      {/* ── AI assistants (MCP) ──
+          Above the grid, full width, deliberately not a tile in it. The cards
+          below each add one destination for a submission; this one hands an
+          assistant the whole product. Sizing it like a peer of the Discord card
+          undersold what it is. */}
+      <McpCard {...mcp} />
 
+      <div className="mt-8 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {/* ── Google Sheets ── */}
         <CardShell>
           <div className="flex items-start justify-between gap-3">
