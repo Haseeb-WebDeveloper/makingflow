@@ -32,3 +32,16 @@ export const RETENTION_DAYS = 30
 
 /** Jitter applied to each wait, so a recovering receiver is not hit in lockstep. */
 export const JITTER_RATIO = 0.2
+
+/**
+ * How long a failing delivery keeps being retried, end to end.
+ *
+ * Derived rather than described, because it was described twice and wrongly:
+ * the public guide said "about 8 hours" and the in-app sheet said "about eight
+ * hours", while the real ladder totals 7.2. Someone sizing an alert window was
+ * being told we try for longer than we do.
+ */
+export const TOTAL_RETRY_SECONDS = BACKOFF_SECONDS.reduce((sum, s) => sum + s, 0)
+
+/** Rounded DOWN: never promise a longer window than we actually run. */
+export const RETRY_WINDOW_HOURS = Math.floor(TOTAL_RETRY_SECONDS / 3600)

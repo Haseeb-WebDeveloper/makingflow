@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
+import { RETRY_WINDOW_HOURS } from "@/lib/integrations/webhook-policy";
 import {
   Sheet,
   SheetContent,
@@ -204,9 +205,12 @@ export function WebhooksCard({
           <SheetHeader>
             <SheetTitle>Webhooks</SheetTitle>
             <SheetDescription>
-              Each new submission is POSTed as JSON, and retried for about eight
-              hours if your endpoint is down. Add a secret to have deliveries
-              signed.{" "}
+              Each new submission is POSTed as JSON, and retried for about{" "}
+              {/* Derived, not typed: this said "eight hours" while the public
+                  guide said seven, and the ladder actually totals seven. Two
+                  answers to the same question is worse than either. */}
+              {RETRY_WINDOW_HOURS} hours if your endpoint is down. Add a secret
+              to have deliveries signed.{" "}
               {/* The person adding the endpoint is often not the person writing
                   the code that receives it, and this is the moment they realise
                   they need to hand something over. A public link is what they

@@ -25,6 +25,7 @@ import "server-only"
 
 import * as z from "zod"
 import * as webhooksCore from "@/lib/core/webhooks"
+import { RETRY_WINDOW_HOURS } from "@/lib/integrations/webhook-policy"
 import * as notificationsCore from "@/lib/core/notifications"
 import * as integrationsCore from "@/lib/core/integrations"
 import { defineTool, ToolError, type RegisteredMcpTool } from "@/lib/mcp/define-tool"
@@ -245,7 +246,10 @@ export const integrationTools: RegisteredMcpTool[] = [
       "The URL must be a public https endpoint. Private, loopback and link-local addresses are refused — a webhook is a request made from our servers, so those would reach our own infrastructure rather than yours.",
       "`test` sends a sample payload immediately and reports the status the endpoint returned.",
       "",
-      "Every response is recorded as a delivery and retried with backoff for about eight hours if the endpoint is down. `deliveries` lists what happened to recent ones; `redeliver` queues a finished delivery to be sent again, keeping its delivery id so a receiver can recognise the duplicate.",
+      "Every response is recorded as a delivery and retried with backoff for about " +
+        RETRY_WINDOW_HOURS +
+        " hours if the endpoint is down. `deliveries` lists what happened to recent ones; " +
+        "`redeliver` queues a finished delivery to be sent again, keeping its delivery id so a receiver can recognise the duplicate.",
     ].join("\n"),
     inputSchema: z.object({
       operation: z.enum(["add", "enable", "disable", "remove", "test", "deliveries", "redeliver"]),

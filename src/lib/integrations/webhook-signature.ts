@@ -35,6 +35,12 @@ export const SIGNATURE_HEADER = "X-MakingFlow-Signature-V2"
 export const DELIVERY_ID_HEADER = "X-MakingFlow-Delivery-Id"
 export const EVENT_HEADER = "X-MakingFlow-Event"
 
+/** Named so /docs/webhooks can publish it rather than retype it. */
+export const USER_AGENT = "MakingFlow-Webhook/1.0"
+
+/** The only event we emit today. Also published, so it is not a bare literal. */
+export const SUBMISSION_CREATED_EVENT = "submission.created"
+
 /** How far out of date a `t=` may be before a receiver should refuse it. */
 export const TIMESTAMP_TOLERANCE_SECONDS = 300
 
@@ -68,7 +74,7 @@ export function deliveryHeaders(args: {
 }): Record<string, string> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
-    "User-Agent": "MakingFlow-Webhook/1.0",
+    "User-Agent": USER_AGENT,
     [DELIVERY_ID_HEADER]: args.deliveryId,
     [EVENT_HEADER]: args.event,
   }
