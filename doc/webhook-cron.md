@@ -23,24 +23,54 @@ Two further reasons stack on top:
 - On Supabase, `cron.schedule` lives in the `postgres` database and needs a role
   the app's `DATABASE_URL` may not have.
 
-So: run the SQL below **once per Supabase project**, in the SQL editor, as the
-`postgres` role.
+So: run the SQL below in the Supabase SQL editor, as the `postgres` role.
+
+The whole script is **re-runnable** — run it again to change the host, rotate
+the secret, or after a restore, and it converges rather than erroring.
 
 ## Setup
+
+Note there is no `\set` anywhere below. That is a psql client meta-command; the
+Supabase SQL editor is a plain connection, so `\set` never reaches Postgres and
+fails with a syntax error on the backslash. The two values live in a `DO` block
+instead.
 
 ```sql
 create extension if not exists pg_cron with schema pg_catalog;
 create extension if not exists pg_net  with schema extensions;
 
--- Secrets go in Vault, never inline in the job body. cron.job is an ordinary
--- table: `select command from cron.job` would hand the bearer token to anyone
--- with read access to the cron schema. Vault is not a hardware boundary —
--- vault.decrypted_secrets is still readable by postgres — but it keeps the
--- token out of casual queries, dumps and support sessions.
-select vault.create_secret('https://your-app-host', 'app_base_url',
-                           'Base URL for internal cron callbacks');
-select vault.create_secret('<the CRON_SECRET value>', 'cron_secret',
-                           'Bearer token for /api/cron/* routes');
+do $$
+declare
+  -- The only two values to edit.
+  v_host   text := 'https://your-app-host';   -- production URL, no trailing slash
+  v_secret text := '<the CRON_SECRET value>';
+  v_id     uuid;
+begin
+  -- Secrets go in Vault, never inline in the job body. cron.job is an ordinary
+  -- table: `select command from cron.job` would hand the bearer token to anyone
+  -- with read access to the cron schema. Vault is not a hardware boundary —
+  -- vault.decrypted_secrets is still readable by postgres — but it keeps the
+  -- token out of casual queries, dumps and support sessions.
+  --
+  -- Upserted rather than created: vault.create_secret errors on a duplicate
+  -- name, which would make this script a one-shot that fails confusingly the
+  -- second time someone reaches for it — usually mid-migration, in a hurry.
+  select id into v_id from vault.secrets where name = 'app_base_url';
+  if v_id is null then
+    perform vault.create_secret(v_host, 'app_base_url',
+                                'Base URL for internal cron callbacks');
+  else
+    perform vault.update_secret(v_id, v_host);
+  end if;
+
+  select id into v_id from vault.secrets where name = 'cron_secret';
+  if v_id is null then
+    perform vault.create_secret(v_secret, 'cron_secret',
+                                'Bearer token for /api/cron/* routes');
+  else
+    perform vault.update_secret(v_id, v_secret);
+  end if;
+end $$;
 
 select cron.schedule(
   'webhook-retry-sweep',
@@ -62,14 +92,26 @@ select cron.schedule(
 );
 ```
 
-`cron.schedule` **replaces** a job with the same name, so re-running that block
-is idempotent. `vault.create_secret` is not — use
-`vault.update_secret(<id>, '<new value>')` to change a value.
+`cron.schedule` **replaces** a job with the same name, so it is idempotent too.
+
+The job resolves the host from Vault **on every tick** rather than baking it
+into the schedule. So moving the app to a new domain is a value change, not a
+re-scheduling:
+
+```sql
+select vault.update_secret(
+  (select id from vault.secrets where name = 'app_base_url'),
+  'https://the-new-host'
+);
+```
 
 `timeout_milliseconds` sits just under the route's `maxDuration = 60` so a hung
 route releases the pg_net worker before the next tick.
 
-Set `CRON_SECRET` in the app environment to the same value as the Vault secret.
+Set `CRON_SECRET` in the app environment to the same value as the Vault secret,
+then **redeploy** — an environment variable added in Vercel does not reach a
+deployment that is already running, and the symptom is a 401 that looks like a
+wrong secret rather than a stale build.
 
 Optional, since job history is not pruned by default on every plan:
 
@@ -129,11 +171,22 @@ Reading the failures:
 ## Rotating the secret
 
 The app environment and the Vault entry cannot be updated atomically, so the
-route accepts two values at once:
+route accepts two values at once. Skipping the overlap means the sweep 401s for
+the length of the rotation — deliveries are not lost, but nothing retries until
+it is finished.
 
-1. Set `CRON_SECRET` to the new value and `CRON_SECRET_PREVIOUS` to the old one.
-2. Update the Vault secret to the new value.
-3. Remove `CRON_SECRET_PREVIOUS`.
+1. Set `CRON_SECRET` to the new value and `CRON_SECRET_PREVIOUS` to the old one,
+   then redeploy. Both are now accepted.
+2. Update the Vault secret — either re-run the setup script with the new
+   `v_secret`, or:
+   ```sql
+   select vault.update_secret(
+     (select id from vault.secrets where name = 'cron_secret'),
+     'the-new-secret'
+   );
+   ```
+3. Confirm a `200` in the `net._http_response` check below, then remove
+   `CRON_SECRET_PREVIOUS` and redeploy again.
 
 ## Removing it
 
