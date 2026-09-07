@@ -18,6 +18,9 @@ export const MAKINGFLOW_NAV: DashboardNavItem[] = [
   { label: "Search", icon: "search", action: "search" },
   { href: "/domains", label: "Domains", icon: "discovery" },
   { href: "/integrations", label: "Integrations", icon: "swap" },
+  // Below Integrations rather than beside Home: it is a one-time task for the
+  // people it matters to, and nothing for everyone else.
+  { href: "/migrations", label: "Migrations", icon: "paper-download" },
   { href: "/settings", label: "Settings", icon: "setting" },
 ]
 

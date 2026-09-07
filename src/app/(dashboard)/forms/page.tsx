@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import dynamic from "next/dynamic";
+import Link from "next/link";
 import { getFormsDashboard } from "@/lib/data/analytics";
 import { parseRange, rangeBuckets } from "@/lib/data/range";
 import { getWorkspaceFolders } from "@/lib/data/folders";
@@ -14,7 +15,6 @@ import { CountryLeaderboard } from "@/components/dashboard/country-leaderboard";
 import { BreakdownPanel } from "@/components/dashboard/breakdown-panel";
 import { FormsOverviewTable } from "@/components/dashboard/forms-overview-table";
 import { NewFormButton } from "@/components/dashboard/new-form-button";
-import { ImportTallyDialog } from "@/components/forms/import-tally-dialog";
 import { RangePicker } from "@/components/dashboard/range-picker";
 
 // Code-split the recharts-backed charts (~90KB) into their own chunk — they sit
@@ -29,11 +29,6 @@ const DevicesDonut = dynamic(() =>
 );
 
 export const metadata: Metadata = { title: "Home · MakingFlow" };
-
-// Server Actions inherit the invoking page's time budget, and the Tally import
-// runs from here: one form can mean several API round-trips plus thousands of
-// inserted responses. The default is too tight for a real migration.
-export const maxDuration = 60;
 
 export default async function FormsPage({
   searchParams,
@@ -57,7 +52,6 @@ export default async function FormsPage({
       <PageHeader
         title="Home"
         description="An overview of your forms and how they're performing."
-        action={<ImportTallyDialog />}
       />
 
       {forms.length === 0 || !totals ? (
@@ -66,9 +60,19 @@ export default async function FormsPage({
           title="No forms yet"
           description="Describe a form in plain language and MakingFlow will build it for you."
           action={
-            <div className="flex flex-wrap items-center justify-center gap-2">
+            <div className="flex flex-col items-center gap-3">
               <NewFormButton className="inline-flex h-10 gap-1.5 items-center rounded-md bg-foreground px-4 text-sm font-medium text-background transition-colors hover:bg-foreground/90" />
-              <ImportTallyDialog />
+              {/* A link, not the import dialog. Someone with no forms is the
+                  most likely person to be migrating, so the route has to stay
+                  visible here — but a second primary button competing with
+                  "New form" made the empty state a choice rather than an
+                  invitation. */}
+              <Link
+                href="/migrations"
+                className="text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+              >
+                Coming from another tool? Import your forms
+              </Link>
             </div>
           }
         />
