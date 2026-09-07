@@ -3,6 +3,7 @@ import { PageContainer, PageHeader } from "@/components/dashboard/page-shell"
 import { CardShell } from "@/components/integrations/cards"
 import { Button } from "@/components/ui/button"
 import { Icon } from "@/components/ui/icon"
+import { SVGIcon } from "@/components/ui/svg-icon"
 import { ImportTallyDialog } from "@/components/forms/import-tally-dialog"
 
 /**
@@ -33,9 +34,12 @@ export default function MigrationsPage() {
       <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <CardShell>
           <div className="flex items-start justify-between gap-3">
-            <div className="flex size-9 items-center justify-center rounded-md border border-border bg-muted">
-              <Icon name="paper-download" className="size-5 text-foreground" />
-            </div>
+            {/* Mask-rendered, NOT preserveColors. tally.svg is a bare black
+                glyph on transparent — no background of its own — so preserving
+                its colours would leave it invisible in dark mode. The logos in
+                the integrations grid go the other way because each of those
+                files carries its own full-bleed background. */}
+            <SVGIcon src="/logo/tally.svg" className="size-9 text-foreground" />
           </div>
 
           <h3 className="mt-3 text-sm font-semibold text-foreground">Tally</h3>
