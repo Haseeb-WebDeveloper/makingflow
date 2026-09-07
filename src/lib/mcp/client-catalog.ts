@@ -92,8 +92,8 @@ export const MCP_CLIENTS: readonly McpClientInfo[] = [
     preserveColors: true,
     method: "oauth",
     steps: [
-      "Open claude.ai → Settings → Connectors.",
-      "Choose Add custom connector and paste the URL below. Leave the OAuth client fields empty — Claude registers itself.",
+      "Open Claude → Customize → Connectors, then + → Add custom connector. On Team and Enterprise an owner adds it once under Organization settings → Connectors, and everyone else then presses Connect on it.",
+      "Paste the URL below and choose Add. Leave the OAuth client id and secret under Advanced settings empty — Claude registers itself, so anything typed there is a credential nothing issued.",
       "Claude sends you back here to sign in and choose what it may reach.",
     ],
   },
@@ -105,8 +105,8 @@ export const MCP_CLIENTS: readonly McpClientInfo[] = [
     preserveColors: false,
     method: "oauth",
     steps: [
-      "Open ChatGPT → Settings → Connectors.",
-      "Choose Add custom connector and paste the URL below.",
+      "Open ChatGPT → Settings and turn on Developer mode, under Security and login. Custom connectors stay hidden until you do, and it needs a paid plan.",
+      "Still in Settings, open Plugins, press + and paste the URL below as the server URL, then save.",
       "ChatGPT sends you back here to sign in and choose what it may reach.",
     ],
   },
