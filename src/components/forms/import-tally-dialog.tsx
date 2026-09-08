@@ -19,7 +19,6 @@ import { showToast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
 import {
   importTallyForm,
-  fileImportedFormsIntoFolders,
   importTallyFormFromApiKey,
   importTallySubmissions,
   listTallyApiForms,
@@ -65,7 +64,7 @@ export function ImportTallyDialog({
   className?: string;
 }) {
   const [open, setOpen] = React.useState(false);
-  const [mode, setMode] = React.useState<Mode>("link");
+  const [mode, setMode] = React.useState<Mode>("key");
   // Bumped on every open so both panels remount with fresh state — nothing from
   // a previous import, least of all an API key, survives closing the dialog.
   const [session, setSession] = React.useState(0);
@@ -77,7 +76,7 @@ export function ImportTallyDialog({
         setOpen(next);
         if (next) {
           setSession((n) => n + 1);
-          setMode("link");
+          setMode("key");
         }
       }}
     >
@@ -106,11 +105,11 @@ export function ImportTallyDialog({
         </DialogHeader>
 
         <div className="flex gap-1 rounded-lg bg-muted p-1">
-          <ModeTab active={mode === "link"} onClick={() => setMode("link")}>
-            Share link
-          </ModeTab>
           <ModeTab active={mode === "key"} onClick={() => setMode("key")}>
             API key
+          </ModeTab>
+          <ModeTab active={mode === "link"} onClick={() => setMode("link")}>
+            Share link
           </ModeTab>
         </div>
 
@@ -314,7 +313,10 @@ function KeyImport({ onClose }: { onClose: () => void }) {
   const [progress, setProgress] = React.useState<{ done: number; total: number; name: string } | null>(null);
   const [outcomes, setOutcomes] = React.useState<Outcome[] | null>(null);
   const [error, setError] = React.useState<string | null>(null);
-  const [filed, setFiled] = React.useState<string | null>(null);
+  // Tally's workspaces are what folders are built from. When that lookup fails
+  // the forms still import — they just import unfiled — so say so here, while
+  // the user can still fix the key, rather than after 68 forms land in a heap.
+  const [unfiled, setUnfiled] = React.useState(false);
 
   async function onConnect(e: React.FormEvent) {
     e.preventDefault();
@@ -332,6 +334,7 @@ function KeyImport({ onClose }: { onClose: () => void }) {
       return;
     }
     setForms(result.forms);
+    setUnfiled(!result.workspacesAvailable);
     setSelected(new Set(result.forms.map((f) => f.id)));
   }
 
@@ -343,7 +346,10 @@ function KeyImport({ onClose }: { onClose: () => void }) {
     const done: Outcome[] = [];
 
     for (const [index, form] of chosen.entries()) {
-      const folderName = form.workspaceName ?? undefined;
+      // Passed explicitly, null included: we already know this form's Tally
+      // grouping from the list above, so the server must not spend a request
+      // per form asking again.
+      const folderName = form.workspaceName;
       setProgress({ done: index, total: chosen.length, name: form.name });
 
       let result = await importTallyFormFromApiKey(apiKey, form.id, withResponses, { folderName });
@@ -411,35 +417,6 @@ function KeyImport({ onClose }: { onClose: () => void }) {
     );
   }
 
-  /**
-   * File the forms we already imported into folders, without re-importing them.
-   *
-   * Not "run the import again with responses off": that path rewrites each
-   * form's logo and success page from Tally's copy, which would undo the media
-   * sweep for exactly the branding that was just moved off Tally.
-   */
-  async function onFileIntoFolders() {
-    if (busy) return;
-    setBusy(true);
-    setError(null);
-    const result = await fileImportedFormsIntoFolders(apiKey);
-    setBusy(false);
-    if (!result.success) {
-      setError(result.error);
-      return;
-    }
-    const parts: string[] = [];
-    if (result.filed > 0) parts.push(`${result.filed} filed`);
-    if (result.alreadyFiled > 0) parts.push(`${result.alreadyFiled} already in place`);
-    if (result.unmatched > 0) parts.push(`${result.unmatched} had no workspace`);
-    setFiled(
-      result.folders.length > 0
-        ? `${parts.join(" · ")} — ${result.folders.join(", ")}`
-        : "None of these forms belong to a Tally workspace, so there is nothing to file them under.",
-    );
-    router.refresh();
-  }
-
   // Step 3 — results.
   if (outcomes && !busy) {
     const ok = outcomes.filter((o) => o.result.success);
@@ -505,7 +482,18 @@ function KeyImport({ onClose }: { onClose: () => void }) {
                   setSelected(next);
                 }}
               />
-              <span className="min-w-0 flex-1 truncate text-sm text-foreground">{form.name}</span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm text-foreground">{form.name}</span>
+                {/* The folder this will land in, named before the import rather
+                    than reported after it — filing is automatic, so the only
+                    way to notice it went wrong is to have seen it beforehand. */}
+                {form.workspaceName ? (
+                  <span className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
+                    <Icon name="folder" className="size-3 shrink-0" />
+                    <span className="truncate">{form.workspaceName}</span>
+                  </span>
+                ) : null}
+              </span>
               <span className="shrink-0 text-xs text-muted-foreground">
                 {form.submissionCount} response{form.submissionCount === 1 ? "" : "s"}
               </span>
@@ -531,25 +519,15 @@ function KeyImport({ onClose }: { onClose: () => void }) {
         </p>
       ) : null}
 
-      {/* Filing is a separate action rather than part of the import, because
-          re-importing would overwrite each form's logo and success page with
-          Tally's copies — undoing a media move for forms already carried over. */}
-      <div className="rounded-lg border border-border p-3">
-        <p className="text-xs text-muted-foreground">
-          {filed ?? "Already imported these? File them into folders matching their Tally workspaces, without touching their content."}
+      {/* Forms are filed into folders mirroring their Tally workspaces as they
+          import. It only fails as a set — the workspace names come from one
+          call — so the warning belongs here, before the import, not per form. */}
+      {unfiled ? (
+        <p className="rounded-lg border border-border p-3 text-xs text-muted-foreground">
+          We couldn&apos;t read your Tally workspaces, so these will import without folders.
+          Check the key has access to them, then connect again.
         </p>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="mt-2 gap-1.5"
-          disabled={busy}
-          onClick={onFileIntoFolders}
-        >
-          {busy ? <Loading fill className="size-4" /> : <Icon name="folder" className="size-4" />}
-          {filed ? "Organize again" : "Organize into folders"}
-        </Button>
-      </div>
+      ) : null}
 
       {error ? <ErrorNote>{error}</ErrorNote> : null}
 

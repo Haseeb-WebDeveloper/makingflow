@@ -20,7 +20,6 @@ export type {
   ImportFormResult,
   ImportSubmissionsResult,
   ListTallyFormsResult,
-  FileIntoFoldersResult,
 } from "@/lib/core/import-tally"
 
 /** Rebuild a public Tally form here as a draft. */
@@ -54,7 +53,7 @@ export async function importTallyFormFromApiKey(
   apiKey: string,
   tallyFormId: string,
   withResponses: boolean,
-  options?: { folderName?: string; startPage?: number },
+  options?: { folderName?: string | null; startPage?: number },
 ): Promise<importCore.ImportApiResult> {
   const session = await sessionContext()
   if (!session.ok) return { success: false, error: session.error }
@@ -65,13 +64,4 @@ export async function importTallyFormFromApiKey(
     withResponses,
     options,
   )
-}
-
-/** File already-imported forms into folders matching their Tally workspace. */
-export async function fileImportedFormsIntoFolders(
-  apiKey: string,
-): Promise<importCore.FileIntoFoldersResult> {
-  const session = await sessionContext()
-  if (!session.ok) return { success: false, error: session.error }
-  return importCore.fileImportedFormsIntoFolders(session.ctx, apiKey)
 }

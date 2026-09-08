@@ -52,26 +52,15 @@ vi.mock("@/lib/auth/session", () => {
 const fetchTallyPage = vi.hoisted(() => vi.fn())
 vi.mock("@/lib/import/tally-page", () => ({ importTallyFormFromUrl: fetchTallyPage }))
 
-const listTallyFormsMock = vi.hoisted(() => vi.fn())
+const fetchTallyFormFromApiMock = vi.hoisted(() => vi.fn())
+const resolveTallyGroupNameMock = vi.hoisted(() => vi.fn())
 vi.mock("@/lib/import/tally-api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/import/tally-api")>()),
-  listTallyForms: listTallyFormsMock,
+  fetchTallyFormFromApi: fetchTallyFormFromApiMock,
+  resolveTallyGroupName: resolveTallyGroupNameMock,
 }))
 
 const importCore = await import("@/lib/core/import-tally")
-
-/** One entry of Tally's form list, as their API returns it. */
-function tallySummary(id: string, workspaceName: string | null) {
-  return {
-    id,
-    name: "Job Application",
-    status: "published",
-    isClosed: false,
-    submissionCount: 0,
-    workspaceId: workspaceName ? `tally_ws_${workspaceName}` : null,
-    workspaceName,
-  }
-}
 
 /** What the page parser hands back for a two-question form. */
 function tallyForm(overrides: Partial<EditorForm> = {}): EditorForm {
@@ -117,34 +106,9 @@ async function seedTenant(label: string) {
   }
 }
 
-/**
- * Import a form and stamp it with a Tally external id, as the API-key path's
- * `markImported` does. Used to set up filing, which matches on that stamp.
- */
-async function importFormWithExternalId(
-  ctx: ReturnType<typeof testContext>,
-  externalId: string,
-): Promise<string> {
-  fetchTallyPage.mockResolvedValue({
-    form: tallyForm(),
-    skipped: [],
-    sourceUrl: "https://tally.so/r/abc123",
-  })
-  const result = await importCore.importTallyForm(ctx, "https://tally.so/r/abc123")
-  if (!result.success) throw new Error(`setup import failed: ${result.error}`)
-
-  const [row] = await db
-    .select({ settings: forms.settings })
-    .from(forms)
-    .where(eq(forms.id, result.formId))
-  await db
-    .update(forms)
-    .set({
-      settings: { ...(row?.settings ?? {}), importedFrom: { source: "tally", externalId } },
-    })
-    .where(eq(forms.id, result.formId))
-
-  return result.formId
+/** What the API reader hands back for one form, grouping included. */
+function apiForm(groupId: string | null) {
+  return { form: tallyForm(), skipped: [], refs: [], groupId }
 }
 
 /** Field ids as stored, keyed by label — the CSV joins on the label. */
@@ -334,74 +298,135 @@ describe("core/import-tally", () => {
     })
   })
 
-  describe("fileImportedFormsIntoFolders", () => {
-    /**
-     * Filing matches OUR forms against a Tally account by external id. Two
-     * MakingFlow workspaces that imported the same Tally form therefore hold
-     * rows with the SAME external id — so if the lookup were not scoped, one
-     * user's Tally key would reorganise another user's forms.
-     */
-    test("matches only within the caller's workspace, even on a shared external id", async () => {
+  /**
+   * Filing is part of importing, not a step afterwards. It used to be a button
+   * the user had to find and press, which meant a 68-form migration landed in
+   * one flat list and stayed there. These pin the two ways it can go wrong: not
+   * happening at all, and happening into the wrong tenant's folder.
+   */
+  describe("importTallyFormFromApiKey — folders", () => {
+    const KEY = "tly_key_xyz"
+
+    test("files the form under its Tally workspace, in the caller's tenant only", async () => {
       const external = `tally_form_${randomUUID()}`
-      listTallyFormsMock.mockResolvedValue([tallySummary(external, "Recruiting")])
+      fetchTallyFormFromApiMock.mockResolvedValue(apiForm("tally_ws_1"))
+      resolveTallyGroupNameMock.mockResolvedValue("Recruiting")
 
-      // Both tenants imported the same public Tally form.
-      const mine = await importFormWithExternalId(alice.ctx, external)
-      const theirs = await importFormWithExternalId(bob.ctx, external)
+      // Both tenants import the same Tally form, so both hold the same external
+      // id. Folders are per workspace; neither may reach the other's.
+      const mine = await importCore.importTallyFormFromApiKey(alice.ctx, KEY, external, false)
+      const theirs = await importCore.importTallyFormFromApiKey(bob.ctx, KEY, external, false)
+      if (!mine.success || !theirs.success) throw new Error("import failed")
 
-      const result = await importCore.fileImportedFormsIntoFolders(alice.ctx, "tally_key_xyz")
-      expect(result).toMatchObject({ success: true, filed: 1, unmatched: 0 })
+      expect(mine.folder).toBe("Recruiting")
+
+      const created = await db
+        .select({ id: folders.id, workspaceId: folders.workspaceId })
+        .from(folders)
+        .where(eq(folders.name, "Recruiting"))
+      expect(created).toHaveLength(2)
+      expect(new Set(created.map((f) => f.workspaceId))).toEqual(
+        new Set([alice.workspaceId, bob.workspaceId]),
+      )
 
       const [myForm] = await db
         .select({ folderId: forms.folderId })
         .from(forms)
-        .where(and(eq(forms.id, mine), eq(forms.workspaceId, alice.workspaceId)))
-      expect(myForm.folderId).not.toBeNull()
-
-      // Bob's identically-sourced form is untouched.
-      const [bobsForm] = await db
-        .select({ folderId: forms.folderId })
-        .from(forms)
-        .where(eq(forms.id, theirs))
-      expect(bobsForm.folderId).toBeNull()
-
-      // And the folder was created in Alice's workspace only.
-      const created = await db
-        .select({ workspaceId: folders.workspaceId })
-        .from(folders)
-        .where(eq(folders.name, "Recruiting"))
-      expect(created).toHaveLength(1)
-      expect(created[0].workspaceId).toBe(alice.workspaceId)
+        .where(and(eq(forms.id, mine.formId), eq(forms.workspaceId, alice.workspaceId)))
+      const alicesFolder = created.find((f) => f.workspaceId === alice.workspaceId)
+      expect(myForm.folderId).toBe(alicesFolder!.id)
     })
 
-    test("a Tally form we never imported creates no folder for it", async () => {
-      // Filing reorganises what is already here. A form that exists in the
-      // Tally account but was never imported is not our business, so it must
-      // not conjure an empty folder the user then has to tidy up.
-      listTallyFormsMock.mockResolvedValue([
-        tallySummary(`tally_form_${randomUUID()}`, "Recruiting"),
-      ])
+    test("resolves the workspace itself when the caller did not look it up", async () => {
+      // The MCP path holds a form id and nothing else. Omitting folderName must
+      // mean "find out", not "leave it unfiled".
+      fetchTallyFormFromApiMock.mockResolvedValue(apiForm("tally_ws_1"))
+      resolveTallyGroupNameMock.mockResolvedValue("Recruiting")
 
-      expect(await importCore.fileImportedFormsIntoFolders(alice.ctx, "tally_key_xyz")).toMatchObject({
-        success: true,
-        filed: 0,
-        folders: [],
-      })
+      const result = await importCore.importTallyFormFromApiKey(
+        alice.ctx,
+        KEY,
+        `tally_form_${randomUUID()}`,
+        false,
+      )
+      expect(result).toMatchObject({ success: true, folder: "Recruiting" })
+      expect(resolveTallyGroupNameMock).toHaveBeenCalledWith(KEY, "tally_ws_1")
+    })
+
+    test("takes the caller's answer without asking Tally again", async () => {
+      // The web path already knows every form's workspace from the list it
+      // showed. Re-resolving here would cost one request per form on a
+      // migration Tally rate-limits at 100 a minute.
+      fetchTallyFormFromApiMock.mockResolvedValue(apiForm("tally_ws_1"))
+
+      const result = await importCore.importTallyFormFromApiKey(
+        alice.ctx,
+        KEY,
+        `tally_form_${randomUUID()}`,
+        false,
+        { folderName: "Senior" },
+      )
+      expect(result).toMatchObject({ success: true, folder: "Senior" })
+      expect(resolveTallyGroupNameMock).not.toHaveBeenCalled()
+    })
+
+    test("an explicit null means unfiled, and asks nobody", async () => {
+      // The caller looked and this form has no Tally grouping. Distinct from
+      // omitting the option, which means it never looked.
+      fetchTallyFormFromApiMock.mockResolvedValue(apiForm("tally_ws_1"))
+
+      const result = await importCore.importTallyFormFromApiKey(
+        alice.ctx,
+        KEY,
+        `tally_form_${randomUUID()}`,
+        false,
+        { folderName: null },
+      )
+      expect(result).toMatchObject({ success: true, folder: null })
+      expect(resolveTallyGroupNameMock).not.toHaveBeenCalled()
       expect(
         await db.select().from(folders).where(eq(folders.workspaceId, alice.workspaceId)),
       ).toHaveLength(0)
     })
 
-    test("a Tally key we cannot use fails with Tally's own message", async () => {
+    test("keeps the form when the workspace lookup fails, and says it is unfiled", async () => {
+      // Losing a folder name must never cost the user the import that was
+      // otherwise about to succeed.
       const { TallyImportError } = await import("@/lib/import/tally-error")
-      listTallyFormsMock.mockRejectedValue(
-        new TallyImportError("INVALID_KEY", "That API key was rejected by Tally."),
+      fetchTallyFormFromApiMock.mockResolvedValue(apiForm("tally_ws_1"))
+      resolveTallyGroupNameMock.mockRejectedValue(
+        new TallyImportError("FORBIDDEN", "That key cannot read workspaces."),
       )
 
-      expect(await importCore.fileImportedFormsIntoFolders(alice.ctx, "bad_key")).toEqual({
-        success: false,
-        error: "That API key was rejected by Tally.",
-      })
+      const result = await importCore.importTallyFormFromApiKey(
+        alice.ctx,
+        KEY,
+        `tally_form_${randomUUID()}`,
+        false,
+      )
+      expect(result).toMatchObject({ success: true, folder: null })
+      if (!result.success) throw new Error("import failed")
+      const [row] = await db
+        .select({ folderId: forms.folderId })
+        .from(forms)
+        .where(eq(forms.id, result.formId))
+      expect(row.folderId).toBeNull()
+    })
+
+    test("does not re-resolve on the passes that continue a large import", async () => {
+      // Pass one filed the form. A form with thousands of responses comes round
+      // a dozen times; paying for the same answer each time is how a migration
+      // hits Tally's rate limit.
+      fetchTallyFormFromApiMock.mockResolvedValue(apiForm("tally_ws_1"))
+
+      await importCore.importTallyFormFromApiKey(
+        alice.ctx,
+        KEY,
+        `tally_form_${randomUUID()}`,
+        false,
+        { startPage: 2 },
+      )
+      expect(resolveTallyGroupNameMock).not.toHaveBeenCalled()
     })
   })
 })

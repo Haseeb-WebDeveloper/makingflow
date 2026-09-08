@@ -10,6 +10,7 @@ import {
   fetchTallyFormFromApi,
   fetchTallySubmissions,
   listTallyForms,
+  resolveTallyGroupName,
   type TallyFormSummary,
 } from "@/lib/import/tally-api"
 import { planApiImport } from "@/lib/import/tally-answers"
@@ -273,7 +274,7 @@ async function writeImportedSubmissions(
 // ── API-key path ────────────────────────────────────────────────────────────
 
 export type ListTallyFormsResult =
-  | { success: true; forms: TallyFormSummary[] }
+  | { success: true; forms: TallyFormSummary[]; workspacesAvailable: boolean }
   | { success: false; error: string }
 
 /**
@@ -287,7 +288,8 @@ export type ListTallyFormsResult =
 export async function listTallyApiForms(ctx: AuthContext, apiKey: string): Promise<ListTallyFormsResult> {
 
   try {
-    return { success: true, forms: await listTallyForms(apiKey) }
+    const { forms, workspacesAvailable } = await listTallyForms(apiKey)
+    return { success: true, forms, workspacesAvailable }
   } catch (err) {
     if (!(err instanceof TallyImportError)) console.error("[listTallyApiForms] failed", err)
     return {
@@ -342,6 +344,26 @@ async function findImportedForm(
     )
     .limit(1)
   return row?.id ?? null
+}
+
+/**
+ * The Tally workspace name a freshly-fetched form belongs to, best-effort.
+ *
+ * Never throws. Losing the folder name is a cosmetic loss; failing the import
+ * that was about to succeed is not, and this runs after the form's definition
+ * has already been read.
+ */
+async function folderNameForGroup(apiKey: string, groupId: string | null): Promise<string | null> {
+  if (!groupId) return null
+  try {
+    return await resolveTallyGroupName(apiKey, groupId)
+  } catch (err) {
+    console.warn(
+      "[importTallyFormFromApiKey] could not read workspaces; importing unfiled:",
+      err instanceof TallyImportError ? err.code : "unknown",
+    )
+    return null
+  }
 }
 
 /** Get or create the folder mirroring a Tally workspace. Scoped to the tenant. */
@@ -404,13 +426,20 @@ async function markImported(
  * throwing away a form the user can already see rebuilt, because a later step
  * timed out, would be the wrong trade. Re-running fills in what's missing:
  * the write deduplicates on Tally's submission id.
+ *
+ * FILING happens here, on the first pass, for every caller. `folderName` has
+ * three meanings and the difference matters: a string files under that name,
+ * `null` means the caller already looked and the form has no Tally grouping,
+ * and OMITTING it means the caller never looked — so we look, from the form
+ * payload we just fetched. That last case is what stops a caller which holds
+ * only a form id (the MCP tool) from importing everything into a flat list.
  */
 export async function importTallyFormFromApiKey(
   ctx: AuthContext,
   apiKey: string,
   tallyFormId: string,
   withResponses: boolean,
-  options: { folderName?: string; startPage?: number } = {},
+  options: { folderName?: string | null; startPage?: number } = {},
 ): Promise<ImportApiResult> {
 
   let parsed: Awaited<ReturnType<typeof fetchTallyFormFromApi>>
@@ -449,9 +478,15 @@ export async function importTallyFormFromApiKey(
     logoUrl: form.theme?.logoUrl ?? null,
   })
 
-  const folderId = options.folderName
-    ? await ensureFolder(ctx, options.folderName)
-    : null
+  // Resolving costs one request, so it is skipped on resume passes: pass one
+  // already filed this form, and a form with 3,000 responses would otherwise
+  // pay for the same answer a dozen times over.
+  const folderName =
+    options.folderName === undefined && !options.startPage
+      ? await folderNameForGroup(apiKey, parsed.groupId)
+      : (options.folderName ?? null)
+
+  const folderId = folderName ? await ensureFolder(ctx, folderName) : null
   await markImported(saved.id, tallyFormId, folderId)
 
   const base = {
@@ -465,7 +500,9 @@ export async function importTallyFormFromApiKey(
     emptyRows: 0,
     unmatched: [] as string[],
     deletedQuestions: [] as string[],
-    folder: options.folderName ?? null,
+    // What actually happened, not what was asked for: a name that never became
+    // a folder row must not be reported back as "filed in …".
+    folder: folderId ? folderName : null,
     nextPage: null as number | null,
   }
   if (!withResponses) {
@@ -499,96 +536,4 @@ export async function importTallyFormFromApiKey(
       responsesError: tallyErrorMessage(err, "Couldn't read that form's responses from Tally."),
     }
   }
-}
-
-export type FileIntoFoldersResult =
-  | { success: true; filed: number; alreadyFiled: number; unmatched: number; folders: string[] }
-  | { success: false; error: string }
-
-/**
- * File already-imported forms into folders mirroring their Tally workspaces.
- *
- * Separate from the import on purpose, rather than "just run the import
- * again". A second import would call `updateFormSettings` with the freshly
- * parsed logo and success page — both of which point at Tally — and so would
- * quietly undo the media sweep for every form it touched, putting the branding
- * back on storage the user is about to delete.
- *
- * It is also far cheaper: two API calls for the whole account instead of one
- * per form, because filing needs only each form's workspace, never its blocks.
- */
-export async function fileImportedFormsIntoFolders(
-  ctx: AuthContext,
-  apiKey: string,
-): Promise<FileIntoFoldersResult> {
-
-  let summaries: TallyFormSummary[]
-  try {
-    summaries = await listTallyForms(apiKey)
-  } catch (err) {
-    if (!(err instanceof TallyImportError)) console.error("[fileIntoFolders] failed", err)
-    return {
-      success: false,
-      error: tallyErrorMessage(err, "Couldn't read your Tally forms. Please try again."),
-    }
-  }
-
-  const ours = await db
-    .select({
-      id: forms.id,
-      externalId: sql<string>`${forms.settings}->'importedFrom'->>'externalId'`,
-      folderId: forms.folderId,
-    })
-    .from(forms)
-    .where(
-      and(
-        eq(forms.workspaceId, ctx.workspaceId),
-        isNull(forms.deletedAt),
-        sql`${forms.settings}->'importedFrom'->>'source' = 'tally'`,
-      ),
-    )
-  const byExternal = new Map(ours.filter((f) => f.externalId).map((f) => [f.externalId, f]))
-
-  let filed = 0
-  let alreadyFiled = 0
-  let unmatched = 0
-  const folders = new Set<string>()
-  // One folder row per name, however many forms land in it.
-  const folderIds = new Map<string, string | null>()
-
-  for (const summary of summaries) {
-    const form = byExternal.get(summary.id)
-    if (!form) continue // in Tally but never imported here — not our business
-    if (!summary.workspaceName) {
-      unmatched += 1
-      continue
-    }
-
-    let folderId = folderIds.get(summary.workspaceName)
-    if (folderId === undefined) {
-      folderId = await ensureFolder(ctx, summary.workspaceName)
-      folderIds.set(summary.workspaceName, folderId)
-    }
-    if (!folderId) {
-      unmatched += 1
-      continue
-    }
-    folders.add(summary.workspaceName)
-
-    if (form.folderId === folderId) {
-      alreadyFiled += 1
-      continue
-    }
-    await db.update(forms).set({ folderId }).where(eq(forms.id, form.id))
-    filed += 1
-  }
-
-  if (filed > 0) {
-    invalidate(ctx, {
-      tags: [`workspace-forms-${ctx.workspaceId}`],
-      paths: ["/forms"],
-    })
-  }
-
-  return { success: true, filed, alreadyFiled, unmatched, folders: [...folders].sort() }
 }

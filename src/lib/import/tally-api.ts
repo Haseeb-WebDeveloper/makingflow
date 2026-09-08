@@ -225,19 +225,33 @@ export async function listTallyWorkspaces(apiKey: string): Promise<Map<string, s
   return names
 }
 
+export type TallyFormList = {
+  forms: TallyFormSummary[]
+  /**
+   * Whether the workspace lookup answered. `false` means every `workspaceName`
+   * below is null because we could not read them — not because the account has
+   * none. That is the distinction the caller needs in order to warn BEFORE a
+   * migration lands unfiled, which is the only moment the user can act on it.
+   */
+  workspacesAvailable: boolean
+}
+
 /** Every form the key can see, across all its workspaces. */
-export async function listTallyForms(apiKey: string): Promise<TallyFormSummary[]> {
+export async function listTallyForms(apiKey: string): Promise<TallyFormList> {
   const key = requireKey(apiKey)
 
   // Names first, so each form arrives already knowing what to be filed under.
   let names = new Map<string, string>()
+  let workspacesAvailable = true
   try {
     names = await listTallyWorkspaces(key)
   } catch (err) {
     // A key that can't read workspaces shouldn't cost the user their form list;
     // they just lose the folder names. But it must not fail SILENTLY — this
     // catch once hid a bad request for an entire migration, and the only
-    // symptom was that no folders appeared.
+    // symptom was that no folders appeared. Now it is reported up as well as
+    // logged, so the import screen can say so instead of quietly not filing.
+    workspacesAvailable = false
     console.warn(
       "[tally] could not read workspaces; forms will import unfiled:",
       err instanceof TallyImportError ? err.code : "unknown",
@@ -276,7 +290,23 @@ export async function listTallyForms(apiKey: string): Promise<TallyFormSummary[]
     if (data.hasMore !== true || items.length === 0) break
   }
 
-  return out
+  return { forms: out, workspacesAvailable }
+}
+
+/**
+ * The folder name one form should be filed under, or null.
+ *
+ * For callers that hold a form id and nothing else — the MCP tool, mostly —
+ * where walking the whole paginated form list to find one row would be absurd.
+ * `GET /forms/{id}` already carries the grouping, so this is one extra request.
+ */
+export async function resolveTallyGroupName(
+  apiKey: string,
+  groupId: string | null,
+): Promise<string | null> {
+  if (!groupId) return null
+  const names = await listTallyWorkspaces(apiKey)
+  return names.get(groupId) ?? null
 }
 
 /**
@@ -289,12 +319,15 @@ export async function listTallyForms(apiKey: string): Promise<TallyFormSummary[]
 export async function fetchTallyFormFromApi(
   apiKey: string,
   formId: string,
-): Promise<TallyParseResult> {
+): Promise<TallyParseResult & { groupId: string | null }> {
   const key = requireKey(apiKey)
-  const data = await tallyGet<{ name?: unknown; blocks?: unknown; settings?: unknown }>(
-    key,
-    `/forms/${encodeURIComponent(formId)}`,
-  )
+  const data = await tallyGet<{
+    name?: unknown
+    blocks?: unknown
+    settings?: unknown
+    workspaceId?: unknown
+    folderId?: unknown
+  }>(key, `/forms/${encodeURIComponent(formId)}`)
 
   if (!Array.isArray(data.blocks)) {
     throw new TallyImportError("NO_DEFINITION", TALLY_ERROR_MESSAGES.NO_DEFINITION)
@@ -307,6 +340,12 @@ export async function fetchTallyFormFromApi(
   )
   return {
     ...parsed,
+    // Same rule as the list endpoint: a form filed in a folder belongs under
+    // the folder, otherwise under its workspace. Read here so a caller that
+    // never saw the list can still file the form it just imported.
+    groupId:
+      (typeof data.folderId === "string" ? data.folderId : null) ??
+      (typeof data.workspaceId === "string" ? data.workspaceId : null),
     // Merge, do not replace: the parser already put the thank-you page into
     // settings, and form-level settings come from a different part of the payload.
     form: {

@@ -84,18 +84,18 @@ export const dataTools: RegisteredMcpTool[] = [
       "Bring a Tally form into this workspace. Two ways in, depending on what the user has.",
       "",
       "`from_url` needs nothing but a public Tally share link — no Tally account. It rebuilds the questions as a draft. Follow it with `submissions` and the CSV Tally exported to bring the responses across; the CSV joins on question labels, so the form has to exist first.",
-      "`list` and `from_api` use a Tally API key, reach private and unpublished forms, and match answers more reliably. `file_into_folders` then recreates the user's Tally workspaces as folders here.",
+      "`list` and `from_api` use a Tally API key, reach private and unpublished forms, and match answers more reliably. `from_api` also recreates the form's Tally workspace as a folder here and files it there, so a whole account arrives organized the way it left.",
       "",
       "The API key is used for this one request and never stored — a Tally key can delete the account's forms, so we do not keep one. It does pass through this conversation to reach us; if the user would rather it did not, they can do the same import from the web app.",
       "Imported forms arrive as drafts and accept no responses until published. Importing the same responses twice adds nothing the second time.",
     ].join("\n"),
     inputSchema: z.object({
-      operation: z.enum(["from_url", "submissions", "list", "from_api", "file_into_folders"]),
+      operation: z.enum(["from_url", "submissions", "list", "from_api"]),
       url: z.string().optional().describe("Required for `from_url`: the public Tally share link."),
       apiKey: z
         .string()
         .optional()
-        .describe("Required for `list`, `from_api` and `file_into_folders`."),
+        .describe("Required for `list` and `from_api`."),
       tallyFormId: z.string().optional().describe("Required for `from_api`. From `list`."),
       formId: z.string().optional().describe("Required for `submissions`: the form here to load into."),
       csv: z.string().optional().describe("Required for `submissions`: the CSV Tally exported."),
@@ -110,7 +110,7 @@ export const dataTools: RegisteredMcpTool[] = [
         .describe("`from_api`: continue a large import from the `nextPage` a previous call returned."),
     }),
     outputSchema: z.object({
-      operation: z.enum(["from_url", "submissions", "list", "from_api", "file_into_folders"]),
+      operation: z.enum(["from_url", "submissions", "list", "from_api"]),
       formId: z.string().nullable().describe("The form created here, when one was."),
       title: z.string().nullable(),
       fieldCount: z.number().int().nullable(),
@@ -135,9 +135,12 @@ export const dataTools: RegisteredMcpTool[] = [
           }),
         )
         .describe("Only for `list`."),
-      filed: z
-        .object({ filed: z.number().int(), alreadyFiled: z.number().int(), folders: z.array(z.string()) })
-        .nullable(),
+      workspacesAvailable: z
+        .boolean()
+        .nullable()
+        .describe(
+          "`list` only. False means the key could not read the account's workspaces, so `from_api` will import these forms without folders — worth telling the user before they migrate.",
+        ),
       nextPage: z
         .number()
         .int()
@@ -165,7 +168,7 @@ export const dataTools: RegisteredMcpTool[] = [
           submissionCount: number
           tallyWorkspace: string | null
         }[],
-        filed: null,
+        workspacesAvailable: null,
         nextPage: null,
         responsesError: null,
         folder: null,
@@ -218,6 +221,7 @@ export const dataTools: RegisteredMcpTool[] = [
               submissionCount: f.submissionCount,
               tallyWorkspace: f.workspaceName,
             })),
+            workspacesAvailable: result.workspacesAvailable,
           }
         }
 
@@ -230,6 +234,9 @@ export const dataTools: RegisteredMcpTool[] = [
             args.apiKey,
             args.tallyFormId,
             args.withSubmissions,
+            // No `folderName`: this caller holds a form id and nothing else, so
+            // the import resolves the Tally workspace itself and files the form
+            // under it. Passing null here would import it into a flat list.
             args.startPage ? { startPage: args.startPage } : {},
           )
           if (!result.success) throw new ToolError(result.error)
@@ -258,20 +265,6 @@ export const dataTools: RegisteredMcpTool[] = [
           }
         }
 
-        case "file_into_folders": {
-          if (!args.apiKey) throw new ToolError("Filing into folders needs a Tally API key.")
-          const result = await importCore.fileImportedFormsIntoFolders(ctx, args.apiKey)
-          if (!result.success) throw new ToolError(result.error)
-          return {
-            ...empty,
-            operation: args.operation,
-            filed: {
-              filed: result.filed,
-              alreadyFiled: result.alreadyFiled,
-              folders: result.folders,
-            },
-          }
-        }
       }
     },
   }),

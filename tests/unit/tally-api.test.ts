@@ -163,17 +163,20 @@ describe("listTallyForms", () => {
       ],
       hasMore: false,
     })
-    expect(await listTallyForms(KEY)).toEqual([
-      {
-        id: "wA5bYz",
-        name: "Job application",
-        status: "PUBLISHED",
-        isClosed: false,
-        submissionCount: 128,
-        workspaceId: "mOPMgM",
-        workspaceName: "HR - FIGMENTA",
-      },
-    ])
+    expect(await listTallyForms(KEY)).toEqual({
+      workspacesAvailable: true,
+      forms: [
+        {
+          id: "wA5bYz",
+          name: "Job application",
+          status: "PUBLISHED",
+          isClosed: false,
+          submissionCount: 128,
+          workspaceId: "mOPMgM",
+          workspaceName: "HR - FIGMENTA",
+        },
+      ],
+    })
   })
 
   test("asks /workspaces for nothing but the workspaces", async () => {
@@ -192,12 +195,15 @@ describe("listTallyForms", () => {
       items: [{ id: "a", name: "A", workspaceId: "w8AJQk", folderId: "fold1" }],
       hasMore: false,
     })
-    const [form] = await listTallyForms(KEY)
-    expect(form.workspaceName).toBe("Archive")
+    const { forms } = await listTallyForms(KEY)
+    expect(forms[0].workspaceName).toBe("Archive")
   })
 
-  test("still lists the forms when workspaces cannot be read", async () => {
-    // Losing the folder names is a worse outcome than losing the import.
+  test("still lists the forms when workspaces cannot be read, and says so", async () => {
+    // Losing the folder names is a worse outcome than losing the import — but
+    // it must be reported, not absorbed. A null workspaceName otherwise reads
+    // as "this form has no workspace", and a whole migration lands unfiled with
+    // nothing on screen to explain it.
     let call = 0
     vi.stubGlobal(
       "fetch",
@@ -212,9 +218,17 @@ describe("listTallyForms", () => {
         }
       }),
     )
-    const forms = await listTallyForms(KEY)
+    const { forms, workspacesAvailable } = await listTallyForms(KEY)
     expect(forms.map((f) => f.id)).toEqual(["a"])
     expect(forms[0].workspaceName).toBeNull()
+    expect(workspacesAvailable).toBe(false)
+  })
+
+  test("reports workspaces as available when the account simply has none", async () => {
+    // The other half of the distinction above: nothing to file under is not
+    // the same failure as being unable to look.
+    stubJson(NO_WORKSPACES, { items: [{ id: "a", name: "A" }], hasMore: false })
+    expect(await listTallyForms(KEY)).toMatchObject({ workspacesAvailable: true })
   })
 
   test("follows pagination until hasMore is false", async () => {
@@ -223,24 +237,27 @@ describe("listTallyForms", () => {
       { items: [{ id: "a", name: "A" }], hasMore: true },
       { items: [{ id: "b", name: "B" }], hasMore: false },
     )
-    const forms = await listTallyForms(KEY)
+    const { forms } = await listTallyForms(KEY)
     expect(forms.map((f) => f.id)).toEqual(["a", "b"])
     expect(calls[calls.length - 1].url).toContain("page=2")
   })
 
   test("survives a form row missing everything but an id", async () => {
     stubJson(NO_WORKSPACES, { items: [{ id: "a" }, { name: "no id" }], hasMore: false })
-    expect(await listTallyForms(KEY)).toEqual([
-      {
-        id: "a",
-        name: "Untitled form",
-        status: "",
-        isClosed: false,
-        submissionCount: 0,
-        workspaceId: null,
-        workspaceName: null,
-      },
-    ])
+    expect(await listTallyForms(KEY)).toEqual({
+      workspacesAvailable: true,
+      forms: [
+        {
+          id: "a",
+          name: "Untitled form",
+          status: "",
+          isClosed: false,
+          submissionCount: 0,
+          workspaceId: null,
+          workspaceName: null,
+        },
+      ],
+    })
   })
 })
 
@@ -262,6 +279,20 @@ describe("fetchTallyFormFromApi", () => {
     const { refs } = await fetchTallyFormFromApi(KEY, "3qDpEY")
     // Without these the API path would have to fall back to matching label text.
     expect(refs.every((r) => typeof r.groupUuid === "string" && r.groupUuid.length > 0)).toBe(true)
+  })
+
+  test("carries the form's grouping, so a caller with only an id can still file it", async () => {
+    // The MCP path never sees the form list, so this is the only place it can
+    // learn which Tally workspace the form it just imported belongs to.
+    stubJson({ name: "x", blocks: fixture.blocks, settings: {}, workspaceId: "mOPMgM" })
+    expect((await fetchTallyFormFromApi(KEY, "3qDpEY")).groupId).toBe("mOPMgM")
+
+    // A form filed inside a folder belongs under the folder, same as the list.
+    stubJson({ name: "x", blocks: fixture.blocks, settings: {}, workspaceId: "mOPMgM", folderId: "fold1" })
+    expect((await fetchTallyFormFromApi(KEY, "3qDpEY")).groupId).toBe("fold1")
+
+    stubJson({ name: "x", blocks: fixture.blocks, settings: {} })
+    expect((await fetchTallyFormFromApi(KEY, "3qDpEY")).groupId).toBeNull()
   })
 
   test("fails loudly when there are no blocks to read", async () => {
