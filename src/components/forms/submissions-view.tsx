@@ -4,7 +4,10 @@ import { useMemo, useState, useTransition } from "react"
 import { Icon } from "@/components/ui/icon"
 import {
   SubmissionsTable,
+  cellToText,
   type Cell,
+  type SortKey,
+  type SortState,
   type SubmissionRow,
 } from "@/components/forms/submissions-table"
 import { SubmissionsFilterDialog } from "@/components/forms/submissions-filter-dialog"
@@ -20,7 +23,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { showToast } from "@/components/ui/toast"
-import { deleteSubmission } from "@/lib/actions/submissions"
+import { Button } from "@/components/ui/button"
+import { deleteSubmission, loadMoreSubmissions } from "@/lib/actions/submissions"
 import {
   applyFilters,
   type Filter,
@@ -58,6 +62,7 @@ export function SubmissionsView({
   columns,
   rawRows,
   totalCompleted,
+  nextCursor = null,
   intelligenceEnabled = false,
 }: {
   formId: string
@@ -65,6 +70,8 @@ export function SubmissionsView({
   rawRows: RawRow[]
   /** Every completed response the form has, not just the page in `rawRows`. */
   totalCompleted: number
+  /** Opaque cursor for the next page, or null when this is all of them. */
+  nextCursor?: string | null
   intelligenceEnabled?: boolean
 }) {
   const [search, setSearch] = useState("")
@@ -75,28 +82,89 @@ export function SubmissionsView({
   const [pendingDelete, setPendingDelete] = useState<string | null>(null)
   const [openId, setOpenId] = useState<string | null>(null)
   const [isDeleting, startDelete] = useTransition()
+  const [sort, setSort] = useState<SortState>(null)
+  // Pages fetched since the first render, appended to the ones the server sent.
+  const [extraRows, setExtraRows] = useState<RawRow[]>([])
+  const [cursor, setCursor] = useState<string | null>(nextCursor)
+  const [isLoadingMore, startLoadMore] = useTransition()
+
+  /**
+   * Three clicks per column: descending, ascending, back to the form's own
+   * order. The third is what makes the control safe to try — without it,
+   * sorting is a door that does not close, and the only way back to "newest
+   * first" is a page reload.
+   */
+  function toggleSort(key: SortKey) {
+    setSort((current) => {
+      if (!current || current.key !== key) return { key, dir: "desc" }
+      if (current.dir === "desc") return { key, dir: "asc" }
+      return null
+    })
+  }
+
+  function loadMore() {
+    if (!cursor) return
+    startLoadMore(async () => {
+      const res = await loadMoreSubmissions(formId, cursor)
+      if (!res.success) {
+        showToast(res.error, { type: "error" })
+        return
+      }
+      setExtraRows((prev) => [...prev, ...res.rows])
+      setCursor(res.nextCursor)
+    })
+  }
 
   // Locally hide rows the owner has deleted so the table updates instantly; a
   // server refresh (revalidatePath) already excludes them, so the set is just a
   // harmless no-op afterwards.
+  const allRows = useMemo(
+    () => (extraRows.length === 0 ? rawRows : [...rawRows, ...extraRows]),
+    [rawRows, extraRows],
+  )
+
   const liveRows = useMemo(
-    () => (deletedIds.size === 0 ? rawRows : rawRows.filter((r) => !deletedIds.has(r.id))),
-    [rawRows, deletedIds],
+    () => (deletedIds.size === 0 ? allRows : allRows.filter((r) => !deletedIds.has(r.id))),
+    [allRows, deletedIds],
   )
 
   const filtered = useMemo(
     () => applyFilters(liveRows, columns, { search, filters, match }),
     [liveRows, columns, search, filters, match],
   )
-  const displayRows: SubmissionRow[] = useMemo(
-    () =>
-      filtered.map((r) => ({
-        id: r.id,
-        submittedAt: r.submittedAt,
-        cells: columns.map((c) => toCell(r.values[c.id], c.type)),
-      })),
-    [filtered, columns],
-  )
+  const displayRows: SubmissionRow[] = useMemo(() => {
+    const mapped = filtered.map((r) => ({
+      id: r.id,
+      submittedAt: r.submittedAt,
+      cells: columns.map((c) => toCell(r.values[c.id], c.type)),
+      score: r.aiScore ?? null,
+    }))
+
+    // Sorting AFTER filtering, over every loaded row. This is why sorting is
+    // client-side: the search box and the filters already work this way, so a
+    // server sort would have to re-fetch and would still only order the page it
+    // fetched — the two would disagree the moment somebody typed anything.
+    if (!sort) return mapped
+    const dir = sort.dir === "asc" ? 1 : -1
+    return [...mapped].sort((a, b) => {
+      if (sort.key === "submitted") {
+        return dir * (Date.parse(a.submittedAt) - Date.parse(b.submittedAt))
+      }
+      if (sort.key === "score") {
+        // Unscored responses sit at the end either way. They are not "zero" —
+        // ranking them below a genuine 0 would be inventing a judgement.
+        if (a.score == null || b.score == null) {
+          return a.score == null ? (b.score == null ? 0 : 1) : -1
+        }
+        return dir * (a.score - b.score)
+      }
+      const left = cellToText(a.cells[sort.key] ?? "")
+      const right = cellToText(b.cells[sort.key] ?? "")
+      // Empty answers go last regardless of direction, for the same reason.
+      if (!left || !right) return !left ? (!right ? 0 : 1) : -1
+      return dir * left.localeCompare(right, undefined, { numeric: true, sensitivity: "base" })
+    })
+  }, [filtered, columns, sort])
 
   const activeCount = filters.filter(conditionComplete).length
   const columnLabels = columns.map((c) => c.label)
@@ -205,14 +273,34 @@ export function SubmissionsView({
           subtitle="Try adjusting your search or filters."
         />
       ) : (
-        <SubmissionsTable
-          columns={columnLabels}
-          rows={displayRows}
-          onDelete={(id) => setPendingDelete(id)}
-          onOpen={(id) => setOpenId(id)}
-          showScore={hasScores}
-          scoreById={scoreById}
-        />
+        <>
+          <SubmissionsTable
+            formId={formId}
+            columns={columnLabels}
+            rows={displayRows}
+            onDelete={(id) => setPendingDelete(id)}
+            onOpen={(id) => setOpenId(id)}
+            showScore={hasScores}
+            scoreById={scoreById}
+            sort={sort}
+            onSort={toggleSort}
+          />
+
+          {/* Appending, not paging. The search box and the filters above work
+              over the rows already loaded, so replacing them would leave a
+              search quietly looking at a different set than the one it was
+              typed against. */}
+          {cursor ? (
+            <div className="mt-3 flex items-center justify-center gap-3">
+              <Button variant="outline" size="sm" disabled={isLoadingMore} onClick={loadMore}>
+                {isLoadingMore ? "Loading…" : "Load more"}
+              </Button>
+              <span className="text-xs text-muted-foreground">
+                Showing {liveRows.length} of {totalCompleted}
+              </span>
+            </div>
+          ) : null}
+        </>
       )}
 
       <SubmissionDetailSheet

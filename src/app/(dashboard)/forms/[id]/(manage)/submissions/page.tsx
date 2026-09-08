@@ -1,7 +1,7 @@
 import type { Metadata } from "next"
 import { notFound } from "next/navigation"
 import { getDefaultWorkspace } from "@/lib/auth/session"
-import { getFormShell, getFormSubmissionCounts, getFormSubmissions } from "@/lib/data/forms"
+import { getFormShell, getFormSubmissionCounts, getFormSubmissionsPage } from "@/lib/data/forms"
 import { SubmissionsView } from "@/components/forms/submissions-view"
 
 export const metadata: Metadata = { title: "Submissions · MakingFlow" }
@@ -14,11 +14,12 @@ export default async function SubmissionsPage({
   const { id } = await params
   const workspace = await getDefaultWorkspace()
   if (!workspace) notFound()
-  // `data.rows` is a capped page, not the whole set — the true total comes from
-  // getFormSubmissionCounts so the table can say how much it isn't showing.
+  // A keyset page rather than the old flat cap, so "Load more" has somewhere to
+  // continue from. The true total still comes from getFormSubmissionCounts, so
+  // the table can say how much of it is on screen.
   const [shell, data, counts] = await Promise.all([
     getFormShell(id, workspace.id),
-    getFormSubmissions(id, workspace.id),
+    getFormSubmissionsPage(id, workspace.id, { limit: 50, withAnswers: true }),
     getFormSubmissionCounts(id, workspace.id),
   ])
   if (!shell || !data) notFound()
@@ -38,6 +39,7 @@ export default async function SubmissionsPage({
       columns={data.columns}
       rawRows={rawRows}
       totalCompleted={counts?.completed ?? rawRows.length}
+      nextCursor={data.nextCursor}
       intelligenceEnabled={shell.intelligenceEnabled}
     />
   )

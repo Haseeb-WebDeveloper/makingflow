@@ -24,6 +24,7 @@ import { isCloudinaryUrl } from "@/lib/cloudinary/url"
 import { processSubmission, intelligenceEnabled } from "@/lib/ai/submission-intelligence"
 import { sessionContext } from "@/lib/auth/context-web"
 import * as submissionsCore from "@/lib/core/submissions"
+import { getFormSubmissionsPage } from "@/lib/data/forms"
 import { NON_ANSWER_TYPES, isEmpty, isFieldVisible } from "@/lib/builder/logic"
 import { MAX_ANSWERS, MAX_VALUE_LEN, valueLength } from "@/lib/submissions/limits"
 import { LIMITS, rateLimit } from "@/lib/rate-limit"
@@ -623,4 +624,58 @@ export async function generateSubmissionIntelligence(
   const session = await sessionContext()
   if (!session.ok) return { success: false, error: 'Not authorized' }
   return submissionsCore.generateSubmissionIntelligence(session.ctx, submissionId)
+}
+
+/**
+ * The next page of responses for the table.
+ *
+ * APPENDS rather than replaces, which is why this returns rows instead of the
+ * caller re-querying with an offset. The responses table filters and searches
+ * over the rows it holds, so a page that swapped them out would leave the
+ * search box quietly looking at a different set than the one it was typed
+ * against — the classic paginated-search bug, where page two of a search finds
+ * nothing because the search never left page one.
+ */
+export async function loadMoreSubmissions(
+  formId: string,
+  cursor: string,
+): Promise<
+  | {
+      success: true
+      rows: {
+        id: string
+        submittedAt: string
+        values: Record<string, AnswerValue>
+        aiSummary: string | null
+        aiScore: number | null
+        aiScreenReason: string | null
+      }[]
+      nextCursor: string | null
+    }
+  | { success: false; error: string }
+> {
+  const session = await sessionContext()
+  if (!session.ok) return { success: false, error: "Not authorized" }
+
+  const page = await getFormSubmissionsPage(formId, session.ctx.workspaceId, {
+    cursor,
+    withAnswers: true,
+  })
+  // Scoped to the caller's workspace inside the query, so a null here is either
+  // another tenant's form or one that no longer exists — indistinguishable, on
+  // purpose.
+  if (!page) return { success: false, error: "Form not found" }
+
+  return {
+    success: true,
+    rows: page.rows.map((r) => ({
+      id: r.id,
+      submittedAt: r.submittedAt.toISOString(),
+      values: r.values,
+      aiSummary: r.aiSummary,
+      aiScore: r.aiScore,
+      aiScreenReason: r.aiScreenReason,
+    })),
+    nextCursor: page.nextCursor,
+  }
 }
