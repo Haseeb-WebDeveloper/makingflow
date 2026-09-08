@@ -19,6 +19,16 @@ export async function sendEmail(opts: {
   subject: string
   html: string
   replyTo?: string
+  /**
+   * Stable id for this send, so a retry of a request that already succeeded
+   * does not produce a second email.
+   *
+   * Sent unconditionally: if the provider honours it we get deduplication for
+   * free, and if it does not, an unrecognised header is ignored. The delivery
+   * queue retries on timeouts — exactly the case where the send landed and the
+   * response did not — so this is worth having even at the chance it is a no-op.
+   */
+  idempotencyKey?: string
 }): Promise<{ ok: boolean; error?: string }> {
   const key = process.env.RESEND_API_KEY
   const from = process.env.EMAIL_FROM
@@ -28,7 +38,11 @@ export async function sendEmail(opts: {
   try {
     const res = await fetch(RESEND_URL, {
       method: "POST",
-      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+      headers: {
+        Authorization: `Bearer ${key}`,
+        "Content-Type": "application/json",
+        ...(opts.idempotencyKey ? { "Idempotency-Key": opts.idempotencyKey } : {}),
+      },
       body: JSON.stringify({
         from,
         to: opts.to,

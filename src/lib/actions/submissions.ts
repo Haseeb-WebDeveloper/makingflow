@@ -1,7 +1,7 @@
 "use server"
 
 import { after } from "next/server"
-import { and, eq, isNull, sql } from "drizzle-orm"
+import { and, eq, inArray, isNull, sql } from "drizzle-orm"
 import { db } from "@/lib/db"
 import {
   forms,
@@ -20,8 +20,6 @@ import { getVisitorKey, getRespondentKey, logFormEvent } from "@/lib/analytics/t
 import { getServerSubmissionMeta } from "@/lib/analytics/request-meta"
 import { syncSubmissionToSheets } from "@/lib/integrations/sync"
 import { claimByIds, deliverBatch } from "@/lib/integrations/webhook-delivery"
-import { sendSubmissionEmails } from "@/lib/integrations/email"
-import { deliverDiscord } from "@/lib/integrations/discord"
 import { syncSubmissionToNotion } from "@/lib/integrations/notion-sync"
 import { isCloudinaryUrl } from "@/lib/cloudinary/url"
 import { processSubmission, intelligenceEnabled } from "@/lib/ai/submission-intelligence"
@@ -445,7 +443,7 @@ export async function submitForm(input: {
       })
       if (uploadRows.length > 0) await tx.insert(uploads).values(uploadRows)
 
-      // ── The webhook outbox ──
+      // ── The integration outbox ──
       //
       // IN THE TRANSACTION, ON PURPOSE. This is the entire reason a failed
       // delivery is now recoverable: there is no instant at which a submission
@@ -460,18 +458,27 @@ export async function submitForm(input: {
       //
       // Nothing is SENT here. These rows are `pending`; the attempt happens in
       // after(), and the cron sweep picks up whatever that does not finish.
-      const endpoints = await tx
-        .select({ id: formIntegrations.id, config: formIntegrations.config })
+      // One query for every destination this form has. Webhooks can be several;
+      // email and Discord are one each by design.
+      const destinations = await tx
+        .select({
+          id: formIntegrations.id,
+          type: formIntegrations.type,
+          config: formIntegrations.config,
+        })
         .from(formIntegrations)
         .where(
           and(
             eq(formIntegrations.formId, form.id),
-            eq(formIntegrations.type, "webhook"),
             eq(formIntegrations.enabled, true),
+            inArray(formIntegrations.type, ["webhook", "email", "discord"]),
           ),
         )
 
-      if (endpoints.length > 0) {
+      if (destinations.length > 0) {
+        // Snapshotted for webhooks ONLY, because a webhook signs the exact bytes
+        // it sends and a retry has to reproduce them. Email and Discord render
+        // from the answers table at send time — see submission-content.ts.
         const payload: WebhookDeliveryPayload = {
           event: "submission.created",
           form: { id: form.id, title: form.title, publicId: form.publicId },
@@ -481,17 +488,24 @@ export async function submitForm(input: {
         const created = await tx
           .insert(integrationDeliveries)
           .values(
-            endpoints.map((endpoint) => ({
+            destinations.map((destination) => ({
               workspaceId: form.workspaceId,
               formId: form.id,
-              type: "webhook" as const,
-              integrationId: endpoint.id,
+              type: destination.type,
+              integrationId: destination.id,
               submissionId: sid,
               event: payload.event,
-              // Snapshot: the endpoint can be edited or deleted before the last
-              // retry, and the delivery goes where it was addressed.
-              url: (endpoint.config as WebhookIntegrationConfig).url,
-              payload,
+              // A webhook's URL is snapshotted because the endpoint can be
+              // edited or deleted before the last retry, and the delivery
+              // should go where it was addressed. The others resolve their
+              // destination from config at send time — and Discord's URL is
+              // itself the credential, so copying it here would put a second
+              // copy of a secret in a second table.
+              url:
+                destination.type === "webhook"
+                  ? (destination.config as WebhookIntegrationConfig).url
+                  : null,
+              payload: destination.type === "webhook" ? payload : null,
               // Slightly in the future so the sweep's due-work query cannot
               // match a row the inline attempt below is about to take. The
               // claim makes overlapping senders safe either way; this just
@@ -499,9 +513,8 @@ export async function submitForm(input: {
               nextAttemptAt: new Date(Date.now() + INLINE_GRACE_MS),
             })),
           )
-          // The unique (integration, submission, event) index makes a repeated
-          // submit for the same submission a no-op rather than a second
-          // delivery of the same event.
+          // The partial unique indexes make a repeated submit for the same
+          // submission a no-op rather than a second delivery of the same event.
           .onConflictDoNothing()
           .returning({ id: integrationDeliveries.id })
         deliveryIds = created.map((row) => row.id)
@@ -546,22 +559,20 @@ export async function submitForm(input: {
         submittedAt,
         committedId ?? "",
       ),
-      // The webhook rows are already committed, so this is an optimisation, not
-      // the delivery mechanism: it gets the common case out fast. If this never
-      // runs at all — the instance is killed, a deploy lands mid-request — the
-      // rows sit `pending` and the cron sweep picks them up within the minute.
-      // That is the durability the old fire-and-forget could not offer.
+      // Webhooks, email and Discord all go through here now. The rows are
+      // already committed, so this is an optimisation rather than the delivery
+      // mechanism: it gets the common case out fast. If it never runs at all —
+      // the instance is killed, a deploy lands mid-request — the rows sit
+      // `pending` and the cron sweep picks them up within the minute. That is
+      // the durability the old fire-and-forget could not offer.
       //
       // It claims rather than just sending, so a sweep that got there first
       // wins and nothing goes out twice. On failure it records and leaves the
       // row for the sweep; there is deliberately no immediate second attempt,
-      // which only ever doubled the load on an endpoint that was already
-      // struggling.
+      // which only ever doubled the load on a destination already struggling.
       deliveryIds.length > 0
         ? claimByIds(deliveryIds).then(deliverBatch)
         : Promise.resolve(),
-      sendSubmissionEmails({ id: form.id, title: form.title }, webhookAnswers),
-      deliverDiscord({ id: form.id, title: form.title }, webhookAnswers),
       syncSubmissionToNotion(
         { id: form.id, workspaceId: form.workspaceId, title: form.title },
         accepted,

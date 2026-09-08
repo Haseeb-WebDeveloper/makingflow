@@ -5,12 +5,21 @@ import { db } from "@/lib/db"
 import {
   formIntegrations,
   integrationDeliveries,
+  type DiscordIntegrationConfig,
+  type EmailIntegrationConfig,
+  type IntegrationConfig,
   type IntegrationDelivery,
   type WebhookIntegrationConfig,
 } from "@/lib/db/schema"
 import { checkOutboundUrl } from "@/lib/core/outbound-url"
 import { postWebhook } from "@/lib/integrations/webhook"
 import { deliveryHeaders } from "@/lib/integrations/webhook-signature"
+import { deliverDiscord } from "@/lib/integrations/discord"
+import { sendSubmissionEmail } from "@/lib/integrations/email"
+import {
+  loadDeliveryContent,
+  type SendOutcome,
+} from "@/lib/integrations/submission-content"
 import { BACKOFF_SECONDS, JITTER_RATIO } from "@/lib/integrations/webhook-policy"
 
 /**
@@ -83,7 +92,19 @@ export function nextAttemptDelay(attempts: number): number | null {
  * that endpoint is still switched on.
  */
 export type ClaimedDelivery = IntegrationDelivery & {
-  secret: string | null
+  /**
+   * The destination's CURRENT configuration, read at claim time rather than
+   * snapshotted onto the delivery.
+   *
+   * Snapshotting would put a second copy of a credential in a second table —
+   * a webhook signing secret, a Discord webhook URL, which IS the credential.
+   * Reading it live also means rotating a secret takes effect on the next
+   * retry, which is what someone rotating a leaked one expects.
+   *
+   * Null for a Sheets or Notion delivery whose per-form row has not been
+   * provisioned yet; those senders resolve their destination themselves.
+   */
+  config: IntegrationConfig | null
   endpointEnabled: boolean
 }
 
@@ -115,7 +136,7 @@ async function withSecrets(ids: string[]): Promise<ClaimedDelivery[]> {
 
   return rows.map(({ delivery, config, enabled }) => ({
     ...delivery,
-    secret: (config as WebhookIntegrationConfig | null)?.secret ?? null,
+    config: (config as IntegrationConfig | null) ?? null,
     // No integration row means nothing has been switched off — Sheets and
     // Notion decide that from the workspace connection at send time.
     endpointEnabled: enabled ?? true,
@@ -281,59 +302,107 @@ async function recordFailure(
 }
 
 /**
- * Send one claimed delivery and record the outcome.
+ * Post a webhook.
  *
  * The URL is re-validated HERE, on every attempt, not only when it was saved.
  * Rows stored before `checkOutboundUrl` existed are still live, and a hostname
  * that was public when it was saved can resolve somewhere else later. A URL
- * that fails the check is `exhausted` immediately rather than retried — no
- * amount of waiting makes an internal address a legitimate destination.
+ * that fails the check is retired immediately rather than retried — no amount
+ * of waiting makes an internal address a legitimate destination.
  */
-export async function attemptDelivery(row: ClaimedDelivery): Promise<boolean> {
-  // Switched off between enqueue and send. Turning a webhook off has to stop
-  // deliveries that were already owed, or "pause" means "pause new ones and
-  // keep firing the backlog for the next eight hours" — which is not what the
-  // toggle says.
-  if (!row.endpointEnabled) {
-    await recordFailure(row, { error: "Endpoint disabled" }, { permanent: true })
-    return false
-  }
-
-  // `url` and `payload` are nullable now that this table carries every
-  // integration type, and only a webhook has them. A webhook row without them
-  // is corrupt rather than retryable — waiting will not conjure a destination.
-  if (row.type !== "webhook" || !row.url || !row.payload) {
-    await recordFailure(
-      row,
-      { error: `No sender for a ${row.type} delivery with no destination` },
-      { permanent: true },
-    )
-    return false
+async function sendWebhook(row: ClaimedDelivery): Promise<SendOutcome> {
+  // url and payload are nullable now the table carries every type, and only a
+  // webhook has them. A webhook row missing them is corrupt, not retryable.
+  if (!row.url || !row.payload) {
+    return { ok: false, error: "Webhook delivery has no destination", permanent: true }
   }
 
   const checked = checkOutboundUrl(row.url)
-  if (!checked.ok) {
-    await recordFailure(row, { error: checked.error }, { permanent: true })
+  if (!checked.ok) return { ok: false, error: checked.error, permanent: true }
+
+  const body = JSON.stringify(row.payload)
+  const result = await postWebhook(
+    checked.url,
+    body,
+    deliveryHeaders({
+      deliveryId: row.id,
+      event: row.event,
+      body,
+      secret: (row.config as WebhookIntegrationConfig | null)?.secret ?? null,
+    }),
+  )
+  return { ok: result.ok, status: result.status, error: result.error, body: result.body }
+}
+
+/**
+ * Send one claimed delivery and record what happened.
+ *
+ * Dispatches on type. Every sender returns a SendOutcome rather than throwing
+ * or logging, so the recording is in one place and cannot be forgotten by
+ * whoever adds the next integration — the switch below will not compile
+ * without them.
+ */
+export async function attemptDelivery(row: ClaimedDelivery): Promise<boolean> {
+  // Switched off between enqueue and send. Turning an integration off has to
+  // stop deliveries that were already owed, or "pause" means "pause new ones
+  // and keep firing the backlog for the next several hours" — which is not what
+  // the toggle says.
+  if (!row.endpointEnabled) {
+    await recordFailure(row, { error: "Integration disabled" }, { permanent: true })
     return false
   }
 
-  const body = JSON.stringify(row.payload)
-  const headers = deliveryHeaders({
-    deliveryId: row.id,
-    event: row.event,
-    body,
-    secret: row.secret,
-  })
+  let outcome: SendOutcome
 
-  const result = await postWebhook(checked.url, body, headers)
-  const stored = result.body ? result.body.slice(0, MAX_STORED_BODY) : null
+  if (row.type === "webhook") {
+    outcome = await sendWebhook(row)
+  } else {
+    // Everything else renders the submission at send time rather than replaying
+    // a snapshot, so the content is loaded here once for whichever sender runs.
+    const content = await loadDeliveryContent(row.submissionId)
+    if (!content) {
+      // The submission was deleted. There is nothing left to deliver and no
+      // retry will bring it back.
+      outcome = { ok: false, error: "Submission no longer exists", permanent: true }
+    } else {
+      switch (row.type) {
+        case "email":
+          outcome = await sendSubmissionEmail(
+            (row.config ?? { recipients: [] }) as EmailIntegrationConfig,
+            content,
+            row.id,
+          )
+          break
+        case "discord":
+          outcome = await deliverDiscord(
+            (row.config ?? { webhookUrl: "" }) as DiscordIntegrationConfig,
+            content,
+          )
+          break
+        default:
+          // Sheets and Notion are enqueued but not yet driven from here; they
+          // still run inline. Retired rather than retried so a row cannot loop.
+          outcome = {
+            ok: false,
+            error: `No queue sender for ${row.type} yet`,
+            permanent: true,
+          }
+      }
+    }
+  }
 
-  if (result.ok && result.status !== undefined) {
-    await recordSuccess(row, result.status, stored)
+  const stored = outcome.body ? outcome.body.slice(0, MAX_STORED_BODY) : null
+
+  if (outcome.ok) {
+    await recordSuccess(row, outcome.status ?? 200, stored)
     return true
   }
 
-  await recordFailure(row, { status: result.status, error: result.error, body: stored })
+  await recordFailure(
+    row,
+    { status: outcome.status, error: outcome.error, body: stored },
+    { permanent: outcome.permanent },
+  )
   return false
 }
 

@@ -1,13 +1,9 @@
 import "server-only"
 
-import { and, eq } from "drizzle-orm"
-import { db } from "@/lib/db"
-import {
-  formIntegrations,
-  type AnswerValue,
-  type DiscordIntegrationConfig,
-} from "@/lib/db/schema"
+import { type AnswerValue, type DiscordIntegrationConfig } from "@/lib/db/schema"
 import { answerFiles, answerToCell } from "@/lib/submissions/answer-format"
+import { siteUrl } from "@/lib/docs/site-url"
+import type { DeliveryContent, SendOutcome } from "@/lib/integrations/submission-content"
 
 export type DiscordAnswer = { fieldId: string; question: string; value: AnswerValue }
 
@@ -75,47 +71,38 @@ async function postDiscord(url: string, body: string): Promise<PostResult> {
 }
 
 /**
- * Best-effort: post the submission to every enabled Discord webhook on the form.
- * Runs AFTER commit and swallows failures (one retry) — a dead endpoint can't
- * block a respondent. Each endpoint is isolated.
+ * Post one response into the form's Discord channel.
+ *
+ * REPORTS its outcome rather than swallowing it, and no longer retries inline.
+ * The immediate second attempt this used to make helped with none of the real
+ * failure modes — Discord being briefly unavailable is measured in seconds, not
+ * milliseconds — and the delivery queue now does it properly, with backoff and
+ * a record.
+ *
+ * At-least-once. Discord has no idempotency key and no way to recognise a
+ * repeat, so a send that succeeded but timed out on our side becomes a second
+ * message in the channel. That is the accepted trade: a duplicate notification
+ * is noise, a missing one is a response nobody saw.
  */
 export async function deliverDiscord(
-  form: { id: string; title: string },
-  answers: DiscordAnswer[],
-): Promise<void> {
-  let rows: { config: DiscordIntegrationConfig }[]
-  try {
-    const found = await db
-      .select({ config: formIntegrations.config })
-      .from(formIntegrations)
-      .where(
-        and(
-          eq(formIntegrations.formId, form.id),
-          eq(formIntegrations.type, "discord"),
-          eq(formIntegrations.enabled, true),
-        ),
-      )
-    rows = found.map((r) => ({ config: r.config as DiscordIntegrationConfig }))
-  } catch (err) {
-    console.error("[discord] could not load endpoints", err)
-    return
+  config: DiscordIntegrationConfig,
+  content: DeliveryContent,
+): Promise<SendOutcome> {
+  if (!config.webhookUrl) {
+    return { ok: false, error: "No Discord webhook URL configured", permanent: true }
   }
-  if (rows.length === 0) return
 
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") || ""
-  const link = `${siteUrl}/forms/${form.id}/submissions`
-
-  await Promise.allSettled(
-    rows.map(async ({ config }) => {
-      const body = JSON.stringify(
-        buildDiscordMessage(form, config.includeAnswers ? answers : [], link),
-      )
-      const first = await postDiscord(config.webhookUrl, body)
-      if (first.ok) return
-      const retry = await postDiscord(config.webhookUrl, body)
-      if (!retry.ok) {
-        console.error("[discord] delivery failed", retry.error ?? retry.status)
-      }
-    }),
+  const link = `${siteUrl()}/forms/${content.form.id}/submissions`
+  const body = JSON.stringify(
+    buildDiscordMessage(
+      { title: content.form.title },
+      config.includeAnswers ? content.answers : [],
+      link,
+    ),
   )
+
+  const res = await postDiscord(config.webhookUrl, body)
+  return res.ok
+    ? { ok: true, status: res.status }
+    : { ok: false, status: res.status, error: res.error }
 }

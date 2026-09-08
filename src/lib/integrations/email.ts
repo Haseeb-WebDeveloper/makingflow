@@ -1,14 +1,10 @@
 import "server-only"
 
-import { and, eq } from "drizzle-orm"
-import { db } from "@/lib/db"
-import {
-  formIntegrations,
-  type AnswerValue,
-  type EmailIntegrationConfig,
-} from "@/lib/db/schema"
+import { type AnswerValue, type EmailIntegrationConfig } from "@/lib/db/schema"
 import { isEmailConfigured, sendEmail } from "@/lib/email/provider"
 import { answerFiles, answerToCell } from "@/lib/submissions/answer-format"
+import { siteUrl } from "@/lib/docs/site-url"
+import type { DeliveryContent, SendOutcome } from "@/lib/integrations/submission-content"
 
 export type EmailAnswer = { question: string; value: AnswerValue }
 
@@ -59,43 +55,47 @@ function buildHtml(title: string, answers: EmailAnswer[], link: string): string 
 }
 
 /**
- * Best-effort: email the configured recipients about a new submission. Runs
- * AFTER commit and swallows failures — a bounce can't block a respondent.
+ * Notify the form's configured recipients about one response.
+ *
+ * REPORTS its outcome rather than swallowing it. This used to run from after()
+ * and console.error a failure, which meant a notification nobody received was
+ * also a notification nobody knew about. It is now driven by the delivery
+ * queue, so a failure is recorded, retried and visible.
+ *
+ * At-least-once, deliberately. A send that succeeded but timed out on our side
+ * is retried, so a recipient can see the same notification twice. That is the
+ * right trade for a notification: a duplicate is mildly annoying, a silently
+ * missing one is what people actually complain about. The delivery id goes out
+ * as an idempotency key, which removes the duplicate wherever the provider
+ * honours one.
  */
-export async function sendSubmissionEmails(
-  form: { id: string; title: string },
-  answers: EmailAnswer[],
-): Promise<void> {
-  if (!isEmailConfigured()) return
-
-  let rows: { config: EmailIntegrationConfig }[]
-  try {
-    const found = await db
-      .select({ config: formIntegrations.config })
-      .from(formIntegrations)
-      .where(
-        and(
-          eq(formIntegrations.formId, form.id),
-          eq(formIntegrations.type, "email"),
-          eq(formIntegrations.enabled, true),
-        ),
-      )
-    rows = found.map((r) => ({ config: r.config as EmailIntegrationConfig }))
-  } catch (err) {
-    console.error("[email] could not load notifications", err)
-    return
+export async function sendSubmissionEmail(
+  config: EmailIntegrationConfig,
+  content: DeliveryContent,
+  deliveryId: string,
+): Promise<SendOutcome> {
+  if (!isEmailConfigured()) {
+    return { ok: false, error: "Email is not configured on this deployment", permanent: true }
   }
-  if (rows.length === 0) return
 
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") || ""
-  const link = `${siteUrl}/forms/${form.id}/submissions`
-  const subject = `New response: ${form.title || "your form"}`
-
-  for (const { config } of rows) {
-    const recipients = config.recipients?.filter(Boolean) ?? []
-    if (recipients.length === 0) continue
-    const html = buildHtml(form.title, config.includeAnswers ? answers : [], link)
-    const res = await sendEmail({ to: recipients, subject, html })
-    if (!res.ok) console.error("[email] send failed", res.error)
+  const recipients = config.recipients?.filter(Boolean) ?? []
+  if (recipients.length === 0) {
+    // No amount of retrying invents a recipient.
+    return { ok: false, error: "No recipients configured", permanent: true }
   }
+
+  const link = `${siteUrl()}/forms/${content.form.id}/submissions`
+  const html = buildHtml(
+    content.form.title,
+    config.includeAnswers ? content.answers : [],
+    link,
+  )
+
+  const res = await sendEmail({
+    to: recipients,
+    subject: `New response: ${content.form.title || "your form"}`,
+    html,
+    idempotencyKey: deliveryId,
+  })
+  return res.ok ? { ok: true } : { ok: false, error: res.error }
 }
