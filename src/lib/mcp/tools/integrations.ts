@@ -25,6 +25,7 @@ import "server-only"
 
 import * as z from "zod"
 import * as webhooksCore from "@/lib/core/webhooks"
+import * as deliveriesCore from "@/lib/core/deliveries"
 import { RETRY_WINDOW_HOURS } from "@/lib/integrations/webhook-policy"
 import { siteUrl } from "@/lib/docs/site-url"
 import * as notificationsCore from "@/lib/core/notifications"
@@ -333,7 +334,7 @@ export const integrationTools: RegisteredMcpTool[] = [
         if (!args.deliveryId) {
           throw new ToolError("`redeliver` needs a deliveryId. Use `deliveries` to find one.")
         }
-        unwrap(await webhooksCore.redeliver(ctx, args.deliveryId))
+        unwrap(await deliveriesCore.redeliver(ctx, args.deliveryId))
         return { operation: args.operation, ...empty }
       }
 
@@ -342,7 +343,7 @@ export const integrationTools: RegisteredMcpTool[] = [
       }
 
       if (args.operation === "deliveries") {
-        const rows = await webhooksCore.listDeliveries(ctx, args.webhookId)
+        const rows = await deliveriesCore.listDeliveries(ctx, { integrationId: args.webhookId })
         return {
           operation: args.operation,
           ...empty,

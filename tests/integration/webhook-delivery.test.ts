@@ -42,6 +42,7 @@ import {
   reclaimStale,
 } from "@/lib/integrations/webhook-delivery"
 import * as webhooksCore from "@/lib/core/webhooks"
+import * as deliveriesCore from "@/lib/core/deliveries"
 import { testContext } from "../helpers/context"
 
 let seq = 0
@@ -454,9 +455,9 @@ describe("tenancy and retention", () => {
     const endpoint = await seedEndpoint(alice, "https://receiver.example/hook")
     const id = await seedDelivery(alice, endpoint, { status: "exhausted" })
 
-    expect(await webhooksCore.getDelivery(bob.ctx, id)).toBeNull()
-    expect(await webhooksCore.listDeliveries(bob.ctx, endpoint)).toEqual([])
-    expect(await webhooksCore.redeliver(bob.ctx, id)).toEqual({
+    expect(await deliveriesCore.getDelivery(bob.ctx, id)).toBeNull()
+    expect(await deliveriesCore.listDeliveries(bob.ctx, { integrationId: endpoint })).toEqual([])
+    expect(await deliveriesCore.redeliver(bob.ctx, id)).toEqual({
       success: false,
       error: "Delivery not found",
     })
@@ -471,7 +472,7 @@ describe("tenancy and retention", () => {
       attempts: MAX_ATTEMPTS,
     })
 
-    expect(await webhooksCore.redeliver(alice.ctx, id)).toEqual({ success: true })
+    expect(await deliveriesCore.redeliver(alice.ctx, id)).toEqual({ success: true })
 
     const row = await read(id)
     expect(row.id).toBe(id)
@@ -484,7 +485,7 @@ describe("tenancy and retention", () => {
   test("redeliver refuses something already queued", async () => {
     const endpoint = await seedEndpoint(alice, "https://receiver.example/hook")
     const id = await seedDelivery(alice, endpoint)
-    const result = await webhooksCore.redeliver(alice.ctx, id)
+    const result = await deliveriesCore.redeliver(alice.ctx, id)
     expect(result).toEqual({ success: false, error: "This delivery is already queued." })
   })
 
@@ -494,8 +495,8 @@ describe("tenancy and retention", () => {
     })
     const id = await seedDelivery(alice, endpoint)
 
-    const listed = await webhooksCore.listDeliveries(alice.ctx, endpoint)
-    const detail = await webhooksCore.getDelivery(alice.ctx, id)
+    const listed = await deliveriesCore.listDeliveries(alice.ctx, { integrationId: endpoint })
+    const detail = await deliveriesCore.getDelivery(alice.ctx, id)
 
     expect(JSON.stringify(listed)).not.toContain("whsec_must_not_leak")
     expect(JSON.stringify(detail)).not.toContain("whsec_must_not_leak")
@@ -505,11 +506,11 @@ describe("tenancy and retention", () => {
     const endpoint = await seedEndpoint(alice, "https://receiver.example/hook")
     await seedDelivery(alice, endpoint)
 
-    const listed = await webhooksCore.listDeliveries(alice.ctx, endpoint)
+    const listed = await deliveriesCore.listDeliveries(alice.ctx, { integrationId: endpoint })
     expect(listed).toHaveLength(1)
     expect(listed[0]).not.toHaveProperty("payload")
     // The detail view is where the answers live, fetched one at a time.
-    expect((await webhooksCore.getDelivery(alice.ctx, listed[0].id))?.payload).toBeTruthy()
+    expect((await deliveriesCore.getDelivery(alice.ctx, listed[0].id))?.payload).toBeTruthy()
   })
 })
 
@@ -520,7 +521,7 @@ describe("the delivery is scoped to its endpoint", () => {
     await seedDelivery(alice, first)
     await seedDelivery(alice, second)
 
-    const listed = await webhooksCore.listDeliveries(alice.ctx, first)
+    const listed = await deliveriesCore.listDeliveries(alice.ctx, { integrationId: first })
     expect(listed).toHaveLength(1)
 
     const [row] = await db

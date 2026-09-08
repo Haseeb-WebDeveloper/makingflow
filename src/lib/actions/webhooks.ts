@@ -44,36 +44,3 @@ export async function sendTestWebhook(
   if (!session.ok) return { success: false, error: session.error }
   return webhooksCore.sendTestWebhook(session.ctx, integrationId)
 }
-
-/**
- * Recent deliveries for one endpoint.
- *
- * Fetched through an action rather than a cached `src/lib/data` read: the queue
- * changes on every submission, and a cached list showing a delivery as still
- * failing after it succeeded is worse than showing nothing.
- */
-export async function listWebhookDeliveries(
-  integrationId: string,
-): Promise<{ success: true; deliveries: webhooksCore.DeliveryView[] } | { success: false; error: string }> {
-  const session = await sessionContext()
-  if (!session.ok) return { success: false, error: session.error }
-  return { success: true, deliveries: await webhooksCore.listDeliveries(session.ctx, integrationId) }
-}
-
-/** One delivery in full: the body we sent and the response we got back. */
-export async function getWebhookDelivery(
-  deliveryId: string,
-): Promise<{ success: true; delivery: webhooksCore.DeliveryDetail } | { success: false; error: string }> {
-  const session = await sessionContext()
-  if (!session.ok) return { success: false, error: session.error }
-  const delivery = await webhooksCore.getDelivery(session.ctx, deliveryId)
-  if (!delivery) return { success: false, error: "Delivery not found" }
-  return { success: true, delivery }
-}
-
-/** Queue a finished delivery to be sent again, keeping its delivery id. */
-export async function redeliverWebhook(deliveryId: string): Promise<Result> {
-  const session = await sessionContext()
-  if (!session.ok) return { success: false, error: session.error }
-  return webhooksCore.redeliver(session.ctx, deliveryId)
-}

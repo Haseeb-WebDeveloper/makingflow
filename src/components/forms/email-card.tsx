@@ -13,6 +13,7 @@ import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { showToast } from "@/components/ui/toast";
 import { CardShell } from "@/components/integrations/cards";
+import { DeliveryLog } from "@/components/forms/delivery-log";
 import {
   saveEmailNotification,
   removeEmailNotification,
@@ -34,6 +35,9 @@ export function EmailCard({
   const active = Boolean(notification?.enabled);
 
   const [open, setOpen] = React.useState(false);
+  // Delivery history for this destination. Same component every integration
+  // uses, so "did my response reach it?" reads the same way everywhere.
+  const [logOpen, setLogOpen] = React.useState(false);
   const [pending, startTransition] = React.useTransition();
   const [recipients, setRecipients] = React.useState(
     notification?.recipients.join("\n") || ownerEmail
@@ -107,16 +111,28 @@ export function EmailCard({
                 : "Paused"
               : "Not set up"}
           </span>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={!configured}
-            onClick={() => setOpen(true)}
-          >
-            Configure
-          </Button>
+          <div className="flex items-center gap-1">
+            <Button variant="ghost" size="sm" onClick={() => setLogOpen(true)}>
+              Deliveries
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!configured}
+              onClick={() => setOpen(true)}
+            >
+              Configure
+            </Button>
+          </div>
         </div>
       </CardShell>
+
+      <DeliveryLog
+        open={logOpen}
+        onOpenChange={setLogOpen}
+        title="Email deliveries"
+        selector={{ formId, type: "email" }}
+      />
 
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetContent side="right" className="w-full sm:max-w-md">

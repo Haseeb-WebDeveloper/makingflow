@@ -28,6 +28,8 @@ import {
 } from "@/lib/db/schema"
 import { submitForm } from "@/lib/actions/submissions"
 import { claimDue, deliverBatch } from "@/lib/integrations/webhook-delivery"
+import * as deliveriesCore from "@/lib/core/deliveries"
+import { testContext } from "../helpers/context"
 
 let seq = 0
 
@@ -463,6 +465,87 @@ describe("the connection-driven pair", () => {
     expect(claimed).toHaveLength(1)
     expect(claimed[0].type).toBe("google_sheets")
     expect(claimed[0].integrationId).toBeNull()
+  })
+})
+
+describe("reading the history back", () => {
+  test("a Sheets delivery is findable even with no integration row", async () => {
+    // THE reason listDeliveries takes a selector rather than an id. Sheets and
+    // Notion may have no integration row while their destination is still
+    // unprovisioned, so an id-only lookup could not find the very deliveries
+    // most likely to have failed.
+    const f = await seedForm()
+    await db.insert(workspaceConnections).values({
+      workspaceId: f.workspaceId,
+      provider: "google",
+      accountEmail: "owner@example.test",
+      accessToken: "encrypted-placeholder",
+    })
+    await submitForm({ publicId: f.publicId, answers: [{ fieldId: f.fieldId, value: "Ada" }] })
+
+    const ctx = testContext({ userId: randomUUID(), workspaceId: f.workspaceId })
+    const listed = await deliveriesCore.listDeliveries(ctx, {
+      formId: f.formId,
+      type: "google_sheets",
+    })
+
+    expect(listed).toHaveLength(1)
+    expect(listed[0].type).toBe("google_sheets")
+  })
+
+  test("each type sees only its own history", async () => {
+    const f = await seedForm()
+    await addIntegration(f, "email", { recipients: ["owner@example.test"] })
+    await addIntegration(f, "discord", { webhookUrl: "https://discord.com/api/webhooks/1/abc" })
+    await submitForm({ publicId: f.publicId, answers: [{ fieldId: f.fieldId, value: "Ada" }] })
+
+    const ctx = testContext({ userId: randomUUID(), workspaceId: f.workspaceId })
+    const email = await deliveriesCore.listDeliveries(ctx, { formId: f.formId, type: "email" })
+    const discord = await deliveriesCore.listDeliveries(ctx, { formId: f.formId, type: "discord" })
+
+    expect(email).toHaveLength(1)
+    expect(discord).toHaveLength(1)
+    expect(email[0].id).not.toBe(discord[0].id)
+  })
+
+  test("another tenant sees nothing, whichever way they ask", async () => {
+    const f = await seedForm()
+    await addIntegration(f, "email", { recipients: ["owner@example.test"] })
+    await submitForm({ publicId: f.publicId, answers: [{ fieldId: f.fieldId, value: "Ada" }] })
+
+    // A context for a different workspace, with the victim's real form id.
+    const [otherWs] = await db
+      .insert(workspaces)
+      .values({ name: "WS other", slug: `ws-other-${Date.now()}` })
+      .returning({ id: workspaces.id })
+    const intruder = testContext({ userId: randomUUID(), workspaceId: otherWs.id })
+
+    expect(
+      await deliveriesCore.listDeliveries(intruder, { formId: f.formId, type: "email" }),
+    ).toEqual([])
+
+    const [row] = await deliveriesFor(f.formId)
+    expect(await deliveriesCore.getDelivery(intruder, row.id)).toBeNull()
+  })
+
+  test("the list carries no answers, the detail view fetches them", async () => {
+    const f = await seedForm()
+    await addIntegration(f, "webhook", { url: "https://receiver.example/hook" })
+    await submitForm({
+      publicId: f.publicId,
+      answers: [{ fieldId: f.fieldId, value: "Ada Lovelace" }],
+    })
+
+    const ctx = testContext({ userId: randomUUID(), workspaceId: f.workspaceId })
+    const listed = await deliveriesCore.listDeliveries(ctx, { formId: f.formId, type: "webhook" })
+
+    // Twenty rows must not mean twenty copies of a respondent's answers shipped
+    // to the browser to render a table of statuses.
+    expect(listed[0]).not.toHaveProperty("payload")
+    expect(JSON.stringify(listed)).not.toContain("Ada Lovelace")
+
+    const detail = await deliveriesCore.getDelivery(ctx, listed[0].id)
+    expect(JSON.stringify(detail?.payload)).toContain("Ada Lovelace")
   })
 })
 

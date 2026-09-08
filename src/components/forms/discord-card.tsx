@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { showToast } from "@/components/ui/toast";
 import { CardShell } from "@/components/integrations/cards";
+import { DeliveryLog } from "@/components/forms/delivery-log";
 import {
   saveDiscordWebhook,
   removeDiscordWebhook,
@@ -34,6 +35,9 @@ export function DiscordCard({
   const active = Boolean(notification?.enabled) && connected;
 
   const [open, setOpen] = React.useState(false);
+  // Delivery history for this destination. Same component every integration
+  // uses, so "did my response reach it?" reads the same way everywhere.
+  const [logOpen, setLogOpen] = React.useState(false);
   const [pending, startTransition] = React.useTransition();
   const [webhookUrl, setWebhookUrl] = React.useState("");
   const [includeAnswers, setIncludeAnswers] = React.useState(
@@ -94,11 +98,23 @@ export function DiscordCard({
           <span className="text-xs text-muted-foreground">
             {!connected ? "Not set up" : active ? "Connected" : "Paused"}
           </span>
-          <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
-            Configure
-          </Button>
+          <div className="flex items-center gap-1">
+            <Button variant="ghost" size="sm" onClick={() => setLogOpen(true)}>
+              Deliveries
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
+              Configure
+            </Button>
+          </div>
         </div>
       </CardShell>
+
+      <DeliveryLog
+        open={logOpen}
+        onOpenChange={setLogOpen}
+        title="Discord deliveries"
+        selector={{ formId, type: "discord" }}
+      />
 
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetContent side="right" className="w-full sm:max-w-md">

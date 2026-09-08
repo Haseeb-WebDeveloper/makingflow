@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { showToast } from "@/components/ui/toast";
 import { CardShell, StatusBadge } from "@/components/integrations/cards";
+import { DeliveryLog } from "@/components/forms/delivery-log";
 import {
   enableFormSheet,
   pauseFormSheet,
@@ -78,6 +79,7 @@ export function SyncIntegrationCard({
   const on = status === "syncing" || status === "pending";
 
   const [detailsOpen, setDetailsOpen] = React.useState(false);
+  const [logOpen, setLogOpen] = React.useState(false);
   const [pending, startTransition] = React.useTransition();
 
   function onToggle(next: boolean) {
@@ -122,13 +124,21 @@ export function SyncIntegrationCard({
           {!configured ? (
             <span className="text-xs text-muted-foreground">Not available</span>
           ) : connected ? (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setDetailsOpen(true)}
-            >
-              View details
-            </Button>
+            <div className="flex items-center gap-1">
+              {/* Sheets and Notion deliver through the same queue as everything
+                  else now, so "did this response reach my spreadsheet?" has an
+                  answer here rather than only in a server log. */}
+              <Button variant="ghost" size="sm" onClick={() => setLogOpen(true)}>
+                Deliveries
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setDetailsOpen(true)}
+              >
+                View details
+              </Button>
+            </div>
           ) : (
             <Button asChild size="sm" variant="outline">
               <a
@@ -154,6 +164,13 @@ export function SyncIntegrationCard({
           )}
         </div>
       </CardShell>
+
+      <DeliveryLog
+        open={logOpen}
+        onOpenChange={setLogOpen}
+        title={`${name} deliveries`}
+        selector={{ formId, type: provider === "google" ? "google_sheets" : "notion" }}
+      />
 
       <Sheet open={detailsOpen} onOpenChange={setDetailsOpen}>
         <SheetContent side="right" className="w-full sm:max-w-md">
