@@ -1,7 +1,7 @@
 "use server"
 
 import { after } from "next/server"
-import { and, eq, inArray, isNull, sql } from "drizzle-orm"
+import { and, eq, isNull, sql } from "drizzle-orm"
 import { db } from "@/lib/db"
 import {
   forms,
@@ -11,6 +11,7 @@ import {
   uploads,
   formIntegrations,
   integrationDeliveries,
+  workspaceConnections,
   type AnswerValue,
   type SubmissionMeta,
   type WebhookDeliveryPayload,
@@ -18,9 +19,7 @@ import {
 } from "@/lib/db/schema"
 import { getVisitorKey, getRespondentKey, logFormEvent } from "@/lib/analytics/track"
 import { getServerSubmissionMeta } from "@/lib/analytics/request-meta"
-import { syncSubmissionToSheets } from "@/lib/integrations/sync"
 import { claimByIds, deliverBatch } from "@/lib/integrations/webhook-delivery"
-import { syncSubmissionToNotion } from "@/lib/integrations/notion-sync"
 import { isCloudinaryUrl } from "@/lib/cloudinary/url"
 import { processSubmission, intelligenceEnabled } from "@/lib/ai/submission-intelligence"
 import { sessionContext } from "@/lib/auth/context-web"
@@ -458,22 +457,46 @@ export async function submitForm(input: {
       //
       // Nothing is SENT here. These rows are `pending`; the attempt happens in
       // after(), and the cron sweep picks up whatever that does not finish.
-      // One query for every destination this form has. Webhooks can be several;
-      // email and Discord are one each by design.
-      const destinations = await tx
+      // Every per-form destination. Webhooks can be several; email and Discord
+      // are one each by design.
+      const perForm = await tx
         .select({
           id: formIntegrations.id,
           type: formIntegrations.type,
+          enabled: formIntegrations.enabled,
           config: formIntegrations.config,
         })
         .from(formIntegrations)
-        .where(
-          and(
-            eq(formIntegrations.formId, form.id),
-            eq(formIntegrations.enabled, true),
-            inArray(formIntegrations.type, ["webhook", "email", "discord"]),
-          ),
-        )
+        .where(eq(formIntegrations.formId, form.id))
+
+      // Sheets and Notion work the other way round: the WORKSPACE connection is
+      // the on-switch and every form syncs unless individually paused, with the
+      // per-form row provisioned lazily on the first response. So the question
+      // here is "is the provider connected", not "does this form have a row" —
+      // and the delivery may legitimately carry no integrationId at all.
+      const connected = await tx
+        .select({ provider: workspaceConnections.provider })
+        .from(workspaceConnections)
+        .where(eq(workspaceConnections.workspaceId, form.workspaceId))
+
+      const pausedFor = new Set(perForm.filter((r) => !r.enabled).map((r) => r.type))
+      const rowFor = new Map(perForm.map((r) => [r.type, r]))
+
+      const destinations: {
+        type: (typeof perForm)[number]["type"]
+        id: string | null
+        config: unknown
+      }[] = [
+        ...perForm
+          .filter((r) => r.enabled && (r.type === "webhook" || r.type === "email" || r.type === "discord"))
+          .map((r) => ({ type: r.type, id: r.id, config: r.config })),
+        ...connected
+          .map((c): "google_sheets" | "notion" =>
+            c.provider === "google" ? "google_sheets" : "notion",
+          )
+          .filter((type) => !pausedFor.has(type))
+          .map((type) => ({ type, id: rowFor.get(type)?.id ?? null, config: null })),
+      ]
 
       if (destinations.length > 0) {
         // Snapshotted for webhooks ONLY, because a webhook signs the exact bytes
@@ -551,34 +574,20 @@ export async function submitForm(input: {
       submissionId: committedId ?? undefined,
       visitorKey,
     })
-    await Promise.allSettled([
-      // Google Sheets: workspace connection auto-syncs every form (sheet created lazily).
-      syncSubmissionToSheets(
-        { id: form.id, workspaceId: form.workspaceId, title: form.title },
-        accepted,
-        submittedAt,
-        committedId ?? "",
-      ),
-      // Webhooks, email and Discord all go through here now. The rows are
-      // already committed, so this is an optimisation rather than the delivery
-      // mechanism: it gets the common case out fast. If it never runs at all —
-      // the instance is killed, a deploy lands mid-request — the rows sit
-      // `pending` and the cron sweep picks them up within the minute. That is
-      // the durability the old fire-and-forget could not offer.
-      //
-      // It claims rather than just sending, so a sweep that got there first
-      // wins and nothing goes out twice. On failure it records and leaves the
-      // row for the sweep; there is deliberately no immediate second attempt,
-      // which only ever doubled the load on a destination already struggling.
-      deliveryIds.length > 0
-        ? claimByIds(deliveryIds).then(deliverBatch)
-        : Promise.resolve(),
-      syncSubmissionToNotion(
-        { id: form.id, workspaceId: form.workspaceId, title: form.title },
-        accepted,
-        committedId ?? "",
-      ),
-    ])
+    // EVERY integration now goes through the queue — Sheets, Notion, webhooks,
+    // email and Discord. The rows are already committed, so this is an
+    // optimisation rather than the delivery mechanism: it gets the common case
+    // out fast. If it never runs at all — the instance is killed, a deploy
+    // lands mid-request — the rows sit `pending` and the cron sweep picks them
+    // up within the minute. That is the durability none of these had before.
+    //
+    // It claims rather than just sending, so a sweep that got there first wins
+    // and nothing goes out twice. On failure it records and leaves the row for
+    // the sweep; there is deliberately no immediate second attempt, which only
+    // ever doubled the load on a destination already struggling.
+    if (deliveryIds.length > 0) {
+      await deliverBatch(await claimByIds(deliveryIds))
+    }
     // Post-submission AI summary/screening (opt-in; self-gates on aiConfig).
     // Runs after delivery so a slow model never delays integrations.
     if (wantsIntelligence) await processSubmission(committedId ?? "")

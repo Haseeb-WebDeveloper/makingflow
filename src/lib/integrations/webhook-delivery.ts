@@ -16,6 +16,8 @@ import { postWebhook } from "@/lib/integrations/webhook"
 import { deliveryHeaders } from "@/lib/integrations/webhook-signature"
 import { deliverDiscord } from "@/lib/integrations/discord"
 import { sendSubmissionEmail } from "@/lib/integrations/email"
+import { syncSubmissionToSheets } from "@/lib/integrations/sync"
+import { syncSubmissionToNotion } from "@/lib/integrations/notion-sync"
 import {
   loadDeliveryContent,
   type SendOutcome,
@@ -379,12 +381,23 @@ export async function attemptDelivery(row: ClaimedDelivery): Promise<boolean> {
             content,
           )
           break
+        // Both of these WRITE somewhere non-idempotent — a spreadsheet row, a
+        // database page — so a retry has to look before it leaps. `verifyFirst`
+        // is passed only on retries: the first attempt has written nothing and
+        // the check costs an API round-trip per delivery.
+        //
+        // `attempts` is incremented by the claim, so it reads 1 during the
+        // first attempt and 2+ on every retry.
+        case "google_sheets":
+          outcome = await syncSubmissionToSheets(content, { verifyFirst: row.attempts > 1 })
+          break
+        case "notion":
+          outcome = await syncSubmissionToNotion(content, { verifyFirst: row.attempts > 1 })
+          break
         default:
-          // Sheets and Notion are enqueued but not yet driven from here; they
-          // still run inline. Retired rather than retried so a row cannot loop.
           outcome = {
             ok: false,
-            error: `No queue sender for ${row.type} yet`,
+            error: `No queue sender for ${row.type}`,
             permanent: true,
           }
       }

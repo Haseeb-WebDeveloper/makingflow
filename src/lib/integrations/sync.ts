@@ -23,6 +23,7 @@ import {
 } from "@/lib/integrations/google"
 import { createFormSheet, reconcileFormSheet } from "@/lib/integrations/sheets-provision"
 import { answerToCell } from "@/lib/submissions/answer-format"
+import type { DeliveryContent, SendOutcome } from "@/lib/integrations/submission-content"
 import { neutralizeFormula } from "@/lib/submissions/csv"
 import type { AnswerValue as AnswerValueForCell } from "@/lib/db/schema"
 
@@ -64,7 +65,7 @@ async function sheetIntegration(formId: string) {
 }
 
 /**
- * Best-effort: deliver one submission to Google Sheets under the GLOBAL model.
+ * Deliver one submission to Google Sheets under the GLOBAL model.
  *
  * The workspace Google connection is the on-switch — if it exists, every form
  * syncs automatically. A form's spreadsheet is created LAZILY here on its first
@@ -72,21 +73,42 @@ async function sheetIntegration(formId: string) {
  * row). On every sync the sheet is reconciled to the form first, so newly added
  * questions show up as columns automatically.
  *
- * Called AFTER the submission commits; it must never throw into the submit path
- * — a Sheets outage can't block a respondent.
+ * REPORTS ITS OUTCOME rather than swallowing it. This used to run from after()
+ * and console.error a failure, which meant a response missing from someone's
+ * spreadsheet was also a response nobody could find out about. It is driven by
+ * the delivery queue now, so a failure is recorded, retried and visible.
+ *
+ * `verifyFirst` is what makes retrying safe. An append is not idempotent: if the
+ * row landed and the response timed out on our side, retrying blindly writes it
+ * twice. When set, the submission id is looked up in column A before appending,
+ * and a delivery already present is reported as delivered rather than repeated.
+ * The caller passes it on retries only — on a first attempt the answer is known
+ * and the extra API call would be waste.
+ *
+ * Still never throws: a Sheets outage becomes a failed outcome, not an
+ * exception into the sweep.
  */
 export async function syncSubmissionToSheets(
-  form: { id: string; workspaceId: string; title: string },
-  answers: { fieldId: string; value: AnswerValue }[],
-  submittedAt: Date,
-  submissionId: string,
-): Promise<void> {
+  content: DeliveryContent,
+  opts: { verifyFirst?: boolean } = {},
+): Promise<SendOutcome> {
+  const form = content.form
+  const answers = content.answers
+  const submittedAt = content.submission.submittedAt
+  const submissionId = content.submission.id
+
   try {
     const conn = await googleConnection(form.workspaceId)
-    if (!conn) return
+    // Not a transient failure: without a connection there is no destination,
+    // and retrying for hours will not create one.
+    if (!conn) return { ok: false, error: "Google is not connected", permanent: true }
 
     const row = await sheetIntegration(form.id)
-    if (row && !row.enabled) return // explicitly paused for this form
+    if (row && !row.enabled) {
+      // Paused between enqueue and send. Pausing has to stop the backlog too,
+      // or "pause" means "pause new ones and keep writing the old ones".
+      return { ok: false, error: "Google Sheets is paused for this form", permanent: true }
+    }
 
     let config = row?.config as GoogleSheetsIntegrationConfig | undefined
 
@@ -119,7 +141,9 @@ export async function syncSubmissionToSheets(
         )
         const winner = await sheetIntegration(form.id)
         const winnerConfig = winner?.config as GoogleSheetsIntegrationConfig | undefined
-        if (!winner?.enabled || !winnerConfig?.spreadsheetId) return
+        if (!winner?.enabled || !winnerConfig?.spreadsheetId) {
+          return { ok: false, error: "Google Sheets is paused for this form", permanent: true }
+        }
         config = winnerConfig
         // Fall through to the normal append so THIS response still lands. The
         // winner's own backfill covers the history.
@@ -127,8 +151,11 @@ export async function syncSubmissionToSheets(
         // The sheet is brand-new. Write EVERY completed response (this one
         // included, as it's already committed) so connecting Sheets after
         // responses exist backfills the history — not just rows from now on.
+        //
+        // The backfill skips submission ids already in the sheet, so it is
+        // safe to reach twice and this delivery is covered by it.
         await backfillFormSheet(conn, created, form.id)
-        return
+        return { ok: true }
       }
     }
 
@@ -143,6 +170,27 @@ export async function syncSubmissionToSheets(
     }
 
     const accessToken = await getValidAccessToken(conn)
+    const sheetName = config.sheetName ?? DEFAULT_SHEET_NAME
+
+    // ── The retry-safety check ──
+    //
+    // Appending is not idempotent, and the failure that matters is the one
+    // where the row DID land and we never heard back. Column A holds the
+    // submission ids for exactly this kind of lookup — it is what
+    // deleteSubmissionFromSheet and the backfill already use.
+    //
+    // Only on a retry: the first attempt knows it has not sent anything, and
+    // the check costs an API round-trip per delivery.
+    //
+    // A legacy sheet with no id column cannot be checked, so it is not retried
+    // into a duplicate — see the caller, which treats those as one-shot.
+    if (opts.verifyFirst && config.hasIdColumn) {
+      const present = await getColumnValues(accessToken, config.spreadsheetId, sheetName, "A")
+      if (present.slice(1).includes(submissionId)) {
+        return { ok: true }
+      }
+    }
+
     const answerByField = new Map(answers.map((a) => [a.fieldId, a.value]))
     const columns = config.columns ?? []
     const cells = [
@@ -152,9 +200,11 @@ export async function syncSubmissionToSheets(
     // Lead with the submission id when the sheet tracks it (so the row can later
     // be found and deleted); legacy sheets without it just get the data columns.
     const values = config.hasIdColumn ? [submissionId, ...cells] : cells
-    await appendRow(accessToken, config.spreadsheetId, config.sheetName ?? DEFAULT_SHEET_NAME, values)
+    await appendRow(accessToken, config.spreadsheetId, sheetName, values)
+    return { ok: true }
   } catch (err) {
-    console.error("[sync] google sheets delivery failed", err)
+    // Retryable by default: a Google outage, an expired token, a rate limit.
+    return { ok: false, error: (err as Error).message }
   }
 }
 

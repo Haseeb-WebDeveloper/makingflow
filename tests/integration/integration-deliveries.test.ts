@@ -23,6 +23,7 @@ import {
   forms,
   integrationDeliveries,
   submissions,
+  workspaceConnections,
   workspaces,
 } from "@/lib/db/schema"
 import { submitForm } from "@/lib/actions/submissions"
@@ -64,7 +65,7 @@ type Form = Awaited<ReturnType<typeof seedForm>>
 
 async function addIntegration(
   f: Form,
-  type: "email" | "discord" | "webhook",
+  type: "email" | "discord" | "webhook" | "google_sheets" | "notion",
   config: Record<string, unknown>,
   enabled = true,
 ) {
@@ -356,6 +357,112 @@ describe("dispatching them", () => {
         ),
       )
     expect(rows).toHaveLength(2)
+  })
+})
+
+/**
+ * Sheets and Notion are the odd pair: the WORKSPACE connection is the
+ * on-switch, and the per-form row is provisioned lazily on the first response.
+ * So a delivery is owed based on "is the provider connected", and it can
+ * legitimately carry no integrationId at all — which is exactly the case the
+ * nullable column and the left join in withSecrets exist for.
+ */
+describe("the connection-driven pair", () => {
+  async function connect(f: Form, provider: "google" | "notion") {
+    await db.insert(workspaceConnections).values({
+      workspaceId: f.workspaceId,
+      provider,
+      accountEmail: "owner@example.test",
+      accessToken: "encrypted-placeholder",
+    })
+  }
+
+  test("connecting Google makes every form owe a Sheets delivery", async () => {
+    const f = await seedForm()
+    await connect(f, "google")
+
+    await submitForm({ publicId: f.publicId, answers: [{ fieldId: f.fieldId, value: "Ada" }] })
+
+    const rows = await deliveriesFor(f.formId)
+    expect(rows).toHaveLength(1)
+    expect(rows[0].type).toBe("google_sheets")
+    // No per-form row exists yet — the spreadsheet is provisioned on delivery.
+    expect(rows[0].integrationId).toBeNull()
+    expect(rows[0].payload).toBeNull()
+  })
+
+  test("Notion behaves the same way", async () => {
+    const f = await seedForm()
+    await connect(f, "notion")
+    await submitForm({ publicId: f.publicId, answers: [{ fieldId: f.fieldId, value: "Ada" }] })
+
+    const rows = await deliveriesFor(f.formId)
+    expect(rows.map((r) => r.type)).toEqual(["notion"])
+  })
+
+  test("no connection means nothing is owed", async () => {
+    const f = await seedForm()
+    await submitForm({ publicId: f.publicId, answers: [{ fieldId: f.fieldId, value: "Ada" }] })
+    expect(await deliveriesFor(f.formId)).toHaveLength(0)
+  })
+
+  test("a form paused for Sheets is skipped even though the workspace is connected", async () => {
+    // Pausing is per form; connecting is per workspace. The pause has to win.
+    const f = await seedForm()
+    await connect(f, "google")
+    await addIntegration(f, "google_sheets", { spreadsheetId: "sheet-1" }, false)
+
+    await submitForm({ publicId: f.publicId, answers: [{ fieldId: f.fieldId, value: "Ada" }] })
+
+    expect(await deliveriesFor(f.formId)).toHaveLength(0)
+  })
+
+  test("an already-provisioned form carries its integration id", async () => {
+    const f = await seedForm()
+    await connect(f, "google")
+    const sheet = await addIntegration(f, "google_sheets", { spreadsheetId: "sheet-1" })
+
+    await submitForm({ publicId: f.publicId, answers: [{ fieldId: f.fieldId, value: "Ada" }] })
+
+    const [row] = await deliveriesFor(f.formId)
+    expect(row.integrationId).toBe(sheet)
+  })
+
+  test("a delivery for a disconnected provider is retired, not retried for hours", async () => {
+    // The connection was removed between enqueue and send. No amount of waiting
+    // brings it back, so burning six attempts on it would be theatre.
+    const f = await seedForm()
+    await connect(f, "google")
+    await submitForm({ publicId: f.publicId, answers: [{ fieldId: f.fieldId, value: "Ada" }] })
+    await db
+      .delete(workspaceConnections)
+      .where(eq(workspaceConnections.workspaceId, f.workspaceId))
+
+    const calls = stubFetch()
+    await makeDue(f.formId)
+    await deliverBatch(await claimDue(10))
+
+    expect(calls).toHaveLength(0)
+    const [row] = await deliveriesFor(f.formId)
+    expect(row.status).toBe("exhausted")
+    expect(row.lastError).toContain("not connected")
+  })
+
+  test("a Sheets delivery survives the claim's left join", async () => {
+    // withSecrets used to inner-join form_integrations. A Sheets row with no
+    // integration id yet would be claimed — status flipped, attempt counted —
+    // and then dropped by the join: never sent, stuck until the stale reclaim,
+    // then looping forever. It must come back from the claim.
+    const f = await seedForm()
+    await connect(f, "google")
+    await submitForm({ publicId: f.publicId, answers: [{ fieldId: f.fieldId, value: "Ada" }] })
+
+    await makeDue(f.formId)
+    const claimed = await claimDue(10)
+
+    expect(claimed).toHaveLength(1)
+    expect(claimed[0].type).toBe("google_sheets")
+    expect(claimed[0].integrationId).toBeNull()
   })
 })
 

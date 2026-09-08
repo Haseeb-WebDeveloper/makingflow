@@ -21,6 +21,7 @@ import {
 } from "@/lib/integrations/notion"
 import { createFormDatabase, reconcileFormDatabase } from "@/lib/integrations/notion-provision"
 import { answerFiles, answerToCell } from "@/lib/submissions/answer-format"
+import type { DeliveryContent, SendOutcome } from "@/lib/integrations/submission-content"
 
 /** How many published forms to provision when a workspace connects. */
 const MAX_CONNECT_PROVISION = 25
@@ -140,16 +141,23 @@ function toNotionValue(type: string, value: AnswerValue | undefined): unknown {
  * path — a Notion outage can't block a respondent.
  */
 export async function syncSubmissionToNotion(
-  form: { id: string; workspaceId: string; title: string },
-  answers: { fieldId: string; value: AnswerValue }[],
-  submissionId: string,
-): Promise<void> {
+  content: DeliveryContent,
+  opts: { verifyFirst?: boolean } = {},
+): Promise<SendOutcome> {
+  const form = content.form
+  const answers = content.answers
+  const submissionId = content.submission.id
+
   try {
     const conn = await notionConnection(form.workspaceId)
-    if (!conn) return
+    // No connection means no destination; retrying will not create one.
+    if (!conn) return { ok: false, error: "Notion is not connected", permanent: true }
 
     const row = await notionIntegration(form.id)
-    if (row && !row.enabled) return // explicitly paused for this form
+    if (row && !row.enabled) {
+      // Paused between enqueue and send. Pausing has to stop the backlog too.
+      return { ok: false, error: "Notion is paused for this form", permanent: true }
+    }
 
     let config = row?.config as NotionIntegrationConfig | undefined
 
@@ -180,7 +188,9 @@ export async function syncSubmissionToNotion(
         )
         const winner = await notionIntegration(form.id)
         const winnerConfig = winner?.config as NotionIntegrationConfig | undefined
-        if (!winner?.enabled || !winnerConfig?.databaseId) return
+        if (!winner?.enabled || !winnerConfig?.databaseId) {
+          return { ok: false, error: "Notion is paused for this form", permanent: true }
+        }
         config = winnerConfig
         // Fall through so THIS response still lands in the winner's database.
       } else {
@@ -190,7 +200,7 @@ export async function syncSubmissionToNotion(
         // on. Returning here matters: falling through would write this
         // submission a second time.
         await backfillFormNotionDatabase(conn, created, form.id)
-        return
+        return { ok: true }
       }
     }
 
@@ -205,6 +215,24 @@ export async function syncSubmissionToNotion(
     }
 
     const token = decrypt(conn.accessToken)
+
+    // Creating a page is not idempotent, so a retry after a create that landed
+    // but timed out would produce a duplicate. The submission id is the title
+    // property for exactly this kind of lookup — deleteSubmissionFromNotion and
+    // the backfill both rely on it.
+    //
+    // Retries only: a first attempt knows it has written nothing, and this
+    // costs an API round-trip.
+    if (opts.verifyFirst) {
+      const existing = await queryDatabaseByTitle(
+        token,
+        config.databaseId,
+        config.titlePropertyName,
+        submissionId,
+      )
+      if (existing) return { ok: true }
+    }
+
     const answerByField = new Map(answers.map((a) => [a.fieldId, a.value]))
     const properties: Record<string, unknown> = {
       [config.titlePropertyName]: { title: [{ text: { content: submissionId } }] },
@@ -214,8 +242,10 @@ export async function syncSubmissionToNotion(
     }
 
     await createDatabasePage(token, config.databaseId, properties)
+    return { ok: true }
   } catch (err) {
-    console.error("[notion] submission delivery failed", err)
+    // Retryable by default: a Notion outage, a rate limit, an expired token.
+    return { ok: false, error: (err as Error).message }
   }
 }
 
