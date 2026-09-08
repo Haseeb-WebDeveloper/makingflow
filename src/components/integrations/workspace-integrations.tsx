@@ -257,7 +257,6 @@ export function WorkspaceIntegrationsPanel({
                 <a href="/api/integrations/google/connect">
                   <SVGIcon
                     src="/icons/connect.svg"
-                    preserveColors
                     className="size-4 text-foreground"
                   />
                   Connect
@@ -282,7 +281,7 @@ export function WorkspaceIntegrationsPanel({
         {/* ── Notion ── */}
         <CardShell>
           <div className="flex items-start justify-between gap-3">
-            <SVGIcon src="/logo/notion.svg" preserveColors className="size-9" />
+            <SVGIcon src="/logo/notion.svg" className="size-9 text-foreground" />
             {notionConnected ? (
               <span className="inline-flex items-center gap-1 rounded-full bg-success-bg px-2 py-0.5 text-[11px] font-medium text-success-foreground">
                 <span className="size-1.5 rounded-full bg-success" />
@@ -318,7 +317,6 @@ export function WorkspaceIntegrationsPanel({
                 <a href="/api/integrations/notion/connect">
                   <SVGIcon
                     src="/icons/connect.svg"
-                    preserveColors
                     className="size-4 text-foreground"
                   />
                   Connect
@@ -395,7 +393,6 @@ export function WorkspaceIntegrationsPanel({
           <div className="flex items-start justify-between gap-3">
             <SVGIcon
               src="/logo/webhook.svg"
-              preserveColors
               className="size-9"
             />
             {webhookActive > 0 ? (
@@ -630,8 +627,7 @@ export function WorkspaceIntegrationsPanel({
             <div className="flex items-center gap-3">
               <SVGIcon
                 src="/logo/webhook.svg"
-                preserveColors
-                className="size-9"
+                className="size-9 text-foreground"
               />
               <div>
                 <SheetTitle>Webhooks</SheetTitle>
@@ -716,8 +712,7 @@ export function WorkspaceIntegrationsPanel({
             <div className="flex items-center gap-3">
               <SVGIcon
                 src="/logo/notion.svg"
-                preserveColors
-                className="size-9"
+                className="size-9 text-foreground"
               />
               <div>
                 <SheetTitle>Notion</SheetTitle>

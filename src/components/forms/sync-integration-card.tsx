@@ -36,6 +36,7 @@ const PROVIDERS = {
   google: {
     name: "Google Sheets",
     iconSrc: "/logo/google-sheet.svg",
+    preserveColors: true,
     destinationNoun: "spreadsheet",
     openLabel: "Open sheet",
     enable: enableFormSheet,
@@ -44,6 +45,7 @@ const PROVIDERS = {
   notion: {
     name: "Notion",
     iconSrc: "/logo/notion.svg",
+    preserveColors: false,
     destinationNoun: "Notion database",
     openLabel: "Open database",
     enable: enableFormNotion,
@@ -70,7 +72,7 @@ export function SyncIntegrationCard({
   destinationUrl: string | null;
 }) {
   const router = useRouter();
-  const { name, iconSrc, destinationNoun, openLabel, enable, pause } =
+  const { name, iconSrc, destinationNoun, openLabel, enable, pause, preserveColors } =
     PROVIDERS[provider];
   const connected = connectionLabel !== null;
   const on = status === "syncing" || status === "pending";
@@ -100,7 +102,7 @@ export function SyncIntegrationCard({
     <>
       <CardShell>
         <div className="flex items-start justify-between gap-3">
-          <SVGIcon src={iconSrc} preserveColors className="size-9" />
+          <SVGIcon src={iconSrc} preserveColors={preserveColors} className="size-9" />
           {status === "syncing" ? (
             <span className="inline-flex items-center gap-1 rounded-full bg-success-bg px-2 py-0.5 text-[11px] font-medium text-success-foreground">
               <span className="size-1.5 rounded-full bg-success" />
@@ -134,7 +136,6 @@ export function SyncIntegrationCard({
               >
                 <SVGIcon
                   src="/icons/connect.svg"
-                  preserveColors
                   className="size-4 text-foreground"
                 />
                 Connect
@@ -158,7 +159,7 @@ export function SyncIntegrationCard({
         <SheetContent side="right" className="w-full sm:max-w-md">
           <SheetHeader>
             <div className="flex items-center gap-3">
-              <SVGIcon src={iconSrc} preserveColors className="size-9" />
+              <SVGIcon src={iconSrc} preserveColors={preserveColors} className="size-9" />
               <div>
                 <SheetTitle>{name}</SheetTitle>
                 <SheetDescription>

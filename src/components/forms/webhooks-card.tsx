@@ -171,7 +171,7 @@ export function WebhooksCard({
     <>
       <CardShell>
         <div className="flex items-start justify-between gap-3">
-          <SVGIcon src="/logo/webhook.svg" preserveColors className="size-9" />
+          <SVGIcon src="/logo/webhook.svg" className="size-9 text-foreground" />
           {activeCount > 0 ? (
             <span className="inline-flex items-center gap-1 rounded-full bg-success-bg px-2 py-0.5 text-[11px] font-medium text-success-foreground">
               <span className="size-1.5 rounded-full bg-success" />
