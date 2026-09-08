@@ -1234,7 +1234,16 @@ export const formIntegrations = pgTable(
 // copy bounded is the cascade below plus the 30-day prune in the cron sweep.
 // `set null` — the pattern uploads and form_events use — would orphan a copy of
 // someone's answers permanently.
-export const webhookDeliveries = pgTable(
+// NOTE THE NAME MISMATCH, it is deliberate. The physical table is still
+// `webhook_deliveries` because it was born carrying only webhooks; it now holds
+// a delivery for every integration type, hence the TypeScript name.
+//
+// Renaming the table needs drizzle-kit's interactive rename resolver, which
+// cannot run headlessly — and hand-writing the SQL means hand-editing the
+// generated snapshot, which then rots. A misleading physical name with this
+// comment on it is a smaller problem than a migration nobody can regenerate.
+// Rename it in a maintenance window with `pnpm db:generate` run interactively.
+export const integrationDeliveries = pgTable(
   'webhook_deliveries',
   {
     id: uuid('id').primaryKey().defaultRandom(),
@@ -1244,19 +1253,34 @@ export const webhookDeliveries = pgTable(
     formId: uuid('form_id')
       .notNull()
       .references(() => forms.id, { onDelete: 'cascade' }),
-    // History is meaningless without the endpoint it was owed to.
-    integrationId: uuid('integration_id')
-      .notNull()
-      .references(() => formIntegrations.id, { onDelete: 'cascade' }),
+    // Which kind of destination this is owed to. Reuses the integration enum
+    // rather than a parallel one, so a new integration type cannot be added
+    // without deciding what its delivery looks like.
+    type: integrationTypeEnum('type').notNull(),
+    // NULLABLE, because Sheets and Notion are driven by a WORKSPACE connection
+    // and their per-form row is provisioned lazily on the first response — so
+    // at the moment a delivery is owed there may be no integration row yet.
+    // Webhooks, email and Discord always have one.
+    integrationId: uuid('integration_id').references(() => formIntegrations.id, {
+      onDelete: 'cascade',
+    }),
     submissionId: uuid('submission_id')
       .notNull()
       .references(() => submissions.id, { onDelete: 'cascade' }),
     event: text('event').notNull(), // submission.created
-    // Snapshot. The endpoint's configured URL can change (or be deleted) between
-    // the first attempt and the last retry; the delivery goes where it was
-    // addressed when it was created.
-    url: text('url').notNull(),
-    payload: jsonb('payload').$type<WebhookDeliveryPayload>().notNull(),
+    // Webhook only. The endpoint's configured URL can change (or be deleted)
+    // between the first attempt and the last retry; the delivery goes where it
+    // was addressed when it was created.
+    url: text('url'),
+    // WEBHOOK ONLY, and deliberately not extended to the other four.
+    //
+    // A webhook signs the exact bytes it sends, so a retry must reproduce them
+    // and the snapshot is unavoidable. Sheets, Notion, email and Discord derive
+    // their content from the `answers` table, which is still there at retry
+    // time — so storing it here would put four more copies of the respondent's
+    // answers in a second table for no gain. See design note 5: every copy of
+    // respondent data has to earn itself.
+    payload: jsonb('payload').$type<WebhookDeliveryPayload>(),
     status: webhookDeliveryStatusEnum('status').notNull().default('pending'),
     attempts: integer('attempts').notNull().default(0),
     nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true }).notNull().defaultNow(),
@@ -1292,15 +1316,31 @@ export const webhookDeliveries = pgTable(
     // The UI's query: one endpoint's history, newest first.
     index('webhook_deliveries_integration_idx').on(table.integrationId, table.createdAt),
     index('webhook_deliveries_workspace_idx').on(table.workspaceId),
-    // One event is owed to one endpoint exactly once. The insert is
-    // onConflictDoNothing, so a submit that somehow runs twice for the same
-    // submission — a platform-level request retry, a resumed partial promoted
-    // twice — cannot enqueue a second copy and double-deliver.
-    uniqueIndex('webhook_deliveries_event_idx').on(
-      table.integrationId,
-      table.submissionId,
-      table.event,
-    ),
+    // A form's history for the singleton types, which have no integration id to
+    // group by while their destination is still unprovisioned.
+    index('webhook_deliveries_form_idx').on(table.formId, table.type, table.createdAt),
+
+    // ── Enqueue exactly once, in two shapes ──
+    //
+    // Both inserts are onConflictDoNothing, so a submit that somehow runs twice
+    // for one submission — a platform request retry, a resumed partial promoted
+    // twice — cannot double-deliver.
+    //
+    // Two partial indexes rather than one, because NULLs do not collide in a
+    // Postgres unique index: a single key over (integration_id, submission_id,
+    // type) would silently stop deduplicating Sheets and Notion the moment
+    // their integration_id is null, which is exactly when they are unprovisioned
+    // and most likely to be retried.
+    //
+    // A form may have SEVERAL webhooks, so those key on the endpoint.
+    uniqueIndex('webhook_deliveries_webhook_idx')
+      .on(table.integrationId, table.submissionId, table.event)
+      .where(sql`${table.type} = 'webhook'`),
+    // Everything else is one-per-form by design, so the form is the key and no
+    // integration id is needed.
+    uniqueIndex('webhook_deliveries_singleton_idx')
+      .on(table.formId, table.type, table.submissionId, table.event)
+      .where(sql`${table.type} <> 'webhook'`),
   ],
 )
 
@@ -1580,7 +1620,7 @@ export type Submission = typeof submissions.$inferSelect
 export type Answer = typeof answers.$inferSelect
 export type FormEvent = typeof formEvents.$inferSelect
 export type FormIntegration = typeof formIntegrations.$inferSelect
-export type WebhookDelivery = typeof webhookDeliveries.$inferSelect
+export type IntegrationDelivery = typeof integrationDeliveries.$inferSelect
 export type Upload = typeof uploads.$inferSelect
 export type Template = typeof templates.$inferSelect
 

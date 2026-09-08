@@ -4,8 +4,8 @@ import { and, desc, eq, inArray, sql, type SQL } from "drizzle-orm"
 import { db } from "@/lib/db"
 import {
   formIntegrations,
-  webhookDeliveries,
-  type WebhookDelivery,
+  integrationDeliveries,
+  type IntegrationDelivery,
   type WebhookIntegrationConfig,
 } from "@/lib/db/schema"
 import { checkOutboundUrl } from "@/lib/core/outbound-url"
@@ -82,7 +82,7 @@ export function nextAttemptDelay(attempts: number): number | null {
  * A claimed delivery, with the endpoint's CURRENT signing secret and whether
  * that endpoint is still switched on.
  */
-export type ClaimedDelivery = WebhookDelivery & {
+export type ClaimedDelivery = IntegrationDelivery & {
   secret: string | null
   endpointEnabled: boolean
 }
@@ -97,20 +97,28 @@ export type ClaimedDelivery = WebhookDelivery & {
  */
 async function withSecrets(ids: string[]): Promise<ClaimedDelivery[]> {
   if (ids.length === 0) return []
+  // LEFT join, not inner. Sheets and Notion are driven by a workspace
+  // connection and their per-form row is provisioned lazily, so a delivery can
+  // legitimately have no integration row yet. An inner join drops exactly those
+  // rows — and since the claim has already flipped them to `sending` and
+  // incremented attempts, they would sit stuck until the stale reclaim, be
+  // claimed again, and loop forever without ever being sent.
   const rows = await db
     .select({
-      delivery: webhookDeliveries,
+      delivery: integrationDeliveries,
       config: formIntegrations.config,
       enabled: formIntegrations.enabled,
     })
-    .from(webhookDeliveries)
-    .innerJoin(formIntegrations, eq(formIntegrations.id, webhookDeliveries.integrationId))
-    .where(inArray(webhookDeliveries.id, ids))
+    .from(integrationDeliveries)
+    .leftJoin(formIntegrations, eq(formIntegrations.id, integrationDeliveries.integrationId))
+    .where(inArray(integrationDeliveries.id, ids))
 
   return rows.map(({ delivery, config, enabled }) => ({
     ...delivery,
-    secret: (config as WebhookIntegrationConfig).secret ?? null,
-    endpointEnabled: enabled,
+    secret: (config as WebhookIntegrationConfig | null)?.secret ?? null,
+    // No integration row means nothing has been switched off — Sheets and
+    // Notion decide that from the workspace connection at send time.
+    endpointEnabled: enabled ?? true,
   }))
 }
 
@@ -160,8 +168,8 @@ async function claimIds(predicate: SQL, limit: number): Promise<string[]> {
 export async function claimDue(limit: number = CLAIM_BATCH): Promise<ClaimedDelivery[]> {
   const ids = await claimIds(
     and(
-      eq(webhookDeliveries.status, "pending"),
-      sql`${webhookDeliveries.nextAttemptAt} <= now()`,
+      eq(integrationDeliveries.status, "pending"),
+      sql`${integrationDeliveries.nextAttemptAt} <= now()`,
     )!,
     limit,
   )
@@ -185,7 +193,7 @@ export async function claimByIds(ids: string[]): Promise<ClaimedDelivery[]> {
   // a few seconds in the future to keep the sweep away from them, and this is
   // the caller that is meant to act inside that window.
   const claimed = await claimIds(
-    and(eq(webhookDeliveries.status, "pending"), inArray(webhookDeliveries.id, ids))!,
+    and(eq(integrationDeliveries.status, "pending"), inArray(integrationDeliveries.id, ids))!,
     ids.length,
   )
   return withSecrets(claimed)
@@ -200,15 +208,15 @@ export async function claimByIds(ids: string[]): Promise<ClaimedDelivery[]> {
  */
 export async function reclaimStale(): Promise<number> {
   const reclaimed = await db
-    .update(webhookDeliveries)
+    .update(integrationDeliveries)
     .set({ status: "pending" })
     .where(
       and(
-        eq(webhookDeliveries.status, "sending"),
-        sql`${webhookDeliveries.claimedAt} < now() - interval '${sql.raw(String(STALE_CLAIM_MINUTES))} minutes'`,
+        eq(integrationDeliveries.status, "sending"),
+        sql`${integrationDeliveries.claimedAt} < now() - interval '${sql.raw(String(STALE_CLAIM_MINUTES))} minutes'`,
       ),
     )
-    .returning({ id: webhookDeliveries.id })
+    .returning({ id: integrationDeliveries.id })
   return reclaimed.length
 }
 
@@ -223,10 +231,10 @@ export async function reclaimStale(): Promise<number> {
  */
 function fenced(row: ClaimedDelivery) {
   return and(
-    eq(webhookDeliveries.id, row.id),
+    eq(integrationDeliveries.id, row.id),
     row.claimToken === null
-      ? sql`${webhookDeliveries.claimToken} IS NULL`
-      : eq(webhookDeliveries.claimToken, row.claimToken),
+      ? sql`${integrationDeliveries.claimToken} IS NULL`
+      : eq(integrationDeliveries.claimToken, row.claimToken),
   )
 }
 
@@ -236,7 +244,7 @@ async function recordSuccess(
   body: string | null,
 ): Promise<void> {
   await db
-    .update(webhookDeliveries)
+    .update(integrationDeliveries)
     .set({
       status: "succeeded",
       deliveredAt: new Date(),
@@ -259,7 +267,7 @@ async function recordFailure(
   const delay = permanent ? null : nextAttemptDelay(row.attempts)
 
   await db
-    .update(webhookDeliveries)
+    .update(integrationDeliveries)
     .set({
       status: delay === null ? "exhausted" : "pending",
       nextAttemptAt: delay === null ? row.nextAttemptAt : new Date(Date.now() + delay * 1000),
@@ -288,6 +296,18 @@ export async function attemptDelivery(row: ClaimedDelivery): Promise<boolean> {
   // toggle says.
   if (!row.endpointEnabled) {
     await recordFailure(row, { error: "Endpoint disabled" }, { permanent: true })
+    return false
+  }
+
+  // `url` and `payload` are nullable now that this table carries every
+  // integration type, and only a webhook has them. A webhook row without them
+  // is corrupt rather than retryable — waiting will not conjure a destination.
+  if (row.type !== "webhook" || !row.url || !row.payload) {
+    await recordFailure(
+      row,
+      { error: `No sender for a ${row.type} delivery with no destination` },
+      { permanent: true },
+    )
     return false
   }
 
@@ -358,11 +378,11 @@ export async function pruneDeliveries(olderThanDays = 30, limit = 500): Promise<
 }
 
 /** Recent deliveries for one endpoint, newest first. Untenanted — callers scope. */
-export async function recentDeliveries(integrationId: string, limit = 20): Promise<WebhookDelivery[]> {
+export async function recentDeliveries(integrationId: string, limit = 20): Promise<IntegrationDelivery[]> {
   return db
     .select()
-    .from(webhookDeliveries)
-    .where(eq(webhookDeliveries.integrationId, integrationId))
-    .orderBy(desc(webhookDeliveries.createdAt))
+    .from(integrationDeliveries)
+    .where(eq(integrationDeliveries.integrationId, integrationId))
+    .orderBy(desc(integrationDeliveries.createdAt))
     .limit(limit)
 }

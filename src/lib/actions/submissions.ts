@@ -10,7 +10,7 @@ import {
   answers,
   uploads,
   formIntegrations,
-  webhookDeliveries,
+  integrationDeliveries,
   type AnswerValue,
   type SubmissionMeta,
   type WebhookDeliveryPayload,
@@ -479,11 +479,12 @@ export async function submitForm(input: {
           answers: webhookAnswers,
         }
         const created = await tx
-          .insert(webhookDeliveries)
+          .insert(integrationDeliveries)
           .values(
             endpoints.map((endpoint) => ({
               workspaceId: form.workspaceId,
               formId: form.id,
+              type: "webhook" as const,
               integrationId: endpoint.id,
               submissionId: sid,
               event: payload.event,
@@ -502,7 +503,7 @@ export async function submitForm(input: {
           // submit for the same submission a no-op rather than a second
           // delivery of the same event.
           .onConflictDoNothing()
-          .returning({ id: webhookDeliveries.id })
+          .returning({ id: integrationDeliveries.id })
         deliveryIds = created.map((row) => row.id)
       }
     })

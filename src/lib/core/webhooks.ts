@@ -22,8 +22,8 @@ import { db } from "@/lib/db"
 import {
   forms,
   formIntegrations,
-  webhookDeliveries,
-  type WebhookDelivery,
+  integrationDeliveries,
+  type IntegrationDelivery,
   type WebhookIntegrationConfig,
 } from "@/lib/db/schema"
 import { postWebhook, type SubmissionPayload } from "@/lib/integrations/webhook"
@@ -222,7 +222,7 @@ export async function sendTestWebhook(
 export type DeliveryView = {
   id: string
   event: string
-  status: WebhookDelivery["status"]
+  status: IntegrationDelivery["status"]
   attempts: number
   lastStatus: number | null
   lastError: string | null
@@ -233,7 +233,8 @@ export type DeliveryView = {
 
 /** A delivery opened up: what we sent, and what came back. */
 export type DeliveryDetail = DeliveryView & {
-  url: string
+  /** Webhook only — the other integration types have no destination URL. */
+  url: string | null
   payload: unknown
   responseBody: string | null
 }
@@ -253,24 +254,24 @@ export async function listDeliveries(
 ): Promise<DeliveryView[]> {
   return db
     .select({
-      id: webhookDeliveries.id,
-      event: webhookDeliveries.event,
-      status: webhookDeliveries.status,
-      attempts: webhookDeliveries.attempts,
-      lastStatus: webhookDeliveries.lastStatus,
-      lastError: webhookDeliveries.lastError,
-      createdAt: webhookDeliveries.createdAt,
-      deliveredAt: webhookDeliveries.deliveredAt,
-      nextAttemptAt: webhookDeliveries.nextAttemptAt,
+      id: integrationDeliveries.id,
+      event: integrationDeliveries.event,
+      status: integrationDeliveries.status,
+      attempts: integrationDeliveries.attempts,
+      lastStatus: integrationDeliveries.lastStatus,
+      lastError: integrationDeliveries.lastError,
+      createdAt: integrationDeliveries.createdAt,
+      deliveredAt: integrationDeliveries.deliveredAt,
+      nextAttemptAt: integrationDeliveries.nextAttemptAt,
     })
-    .from(webhookDeliveries)
+    .from(integrationDeliveries)
     .where(
       and(
-        eq(webhookDeliveries.integrationId, integrationId),
-        eq(webhookDeliveries.workspaceId, ctx.workspaceId),
+        eq(integrationDeliveries.integrationId, integrationId),
+        eq(integrationDeliveries.workspaceId, ctx.workspaceId),
       ),
     )
-    .orderBy(desc(webhookDeliveries.createdAt))
+    .orderBy(desc(integrationDeliveries.createdAt))
     .limit(Math.min(Math.max(limit, 1), 100))
 }
 
@@ -281,11 +282,11 @@ export async function getDelivery(
 ): Promise<DeliveryDetail | null> {
   const [row] = await db
     .select()
-    .from(webhookDeliveries)
+    .from(integrationDeliveries)
     .where(
       and(
-        eq(webhookDeliveries.id, deliveryId),
-        eq(webhookDeliveries.workspaceId, ctx.workspaceId),
+        eq(integrationDeliveries.id, deliveryId),
+        eq(integrationDeliveries.workspaceId, ctx.workspaceId),
       ),
     )
     .limit(1)
@@ -323,12 +324,12 @@ export async function getDelivery(
  */
 export async function redeliver(ctx: AuthContext, deliveryId: string): Promise<Result> {
   const [row] = await db
-    .select({ id: webhookDeliveries.id, status: webhookDeliveries.status, formId: webhookDeliveries.formId })
-    .from(webhookDeliveries)
+    .select({ id: integrationDeliveries.id, status: integrationDeliveries.status, formId: integrationDeliveries.formId })
+    .from(integrationDeliveries)
     .where(
       and(
-        eq(webhookDeliveries.id, deliveryId),
-        eq(webhookDeliveries.workspaceId, ctx.workspaceId),
+        eq(integrationDeliveries.id, deliveryId),
+        eq(integrationDeliveries.workspaceId, ctx.workspaceId),
       ),
     )
     .limit(1)
@@ -341,7 +342,7 @@ export async function redeliver(ctx: AuthContext, deliveryId: string): Promise<R
   }
 
   await db
-    .update(webhookDeliveries)
+    .update(integrationDeliveries)
     .set({
       status: "pending",
       nextAttemptAt: new Date(),
@@ -350,7 +351,7 @@ export async function redeliver(ctx: AuthContext, deliveryId: string): Promise<R
       claimedAt: null,
       lastError: null,
     })
-    .where(eq(webhookDeliveries.id, row.id))
+    .where(eq(integrationDeliveries.id, row.id))
 
   // Try it now rather than waiting up to a minute for the sweep. Safe to race
   // with the sweep: both go through the same claim, so whichever gets there

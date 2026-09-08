@@ -1,5 +1,5 @@
-import { SVGIcon } from "@/components/ui/svg-icon"
-import { Skeleton } from "@/components/ui/skeleton"
+import { SVGIcon } from "@/components/ui/svg-icon";
+import { Skeleton } from "@/components/ui/skeleton";
 
 /**
  * Integrations, loading.
@@ -24,7 +24,7 @@ function Card({ children }: { children: React.ReactNode }) {
     <div className="flex flex-col rounded-lg border border-border bg-card p-4">
       {children}
     </div>
-  )
+  );
 }
 
 /**
@@ -37,15 +37,21 @@ export function IntegrationCardSkeleton({
   icon,
   name,
   descriptionLines = 3,
+  preserveColors = true,
 }: {
-  icon: string
-  name: string
-  descriptionLines?: number
+  icon: string;
+  name: string;
+  descriptionLines?: number;
+  preserveColors?: boolean;
 }) {
   return (
     <Card>
       <div className="flex items-start justify-between gap-3">
-        <SVGIcon src={icon} preserveColors className="size-9" />
+        <SVGIcon
+          src={icon}
+          preserveColors={preserveColors}
+          className="size-9"
+        />
         {/* The connected pill, at the size it renders. */}
         <Skeleton className="h-5 w-20 rounded-full" />
       </div>
@@ -69,7 +75,7 @@ export function IntegrationCardSkeleton({
         <Skeleton className="h-8 w-24 rounded-md" />
       </div>
     </Card>
-  )
+  );
 }
 
 export function IntegrationsSkeleton() {
@@ -114,12 +120,18 @@ export function IntegrationsSkeleton() {
             icon="/logo/google-sheet.svg"
             name="Google Sheets"
           />
-          <IntegrationCardSkeleton icon="/logo/notion.svg" name="Notion" />
+          <IntegrationCardSkeleton
+            icon="/logo/notion.svg"
+            name="Notion"
+            preserveColors={false}
+          />
         </div>
       </section>
 
       <section className="mt-10">
-        <h2 className="text-sm font-semibold text-foreground">Set up per form</h2>
+        <h2 className="text-sm font-semibold text-foreground">
+          Set up per form
+        </h2>
         <p className="mt-1 text-sm text-muted-foreground">
           Each form has its own — a new form starts with none. Choose a form to
           configure it.
@@ -129,10 +141,14 @@ export function IntegrationsSkeleton() {
             icon="/logo/email.svg"
             name="Email notifications"
           />
-          <IntegrationCardSkeleton icon="/logo/webhook.svg" name="Webhooks" />
+          <IntegrationCardSkeleton
+            icon="/logo/webhook.svg"
+            name="Webhooks"
+            preserveColors={false}
+          />
           <IntegrationCardSkeleton icon="/logo/discord.svg" name="Discord" />
         </div>
       </section>
     </div>
-  )
+  );
 }

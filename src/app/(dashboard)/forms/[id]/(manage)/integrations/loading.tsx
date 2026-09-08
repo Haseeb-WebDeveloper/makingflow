@@ -1,5 +1,5 @@
-import { IntegrationCardSkeleton } from "@/components/dashboard/skeletons/integrations-skeleton"
-import { Icon } from "@/components/ui/icon"
+import { IntegrationCardSkeleton } from "@/components/dashboard/skeletons/integrations-skeleton";
+import { Icon } from "@/components/ui/icon";
 
 /**
  * A form's Integrations tab, loading.
@@ -19,11 +19,25 @@ export default function FormIntegrationsLoading() {
       </p>
 
       <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        <IntegrationCardSkeleton icon="/logo/google-sheet.svg" name="Google Sheets" />
-        <IntegrationCardSkeleton icon="/logo/webhook.svg" name="Webhooks" />
-        <IntegrationCardSkeleton icon="/logo/email.svg" name="Email notifications" />
+        <IntegrationCardSkeleton
+          icon="/logo/google-sheet.svg"
+          name="Google Sheets"
+        />
+        <IntegrationCardSkeleton
+          icon="/logo/webhook.svg"
+          name="Webhooks"
+          preserveColors={false}
+        />
+        <IntegrationCardSkeleton
+          icon="/logo/email.svg"
+          name="Email notifications"
+        />
         <IntegrationCardSkeleton icon="/logo/discord.svg" name="Discord" />
-        <IntegrationCardSkeleton icon="/logo/notion.svg" name="Notion" />
+        <IntegrationCardSkeleton
+          icon="/logo/notion.svg"
+          name="Notion"
+          preserveColors={false}
+        />
       </div>
 
       <div className="mt-6 flex items-start gap-2.5 rounded-lg border border-dashed border-border p-3.5 text-sm text-muted-foreground">
@@ -36,5 +50,5 @@ export default function FormIntegrationsLoading() {
         </p>
       </div>
     </div>
-  )
+  );
 }

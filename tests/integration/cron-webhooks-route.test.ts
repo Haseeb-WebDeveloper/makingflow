@@ -23,7 +23,7 @@ import {
   forms,
   submissions,
   users,
-  webhookDeliveries,
+  integrationDeliveries,
   workspaces,
   type WebhookDeliveryPayload,
 } from "@/lib/db/schema"
@@ -71,10 +71,11 @@ async function seedDueDelivery() {
     answers: [],
   }
   const [delivery] = await db
-    .insert(webhookDeliveries)
+    .insert(integrationDeliveries)
     .values({
       workspaceId: workspace.id,
       formId: form.id,
+      type: "webhook",
       integrationId: endpoint.id,
       submissionId: submission.id,
       event: "submission.created",
@@ -82,7 +83,7 @@ async function seedDueDelivery() {
       payload,
       nextAttemptAt: new Date(Date.now() - 1000),
     })
-    .returning({ id: webhookDeliveries.id })
+    .returning({ id: integrationDeliveries.id })
 
   return delivery.id
 }
@@ -95,7 +96,7 @@ function sweep(authorization?: string) {
 }
 
 const status = async (id: string) => {
-  const [row] = await db.select().from(webhookDeliveries).where(eq(webhookDeliveries.id, id))
+  const [row] = await db.select().from(integrationDeliveries).where(eq(integrationDeliveries.id, id))
   return row?.status
 }
 
@@ -180,9 +181,9 @@ describe("POST /api/cron/webhooks", () => {
   test("does not touch a delivery scheduled for later", async () => {
     const id = await seedDueDelivery()
     await db
-      .update(webhookDeliveries)
+      .update(integrationDeliveries)
       .set({ nextAttemptAt: new Date(Date.now() + 60_000) })
-      .where(eq(webhookDeliveries.id, id))
+      .where(eq(integrationDeliveries.id, id))
 
     const { POST } = await import("@/app/api/cron/webhooks/route")
     await POST(sweep(`Bearer ${SECRET}`))

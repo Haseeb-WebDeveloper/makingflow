@@ -25,7 +25,7 @@ import {
   formIntegrations,
   forms,
   submissions,
-  webhookDeliveries,
+  integrationDeliveries,
   workspaces,
   type WebhookDeliveryPayload,
 } from "@/lib/db/schema"
@@ -85,7 +85,7 @@ async function addEndpoint(
 }
 
 const deliveriesFor = (formId: string) =>
-  db.select().from(webhookDeliveries).where(eq(webhookDeliveries.formId, formId))
+  db.select().from(integrationDeliveries).where(eq(integrationDeliveries.formId, formId))
 
 describe("the webhook outbox", () => {
   test("one pending delivery per enabled endpoint, and none for a disabled one", async () => {

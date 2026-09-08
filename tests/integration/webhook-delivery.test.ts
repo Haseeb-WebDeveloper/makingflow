@@ -30,7 +30,7 @@ import {
   forms,
   submissions,
   users,
-  webhookDeliveries,
+  integrationDeliveries,
   workspaces,
   type WebhookDeliveryPayload,
 } from "@/lib/db/schema"
@@ -114,7 +114,7 @@ async function anotherSubmission(t: Tenant): Promise<string> {
 async function seedDelivery(
   t: Tenant,
   integrationId: string,
-  overrides: Partial<typeof webhookDeliveries.$inferInsert> = {},
+  overrides: Partial<typeof integrationDeliveries.$inferInsert> = {},
 ) {
   const payload: WebhookDeliveryPayload = {
     event: "submission.created",
@@ -123,10 +123,11 @@ async function seedDelivery(
     answers: [{ fieldId: randomUUID(), question: "Name", value: "Ada" }],
   }
   const [row] = await db
-    .insert(webhookDeliveries)
+    .insert(integrationDeliveries)
     .values({
       workspaceId: t.workspaceId,
       formId: t.formId,
+      type: "webhook" as const,
       integrationId,
       submissionId: t.submissionId,
       event: "submission.created",
@@ -135,12 +136,12 @@ async function seedDelivery(
       nextAttemptAt: new Date(Date.now() - 1000),
       ...overrides,
     })
-    .returning({ id: webhookDeliveries.id })
+    .returning({ id: integrationDeliveries.id })
   return row.id
 }
 
 const read = async (id: string) => {
-  const [row] = await db.select().from(webhookDeliveries).where(eq(webhookDeliveries.id, id))
+  const [row] = await db.select().from(integrationDeliveries).where(eq(integrationDeliveries.id, id))
   return row
 }
 
@@ -237,9 +238,9 @@ describe("recovering from a dead worker", () => {
     await claimDue(10)
     // Backdate the claim past the stale window, as a crashed worker would leave it.
     await db
-      .update(webhookDeliveries)
+      .update(integrationDeliveries)
       .set({ claimedAt: sql`now() - interval '10 minutes'` })
-      .where(eq(webhookDeliveries.id, id))
+      .where(eq(integrationDeliveries.id, id))
 
     expect(await reclaimStale()).toBe(1)
     expect((await read(id)).status).toBe("pending")
@@ -265,9 +266,9 @@ describe("recovering from a dead worker", () => {
 
     const [zombie] = await claimDue(10)
     await db
-      .update(webhookDeliveries)
+      .update(integrationDeliveries)
       .set({ claimedAt: sql`now() - interval '10 minutes'` })
-      .where(eq(webhookDeliveries.id, id))
+      .where(eq(integrationDeliveries.id, id))
     await reclaimStale()
     const [current] = await claimDue(10)
 
@@ -336,9 +337,9 @@ describe("sending", () => {
 
     for (let i = 0; i < MAX_ATTEMPTS; i += 1) {
       await db
-        .update(webhookDeliveries)
+        .update(integrationDeliveries)
         .set({ nextAttemptAt: new Date(Date.now() - 1000) })
-        .where(eq(webhookDeliveries.id, id))
+        .where(eq(integrationDeliveries.id, id))
       await deliverBatch(await claimDue(10))
     }
 
@@ -401,9 +402,9 @@ describe("sending", () => {
       .set({ config: { url: "https://receiver.example/hook", secret: "whsec_rotated" } })
       .where(eq(formIntegrations.id, endpoint))
     await db
-      .update(webhookDeliveries)
+      .update(integrationDeliveries)
       .set({ nextAttemptAt: new Date(Date.now() - 1000) })
-      .where(eq(webhookDeliveries.id, id))
+      .where(eq(integrationDeliveries.id, id))
 
     vi.unstubAllGlobals()
     const second = stubFetch(200)
@@ -524,11 +525,11 @@ describe("the delivery is scoped to its endpoint", () => {
 
     const [row] = await db
       .select()
-      .from(webhookDeliveries)
+      .from(integrationDeliveries)
       .where(
         and(
-          eq(webhookDeliveries.id, listed[0].id),
-          eq(webhookDeliveries.integrationId, first),
+          eq(integrationDeliveries.id, listed[0].id),
+          eq(integrationDeliveries.integrationId, first),
         ),
       )
     expect(row).toBeTruthy()

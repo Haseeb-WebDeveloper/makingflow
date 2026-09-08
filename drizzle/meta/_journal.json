@@ -113,6 +113,13 @@
       "when": 1788769247018,
       "tag": "0015_worried_forge",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1788853069032,
+      "tag": "0016_aspiring_tenebrous",
+      "breakpoints": true
     }
   ]
 }
