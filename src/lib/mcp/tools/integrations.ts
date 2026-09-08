@@ -26,6 +26,7 @@ import "server-only"
 import * as z from "zod"
 import * as webhooksCore from "@/lib/core/webhooks"
 import { RETRY_WINDOW_HOURS } from "@/lib/integrations/webhook-policy"
+import { siteUrl } from "@/lib/docs/site-url"
 import * as notificationsCore from "@/lib/core/notifications"
 import * as integrationsCore from "@/lib/core/integrations"
 import { defineTool, ToolError, type RegisteredMcpTool } from "@/lib/mcp/define-tool"
@@ -243,13 +244,23 @@ export const integrationTools: RegisteredMcpTool[] = [
       "Add, enable, disable, remove or test a webhook on a form. Each completed response is POSTed to the URL.",
       "",
       "A secret signs deliveries so the receiver can verify they came from us. It is stored write-only: no tool ever returns it, and listing reports only whether one is set.",
-      "The URL must be a public https endpoint. Private, loopback and link-local addresses are refused — a webhook is a request made from our servers, so those would reach our own infrastructure rather than yours.",
+      // Says http AND https because that is what checkOutboundUrl accepts. It
+      // claimed https-only, which is a promise the server does not keep: a
+      // model would refuse a valid endpoint, or wait for a rejection that never
+      // comes.
+      "The URL must be a public http or https endpoint — https unless you have a specific reason, since the payload carries the respondent's answers. Private, loopback and link-local addresses are refused: a webhook is a request made from our servers, so those would reach our own infrastructure rather than yours.",
       "`test` sends a sample payload immediately and reports the status the endpoint returned.",
       "",
       "Every response is recorded as a delivery and retried with backoff for about " +
         RETRY_WINDOW_HOURS +
         " hours if the endpoint is down. `deliveries` lists what happened to recent ones; " +
         "`redeliver` queues a finished delivery to be sent again, keeping its delivery id so a receiver can recognise the duplicate.",
+      "",
+      // Without this an assistant can set a webhook up and then has nothing to
+      // hand the person who must WRITE the receiver — the payload shape, the
+      // signing string, the retry semantics. That guide is public, so it can be
+      // passed to someone with no MakingFlow account.
+      `Building the receiving endpoint is a separate job from configuring it here. The public guide — payload shape, signature verification, retry and duplicate semantics — is at ${siteUrl()}/docs/webhooks. Send that link rather than describing the signature from memory: it covers the exact string that is signed, which is easy to get wrong and fails silently.`,
     ].join("\n"),
     inputSchema: z.object({
       operation: z.enum(["add", "enable", "disable", "remove", "test", "deliveries", "redeliver"]),
@@ -259,7 +270,10 @@ export const integrationTools: RegisteredMcpTool[] = [
         .optional()
         .describe("Required for everything except `add` and `redeliver`."),
       deliveryId: z.string().optional().describe("Required for `redeliver`."),
-      url: z.string().optional().describe("Required for `add`. A public https endpoint."),
+      url: z
+        .string()
+        .optional()
+        .describe("Required for `add`. A publicly reachable http(s) endpoint; prefer https."),
       secret: z
         .string()
         .optional()
@@ -422,7 +436,8 @@ export const integrationTools: RegisteredMcpTool[] = [
   }),
 ]
 
-/** The public origin, for links a human is meant to open. */
-function siteUrl(): string {
-  return process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") || "http://localhost:3000"
-}
+// The local copy of siteUrl() that used to live here fell back to
+// http://localhost:3000. That fallback reaches a human through
+// `connect_provider`'s authorization link, so an unset env var in production
+// handed a customer a URL pointing at their own machine. @/lib/docs/site-url
+// already solves this and documents the three ways it was got wrong before.
