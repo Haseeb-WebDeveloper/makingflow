@@ -7,16 +7,16 @@ export function Hero() {
       {/* Sky photo sits behind the header + hero, fading into the page. */}
       <div aria-hidden className="absolute inset-x-0 top-0 -z-10 h-[820px]">
         <Image src="/hero-sky.jpg" alt="" fill priority sizes="100vw" className="object-cover" />
-        <div className="absolute inset-0 bg-[linear-gradient(180deg,transparent_35%,color-mix(in_oklab,var(--background)_92%,transparent)_82%,var(--background))]" />
+        <div className="absolute inset-0 bg-[linear-gradient(180deg,transparent_35%,color-mix(in_oklab,white_92%,transparent)_82%,white)]" />
       </div>
 
       <div className="mx-auto max-w-7xl px-5 pt-32 text-center sm:px-8 sm:pt-40">
-        <h1 className="lp-rise mx-auto max-w-4xl text-4xl font-bold leading-[1.06] tracking-tight text-foreground sm:text-6xl">
+        <h1 className="lp-rise mx-auto max-w-4xl text-4xl font-bold leading-[1.06] tracking-tight text-black sm:text-6xl">
           Your ultimate solution for{" "}
           <span className="text-primary">smarter forms</span>
         </h1>
         <p
-          className="lp-rise mx-auto mt-5 max-w-xl text-pretty text-base leading-relaxed text-muted-foreground sm:text-lg"
+          className="lp-rise mx-auto mt-5 max-w-xl text-pretty text-base leading-relaxed text-black sm:text-lg"
           style={{ animationDelay: "80ms" }}
         >
           MakingFlow turns a sentence into a form, adapts it to every
