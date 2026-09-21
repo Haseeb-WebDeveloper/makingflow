@@ -838,9 +838,17 @@ function ControlPreview({
         />
       )
     case "date":
+      // Mirrors the runtime: config.includeTime adds a time box beside the date.
       return (
-        <div className={cn(base, "h-10 justify-between")}>
-          Pick a date <FieldGlyph type="date" className="size-4" />
+        <div className="flex gap-2">
+          <div className={cn(base, "h-10 flex-1 justify-between")}>
+            Pick a date <FieldGlyph type="date" className="size-4" />
+          </div>
+          {field.config?.includeTime ? (
+            <div className={cn(base, "h-10 w-32 justify-between")}>
+              Time <FieldGlyph type="time" className="size-4" />
+            </div>
+          ) : null}
         </div>
       )
     case "time":

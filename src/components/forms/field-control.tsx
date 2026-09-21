@@ -377,7 +377,15 @@ export function Control({
       )
 
     case "date":
-      return <DateControl value={str} invalid={invalid} onChange={onChange} inputA11y={inputA11y} />
+      return (
+        <DateControl
+          value={str}
+          includeTime={field.config?.includeTime === true}
+          invalid={invalid}
+          onChange={onChange}
+          inputA11y={inputA11y}
+        />
+      )
     case "time":
       return <input type="time" value={str} onChange={(e) => onChange(e.target.value)} {...inputA11y} className={cn(inputBase, border)} />
 
@@ -715,19 +723,45 @@ function RadioGroupControl({
 
 /** Single-date picker: a styled trigger opening a calendar popover. Stores the
  *  value as an ISO `yyyy-MM-dd` string (unchanged from the old native input). */
+/**
+ * Split the stored answer into its halves.
+ *
+ * A date answer is a plain, zero-padded LOCAL string — "2026-09-21", or
+ * "2026-09-21T14:30" when the field asks for a time. Never a Date and never a
+ * UTC instant: a birthday must not shift a day for anyone west of UTC. The
+ * format also sorts chronologically as plain text, which is exactly what
+ * conditional logic relies on (see `order` in lib/builder/logic).
+ */
+function splitDateTime(value: string): { date: string; time: string } {
+  const [date = "", time = ""] = value.split("T")
+  return { date, time }
+}
+
 function DateControl({
   value,
+  includeTime = false,
   invalid,
   onChange,
   inputA11y,
 }: {
   value: string
+  /** `config.includeTime` — the field asks for a time of day as well. */
+  includeTime?: boolean
   invalid: boolean
   onChange: (v: AnswerValue) => void
   inputA11y?: Record<string, unknown>
 }) {
   const [open, setOpen] = useState(false)
-  const parsed = value ? parse(value, "yyyy-MM-dd", new Date()) : undefined
+  const { date, time } = splitDateTime(value)
+  // A time typed BEFORE a date is picked has nowhere to live: the answer needs
+  // both halves, so emitting it would store "" and wipe the box mid-typing.
+  // Park it here instead. The stored half always wins when there is one, so
+  // this needs no syncing effect — it only shows through while the answer
+  // cannot hold a time yet.
+  const [parkedTime, setParkedTime] = useState("")
+  const shownTime = time || parkedTime
+
+  const parsed = date ? parse(date, "yyyy-MM-dd", new Date()) : undefined
   const valid = parsed && !isNaN(parsed.getTime())
 
   // Warm the calendar chunk as soon as a date field is on screen, so the first
@@ -736,33 +770,68 @@ function DateControl({
     void import("@/components/ui/calendar")
   }, [])
 
+  function emit(nextDate: string, nextTime: string) {
+    if (!nextDate) return onChange("")
+    onChange(includeTime && nextTime ? `${nextDate}T${nextTime}` : nextDate)
+  }
+
+  // Bounds for the year dropdown. Computed only once the popover is open, so it
+  // never runs during a prerender — and a hundred years back covers a date of
+  // birth while ten forward covers a start date or a booking.
+  const now = open ? new Date().getFullYear() : 0
+
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger
-        type="button"
-        {...inputA11y}
-        className={cn(
-          inputBase,
-          invalid ? "border-destructive" : "border-input",
-          "flex items-center justify-between gap-2 text-left",
-          !valid && "text-muted-foreground",
-        )}
-      >
-        <span>{valid ? format(parsed as Date, "PPP") : "Select a date"}</span>
-        <CalendarGlyph className="size-4 shrink-0 text-muted-foreground" />
-      </PopoverTrigger>
-      <PopoverContent align="start" className="w-auto" initialFocus={false}>
-        <Calendar
-          mode="single"
-          selected={valid ? parsed : undefined}
-          defaultMonth={valid ? parsed : undefined}
-          onSelect={(d) => {
-            onChange(d ? format(d, "yyyy-MM-dd") : "")
-            setOpen(false)
+    <div className={cn("flex gap-2", includeTime && "flex-col sm:flex-row")}>
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger
+          type="button"
+          {...inputA11y}
+          className={cn(
+            inputBase,
+            invalid ? "border-destructive" : "border-input",
+            "flex flex-1 items-center justify-between gap-2 text-left",
+            !valid && "text-muted-foreground",
+          )}
+        >
+          <span>{valid ? format(parsed as Date, "PPP") : "Select a date"}</span>
+          <CalendarGlyph className="size-4 shrink-0 text-muted-foreground" />
+        </PopoverTrigger>
+        <PopoverContent align="start" className="w-auto" initialFocus={false}>
+          <Calendar
+            mode="single"
+            // Month + year dropdowns instead of arrow-only navigation. Without
+            // them a date of birth is ~370 clicks away, one month at a time.
+            captionLayout="dropdown"
+            startMonth={new Date(now - 100, 0)}
+            endMonth={new Date(now + 10, 11)}
+            selected={valid ? parsed : undefined}
+            defaultMonth={valid ? parsed : undefined}
+            onSelect={(d) => {
+              emit(d ? format(d, "yyyy-MM-dd") : "", shownTime)
+              setOpen(false)
+            }}
+          />
+        </PopoverContent>
+      </Popover>
+      {includeTime ? (
+        <input
+          type="time"
+          value={shownTime}
+          aria-label="Time"
+          aria-describedby={inputA11y?.["aria-describedby"] as string | undefined}
+          aria-invalid={invalid || undefined}
+          onChange={(e) => {
+            setParkedTime(e.target.value)
+            emit(date, e.target.value)
           }}
+          className={cn(
+            inputBase,
+            invalid ? "border-destructive" : "border-input",
+            "sm:w-36",
+          )}
         />
-      </PopoverContent>
-    </Popover>
+      ) : null}
+    </div>
   )
 }
 
