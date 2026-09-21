@@ -17,6 +17,7 @@ const STATUS_LABEL: Record<FormSyncStatus, string> = {
   pending: "Not created yet",
   paused: "Paused",
   inactive: "Inactive",
+  orphaned: "Reconnect needed",
 };
 
 export function StatusBadge({ status }: { status: FormSyncStatus }) {

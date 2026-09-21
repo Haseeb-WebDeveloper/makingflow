@@ -526,7 +526,7 @@ export function WorkspaceIntegrationsPanel({
                         </p>
                         <div className="mt-1 flex items-center gap-2">
                           <StatusBadge status={f.status} />
-                          {f.spreadsheetUrl ? (
+                          {f.spreadsheetUrl && f.status !== "orphaned" ? (
                             <a
                               href={f.spreadsheetUrl}
                               target="_blank"

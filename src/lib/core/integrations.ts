@@ -10,7 +10,11 @@ import {
 } from "@/lib/db/schema"
 import type { AuthContext } from "@/lib/auth/context"
 import { invalidate } from "@/lib/core/cache"
-import { createFormSheet, refreshFormSheetHeader } from "@/lib/integrations/sheets-provision"
+import {
+  createFormSheet,
+  isOrphanedSheetConfig,
+  refreshFormSheetHeader,
+} from "@/lib/integrations/sheets-provision"
 import { backfillFormSheet } from "@/lib/integrations/sync"
 import { backfillFormNotionDatabase } from "@/lib/integrations/notion-sync"
 import {
@@ -86,9 +90,14 @@ export async function enableFormSheet(ctx: AuthContext, formId: string): Promise
   let config: GoogleSheetsIntegrationConfig
   try {
     const prev = existing?.config as GoogleSheetsIntegrationConfig | undefined
-    config = prev?.spreadsheetId
-      ? await refreshFormSheetHeader(conn, prev, formId)
-      : await createFormSheet(conn, formId, form.title)
+    // Reuse the spreadsheet only if the account that owns it is still the one
+    // connected. After an account switch the old file is unreachable (403/404),
+    // so resuming has to mean a new sheet in the new Drive — refreshing the old
+    // one's header would just fail and leave the form paused with no way out.
+    config =
+      prev?.spreadsheetId && !isOrphanedSheetConfig(prev, conn.id)
+        ? await refreshFormSheetHeader(conn, prev, formId)
+        : await createFormSheet(conn, formId, form.title)
 
     if (existing) {
       await db

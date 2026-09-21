@@ -8,6 +8,7 @@ import {
   type NotionIntegrationConfig,
 } from "@/lib/db/schema"
 import { isGoogleConfigured } from "@/lib/integrations/google"
+import { isOrphanedSheetConfig } from "@/lib/integrations/sheets-provision"
 import { isEmailConfigured } from "@/lib/email/provider"
 import { isNotionConfigured } from "@/lib/integrations/notion"
 
@@ -17,15 +18,22 @@ import { isNotionConfigured } from "@/lib/integrations/notion"
  * - `pending`  — connected; will create its sheet on the next response.
  * - `syncing`  — connected and actively delivering to a spreadsheet.
  * - `paused`   — explicitly turned off for this form.
+ * - `orphaned` — connected, but this form's destination was created under a
+ *   DIFFERENT account than the one connected now, so it is unreachable. Says so
+ *   instead of reporting "syncing" for a sheet no response can land in; resuming
+ *   (or the next response) provisions a replacement in the current account.
  */
-export type FormSyncStatus = "inactive" | "pending" | "syncing" | "paused"
+export type FormSyncStatus = "inactive" | "pending" | "syncing" | "paused" | "orphaned"
 
 function statusOf(
-  connected: boolean,
-  row: { enabled: boolean } | undefined,
+  connection: { id: string } | undefined,
+  row: { enabled: boolean; config: unknown } | undefined,
 ): FormSyncStatus {
-  if (!connected) return "inactive"
+  if (!connection) return "inactive"
   if (!row) return "pending"
+  if (isOrphanedSheetConfig(row.config as { connectionId?: string } | undefined, connection.id)) {
+    return "orphaned"
+  }
   return row.enabled ? "syncing" : "paused"
 }
 
@@ -48,7 +56,7 @@ export async function getGoogleSheetsState(formId: string, workspaceId: string):
   if (!form) return null
 
   const [conn] = await db
-    .select({ accountEmail: workspaceConnections.accountEmail })
+    .select({ id: workspaceConnections.id, accountEmail: workspaceConnections.accountEmail })
     .from(workspaceConnections)
     .where(
       and(
@@ -68,7 +76,7 @@ export async function getGoogleSheetsState(formId: string, workspaceId: string):
   return {
     configured: isGoogleConfigured(),
     connection: conn ? { accountEmail: conn.accountEmail } : null,
-    status: statusOf(Boolean(conn), row),
+    status: statusOf(conn, row),
     spreadsheetUrl: cfg?.spreadsheetUrl ?? null,
   }
 }
@@ -86,7 +94,7 @@ export async function getNotionState(formId: string, workspaceId: string): Promi
   const configured = isNotionConfigured()
 
   const [conn] = await db
-    .select({ accountEmail: workspaceConnections.accountEmail })
+    .select({ id: workspaceConnections.id, accountEmail: workspaceConnections.accountEmail })
     .from(workspaceConnections)
     .where(
       and(
@@ -106,7 +114,7 @@ export async function getNotionState(formId: string, workspaceId: string): Promi
   return {
     configured,
     connection: conn ? { workspaceName: conn.accountEmail } : null,
-    status: statusOf(Boolean(conn), row),
+    status: statusOf(conn, row),
     databaseUrl: cfg?.databaseUrl ?? null,
   }
 }
@@ -275,7 +283,7 @@ export async function getWorkspaceIntegrations(
 
   const [conn, notionConn] = await Promise.all([
     db
-      .select({ accountEmail: workspaceConnections.accountEmail })
+      .select({ id: workspaceConnections.id, accountEmail: workspaceConnections.accountEmail })
       .from(workspaceConnections)
       .where(
         and(
@@ -286,7 +294,7 @@ export async function getWorkspaceIntegrations(
       .limit(1)
       .then((r) => r[0]),
     db
-      .select({ accountEmail: workspaceConnections.accountEmail })
+      .select({ id: workspaceConnections.id, accountEmail: workspaceConnections.accountEmail })
       .from(workspaceConnections)
       .where(
         and(
@@ -351,7 +359,7 @@ export async function getWorkspaceIntegrations(
       return {
         id: f.id,
         title: title(f.title),
-        status: statusOf(connected, row),
+        status: statusOf(conn, row),
         spreadsheetUrl: cfg?.spreadsheetUrl ?? null,
       }
     }),
@@ -391,7 +399,7 @@ export async function getWorkspaceIntegrations(
         return {
           id: f.id,
           title: title(f.title),
-          status: statusOf(notionConnected, row),
+          status: statusOf(notionConn, row),
           databaseUrl: cfg?.databaseUrl ?? null,
         }
       }),

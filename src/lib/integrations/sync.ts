@@ -1,6 +1,6 @@
 import "server-only"
 
-import { and, desc, eq, inArray, isNull } from "drizzle-orm"
+import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm"
 import { db } from "@/lib/db"
 import {
   answers,
@@ -21,7 +21,11 @@ import {
   getValidAccessToken,
   DEFAULT_SHEET_NAME,
 } from "@/lib/integrations/google"
-import { createFormSheet, reconcileFormSheet } from "@/lib/integrations/sheets-provision"
+import {
+  createFormSheet,
+  isOrphanedSheetConfig,
+  reconcileFormSheet,
+} from "@/lib/integrations/sheets-provision"
 import { answerToCell } from "@/lib/submissions/answer-format"
 import type { DeliveryContent, SendOutcome } from "@/lib/integrations/submission-content"
 import { neutralizeFormula } from "@/lib/submissions/csv"
@@ -62,6 +66,53 @@ async function sheetIntegration(formId: string) {
     .where(and(eq(formIntegrations.formId, formId), eq(formIntegrations.type, "google_sheets")))
     .limit(1)
   return row ?? null
+}
+
+/**
+ * Give a form a fresh spreadsheet in the CURRENTLY connected account, replacing
+ * a config left behind by a previous one.
+ *
+ * Switching the workspace's Google account does not move the files: the old
+ * account keeps every spreadsheet, and every form still names one. Reconnecting
+ * used to leave those forms pointing at a file the new token gets 403/404 on,
+ * visible only in the logs — each response simply failed to land. A new sheet in
+ * the new Drive, backfilled with the history, is the only outcome that matches
+ * what connecting an account is understood to mean. The old spreadsheet is left
+ * untouched in the old account, as the archive it now is.
+ *
+ * Race-safe the way the lazy-create branch is: the UPDATE is guarded on the
+ * stale connection id, so if a concurrent response re-provisioned first, ours
+ * loses and returns null rather than pointing the form at a second new sheet.
+ */
+async function reprovisionOrphanedSheet(
+  conn: WorkspaceConnection,
+  form: { id: string; title: string },
+  rowId: string,
+  stale: GoogleSheetsIntegrationConfig,
+): Promise<GoogleSheetsIntegrationConfig | null> {
+  const config = await createFormSheet(conn, form.id, form.title)
+  const [claimed] = await db
+    .update(formIntegrations)
+    .set({ config })
+    .where(
+      and(
+        eq(formIntegrations.id, rowId),
+        sql`${formIntegrations.config} ->> 'connectionId' = ${stale.connectionId}`,
+      ),
+    )
+    .returning({ id: formIntegrations.id })
+
+  if (!claimed) {
+    console.warn(
+      `[sync] lost sheet re-provisioning for form ${form.id}; orphan spreadsheet ${config.spreadsheetId}`,
+    )
+    return null
+  }
+
+  // The new sheet is empty and every response predates it, so the history is the
+  // backfill's job — exactly as on first provisioning.
+  await backfillFormSheet(conn, config, form.id)
+  return config
 }
 
 /**
@@ -111,6 +162,25 @@ export async function syncSubmissionToSheets(
     }
 
     let config = row?.config as GoogleSheetsIntegrationConfig | undefined
+
+    // The workspace has connected a DIFFERENT Google account since this sheet was
+    // made, so its spreadsheet sits in the old account's Drive where the current
+    // token cannot reach it. Move the form onto a sheet this account owns instead
+    // of failing this response and every one after it.
+    if (row && config && isOrphanedSheetConfig(config, conn.id)) {
+      const fresh = await reprovisionOrphanedSheet(conn, form, row.id, config)
+      // The backfill covers this submission too — it is already committed.
+      if (fresh) return { ok: true }
+
+      // A concurrent response re-provisioned first; deliver into the sheet it
+      // claimed rather than treating that as a failure.
+      const winner = await sheetIntegration(form.id)
+      const winnerConfig = winner?.config as GoogleSheetsIntegrationConfig | undefined
+      if (!winner?.enabled || !winnerConfig?.spreadsheetId) {
+        return { ok: false, error: "Google Sheets is paused for this form", permanent: true }
+      }
+      config = winnerConfig
+    }
 
     if (!config) {
       // First response since the workspace connected — provision now and store it.
@@ -230,7 +300,18 @@ export async function ensureFormSheet(form: {
     if (!conn) return // Sheets not connected for this workspace — nothing to do.
 
     const row = await sheetIntegration(form.id)
-    if (row) return // already has a sheet (or is paused) — leave it as-is.
+    const existing = row?.config as GoogleSheetsIntegrationConfig | undefined
+    if (row) {
+      // A sheet from a previously connected account is not a sheet this account
+      // can write to, so it does not count as "already provisioned". Only for a
+      // form that is actually syncing: a paused form gets its new sheet when
+      // someone resumes it (see enableFormSheet), not from a reconnect it never
+      // asked to be part of.
+      if (row.enabled && existing && isOrphanedSheetConfig(existing, conn.id)) {
+        await reprovisionOrphanedSheet(conn, form, row.id, existing)
+      }
+      return // already has a sheet (or is paused) — leave it as-is.
+    }
 
     const config = await createFormSheet(conn, form.id, form.title)
     const [claimed] = await db

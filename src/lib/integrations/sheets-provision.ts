@@ -28,6 +28,28 @@ import {
  * blank there); a removed field keeps its column so old rows still resolve.
  */
 
+/**
+ * Does this stored config point at a spreadsheet in a Google account the
+ * workspace is no longer connected to?
+ *
+ * A spreadsheet lives in the Drive of whichever account was connected when it
+ * was created, and `config.connectionId` records which grant that was. Swap the
+ * workspace's Google account — disconnect, then connect a different one — and
+ * every config written before the swap names a file the new token cannot touch:
+ * Sheets answers 403 or 404, and no retry fixes that. The connection id is the
+ * only signal there is; nothing else about the config changes.
+ *
+ * Conservative on purpose: a config from before connection ids were recorded has
+ * none, and counts as current rather than being silently re-provisioned.
+ */
+export function isOrphanedSheetConfig(
+  config: Partial<Pick<GoogleSheetsIntegrationConfig, "connectionId">> | undefined | null,
+  connectionId: string,
+): boolean {
+  if (!config?.connectionId) return false
+  return config.connectionId !== connectionId
+}
+
 /** Field types that don't collect an answer — excluded from the sheet columns. */
 const NON_ANSWER = new Set(["heading", "paragraph", "image", "embed", "page_break"])
 

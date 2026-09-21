@@ -199,7 +199,7 @@ export function SyncIntegrationCard({
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
                   <StatusBadge status={status} />
-                  {destinationUrl ? (
+                  {destinationUrl && status !== "orphaned" ? (
                     <a
                       href={destinationUrl}
                       target="_blank"
@@ -216,9 +216,11 @@ export function SyncIntegrationCard({
                     ? `This form has no ${destinationNoun} yet.`
                     : status === "syncing"
                     ? "Syncing new submissions automatically."
+                    : status === "orphaned"
+                    ? `This form's ${destinationNoun} belongs to the account that was connected before, so nothing can be delivered to it. It stays where it is — create a new one here and the responses so far are copied across.`
                     : "Sync is paused for this form."}
                 </p>
-                {status === "pending" ? (
+                {status === "pending" || status === "orphaned" ? (
                   <Button
                     variant="outline"
                     size="sm"
@@ -226,7 +228,9 @@ export function SyncIntegrationCard({
                     disabled={pending}
                     onClick={() => onToggle(true)}
                   >
-                    Create it now
+                    {status === "orphaned"
+                      ? `Create a new ${destinationNoun}`
+                      : "Create it now"}
                   </Button>
                 ) : null}
               </div>
