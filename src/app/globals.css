@@ -565,6 +565,16 @@
   padding-left: 0.75rem;
   color: var(--color-muted-foreground);
 }
+/*
+ * Question text is already semibold, so a bold mark on top of it changes
+ * nothing a respondent can see — the button looked broken. Inside a question
+ * the mark means the opposite instead: it drops the selection to regular
+ * weight, which IS a visible difference against the surrounding text. Mirrors
+ * QUESTION_MD in field-control.tsx so the canvas matches the runtime.
+ */
+.inline-rich-text--question .ProseMirror strong {
+  font-weight: 400;
+}
 .inline-rich-text .ProseMirror a {
   color: inherit;
   text-decoration: underline;

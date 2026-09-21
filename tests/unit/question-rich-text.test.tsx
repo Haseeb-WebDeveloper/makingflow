@@ -29,14 +29,30 @@ function renderField(f: PublicField) {
 }
 
 describe("question text rendering", () => {
-  test("renders bold and italic instead of the markdown source", () => {
+  test("renders the marks instead of the markdown source", () => {
     const { container } = renderField(field("How **urgent** is this _really_?"))
 
     expect(container.textContent).toContain("How urgent is this really?")
     expect(container.textContent).not.toContain("**")
     expect(container.textContent).not.toContain("_really_")
-    expect(container.querySelector("strong")?.textContent).toBe("urgent")
     expect(container.querySelector("em")?.textContent).toBe("really")
+  })
+
+  test("the bold mark LIGHTENS a question, which already renders semibold", () => {
+    const { container } = renderField(field("How **urgent** is this?"))
+
+    // Not a <strong>: bolding text that is already bold is invisible, so in a
+    // question the mark drops the selection to regular weight instead.
+    expect(container.querySelector("strong")).toBeNull()
+    const marked = container.querySelector(".font-normal")
+    expect(marked?.textContent).toBe("urgent")
+  })
+
+  test("a heading block still bolds, since its mark means what it says", () => {
+    const { container } = renderField(
+      field("A **bold** section", { type: "heading" }),
+    )
+    expect(container.querySelector("strong")?.textContent).toBe("bold")
   })
 
   test("renders a link that opens safely in a new tab", () => {
@@ -73,7 +89,7 @@ describe("question text rendering", () => {
 
     const marker = screen.getByText("*")
     expect(marker.getAttribute("aria-hidden")).toBe("true")
-    expect(container.querySelector("strong")?.textContent).toBe("Email")
+    expect(container.textContent).toContain("Email")
   })
 
   test("the control is still named by the question text", () => {

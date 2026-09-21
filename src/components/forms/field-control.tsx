@@ -115,9 +115,30 @@ const PARAGRAPH_MD: Components = {
   ),
 }
 
-function InlineMarkdown({ content }: { content: string }) {
+/**
+ * Question text, where the marks mean something slightly different.
+ *
+ * A question renders semibold already, so `**bold**` on top of it is invisible
+ * — the builder's B button appeared to do nothing at all. Inside a question the
+ * mark lightens the selection to regular weight instead, which is a difference
+ * you can actually see against the surrounding text. A `span`, not a `strong`:
+ * "strong importance" is not what this means here. The builder draws it the
+ * same way (.inline-rich-text--question in globals.css).
+ */
+const QUESTION_MD: Components = {
+  ...INLINE_MD,
+  strong: ({ children }) => <span className="font-normal">{children}</span>,
+}
+
+function InlineMarkdown({
+  content,
+  components = INLINE_MD,
+}: {
+  content: string
+  components?: Components
+}) {
   return (
-    <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]} components={INLINE_MD}>
+    <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]} components={components}>
       {/* Inline-normalized: INLINE_MD maps no list/heading/quote component, so a
           block construct here doesn't render badly — it renders WRONG, because
           the parser eats the marker. "1. Full Name" would lose its number and
@@ -207,7 +228,7 @@ export function Field({
         id={labelId}
         className="block text-base font-semibold leading-snug text-foreground sm:text-[17px]"
       >
-        <InlineMarkdown content={field.label} />
+        <InlineMarkdown content={field.label} components={QUESTION_MD} />
         {field.required ? (
           <span className="ml-1 text-destructive" aria-hidden="true">
             *
