@@ -23,6 +23,7 @@ import { claimByIds, deliverBatch } from "@/lib/integrations/webhook-delivery"
 import { isCloudinaryUrl } from "@/lib/cloudinary/url"
 import { processSubmission, intelligenceEnabled } from "@/lib/ai/submission-intelligence"
 import { sessionContext } from "@/lib/auth/context-web"
+import { markdownToPlainText } from "@/lib/markdown"
 import * as submissionsCore from "@/lib/core/submissions"
 import { getFormSubmissionsPage } from "@/lib/data/forms"
 import { NON_ANSWER_TYPES, isEmpty, isFieldVisible } from "@/lib/builder/logic"
@@ -59,7 +60,8 @@ type FieldRow = typeof formFields.$inferSelect
  * Other is off.
  */
 function validateAnswer(field: FieldRow, value: AnswerValue, strict: boolean): string | null {
-  const label = field.label || "a field"
+  // Question text is markdown; an error a respondent reads wants the words.
+  const label = markdownToPlainText(field.label) || "a field"
   if (valueLength(value) > MAX_VALUE_LEN) return `Your answer for "${label}" is too long.`
 
   // Type sanity — always enforced (a multi-select must be an array, etc.).
@@ -267,7 +269,10 @@ export async function submitForm(input: {
   for (const f of fields) {
     if (!f.required || NON_ANSWER_TYPES.has(f.type) || providedIds.has(f.id)) continue
     if (!isFieldVisible(f.logic ?? undefined, answeredValues)) continue
-    return { success: false, error: `Please answer: ${f.label || "a required question"}` }
+    return {
+      success: false,
+      error: `Please answer: ${markdownToPlainText(f.label) || "a required question"}`,
+    }
   }
 
   // Cheap pre-check so an obviously-closed form rejects without opening a
@@ -325,7 +330,7 @@ export async function submitForm(input: {
   const submittedAt = new Date()
   const webhookAnswers = accepted.map((a) => ({
     fieldId: a.fieldId,
-    question: fieldById.get(a.fieldId)?.label || "",
+    question: markdownToPlainText(fieldById.get(a.fieldId)?.label ?? ""),
     value: a.value,
   }))
 
@@ -403,7 +408,10 @@ export async function submitForm(input: {
           submissionId: sid,
           fieldId: f.id,
           isAiFollowUp: false,
-          question: f.label || "",
+          // Snapshot of the question AS ASKED, and it outlives the field. Store the
+          // words, not the markup: every reader of answers.question (detail view,
+          // export, Sheets/Notion columns, email) wants plain text.
+          question: markdownToPlainText(f.label),
           type: f.type,
           value: a.value,
           originalValue: a.originalValue ?? null,

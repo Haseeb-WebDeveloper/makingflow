@@ -9,6 +9,7 @@ import {
   customDomains,
   type AnswerValue,
 } from "@/lib/db/schema"
+import { markdownToPlainText } from "@/lib/markdown"
 import { NON_ANSWER_TYPES } from "@/lib/builder/logic"
 import type { AiFieldType } from "@/lib/ai/form-schema"
 import type { EditorForm } from "@/lib/builder/form-model"
@@ -369,7 +370,9 @@ export async function getFormSubmissionsPage(
     .filter((f) => !NON_ANSWER_TYPES.has(f.type))
     .map((f) => ({
       id: f.id,
-      label: f.label,
+      // Column headers in a data table (and the filter dialog built from them)
+      // want the words, not the markdown the question is authored in.
+      label: markdownToPlainText(f.label),
       type: f.type,
       options: f.options ? f.options.map((o) => ({ id: o.id, label: o.label })) : null,
     }))
@@ -464,7 +467,9 @@ export async function getFormSubmissions(
     .filter((f) => !NON_ANSWER_TYPES.has(f.type))
     .map((f) => ({
       id: f.id,
-      label: f.label,
+      // Column headers in a data table (and the filter dialog built from them)
+      // want the words, not the markdown the question is authored in.
+      label: markdownToPlainText(f.label),
       type: f.type,
       options: f.options ? f.options.map((o) => ({ id: o.id, label: o.label })) : null,
     }))

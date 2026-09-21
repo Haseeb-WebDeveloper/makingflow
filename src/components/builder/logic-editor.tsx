@@ -3,6 +3,7 @@
 import { type EditorField, isAnswerable } from "@/lib/builder/form-model"
 import type { FieldLogic, FieldCondition } from "@/lib/db/schema"
 import { LOGIC_OPERATORS, NO_VALUE_OPERATORS } from "@/lib/builder/logic"
+import { markdownToPlainText } from "@/lib/markdown"
 import {
   Select,
   SelectContent,
@@ -92,7 +93,7 @@ export function LogicEditor({
                 <SelectContent>
                   {sources.map((s, idx) => (
                     <SelectItem key={s.id} value={s.id}>
-                      {s.label || `Question ${idx + 1}`}
+                      {markdownToPlainText(s.label) || `Question ${idx + 1}`}
                     </SelectItem>
                   ))}
                 </SelectContent>

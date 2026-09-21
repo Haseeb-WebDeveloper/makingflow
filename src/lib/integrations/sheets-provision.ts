@@ -1,6 +1,7 @@
 import "server-only"
 
 import { and, eq, isNull } from "drizzle-orm"
+import { markdownToPlainText } from "@/lib/markdown"
 import { db } from "@/lib/db"
 import {
   formFields,
@@ -45,7 +46,9 @@ export async function answerableColumns(formId: string): Promise<Column[]> {
     .orderBy(formFields.position)
   return fields
     .filter((f) => !NON_ANSWER.has(f.type))
-    .map((f, i) => ({ fieldId: f.id, label: f.label || `Question ${i + 1}` }))
+    // Sheet header cells want the words, not the markdown the question is
+    // authored in.
+    .map((f, i) => ({ fieldId: f.id, label: markdownToPlainText(f.label) || `Question ${i + 1}` }))
 }
 
 function headerRow(columns: Column[], withId: boolean): string[] {

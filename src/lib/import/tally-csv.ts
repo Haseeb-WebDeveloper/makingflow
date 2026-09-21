@@ -1,3 +1,4 @@
+import { markdownToPlainText } from "@/lib/markdown"
 import type { EditorField } from "@/lib/builder/form-model"
 import type { AnswerValue } from "@/lib/db/schema"
 
@@ -109,8 +110,12 @@ export function parseCsv(text: string): string[][] {
 
 /** Fold a header and a label to the same key so they can be compared. Shared
  *  with the API path, which falls back to it when identity matching fails. */
+// markdownToPlainText first: MakingFlow question text is authored as inline
+// markdown, and this same helper normalizes both sides of the match (a form
+// field label and a CSV header / Tally title). Without it, bolding a question
+// stops its column from ever matching again.
 export const normaliseLabel = (s: string) =>
-  s
+  markdownToPlainText(s)
     .trim()
     .toLowerCase()
     .replace(/\s+/g, " ")
@@ -280,7 +285,7 @@ export function planCsvImport(csv: string, fields: EditorField[]): CsvImportPlan
     for (const { index, field } of plan.answers) {
       const value = coerceAnswer(field, row[index] ?? "")
       if (value === null) continue
-      answers.push({ fieldId: field.id, question: field.label, type: field.type, value })
+      answers.push({ fieldId: field.id, question: markdownToPlainText(field.label), type: field.type, value })
     }
     if (answers.length === 0) {
       emptyRows += 1

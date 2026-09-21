@@ -1,5 +1,6 @@
 import { z } from "zod"
 import type { AnswerValue } from "@/lib/db/schema"
+import { markdownToPlainText } from "@/lib/markdown"
 
 /**
  * Conversational render mode — server-side AI helpers.
@@ -134,9 +135,19 @@ export function buildParseSystem(baseLanguage: string): string {
   ].join("\n")
 }
 
+/**
+ * Question text is authored as inline markdown, but the chat bubble it ends up
+ * in renders plain text (`whitespace-pre-wrap`, no react-markdown). Feeding the
+ * model `**Your name**` invites it to echo the asterisks straight at the
+ * respondent, so every prompt gets the bare words.
+ */
+function promptLabel(label: string): string {
+  return markdownToPlainText(label) || "(untitled)"
+}
+
 export function buildParsePrompt(field: PromptField, reply: string): string {
   const lines: string[] = [
-    `Field label: ${field.label || "(untitled)"}`,
+    `Field label: ${promptLabel(field.label)}`,
     `Field type: ${field.type}`,
   ]
   if (field.description) lines.push(`Field help text: ${field.description}`)
@@ -169,7 +180,7 @@ export type TurnSituation =
   | { kind: "done"; previous?: { label: string; reply: string } }
 
 function describeField(f: PromptField): string {
-  const bits = [`"${f.label || "(untitled)"}" (type: ${f.type})`]
+  const bits = [`"${promptLabel(f.label)}" (type: ${f.type})`]
   if (f.description) bits.push(`help: ${f.description}`)
   if (f.options && f.options.length > 0) {
     bits.push(`options: ${f.options.map((o) => o.label).join(" | ")}`)
@@ -183,14 +194,14 @@ export function buildTurnDirective(s: TurnSituation): string {
     case "opening":
       return `Greet the respondent in one short sentence, then ask the first question: ${describeField(s.ask)}.`
     case "advance":
-      return `The respondent answered "${s.previous.label}" with: "${s.previous.reply}". Briefly acknowledge that, then ask the next question: ${describeField(s.ask)}.`
+      return `The respondent answered "${promptLabel(s.previous.label)}" with: "${s.previous.reply}". Briefly acknowledge that, then ask the next question: ${describeField(s.ask)}.`
     case "clarify":
-      return `The respondent's reply to "${s.field.label}" ("${s.reply}") wasn't clear enough to record. Gently ask them to clarify so you can answer this ${s.field.type} question. ${s.field.options && s.field.options.length > 0 ? `Remind them of the options: ${s.field.options.map((o) => o.label).join(", ")}.` : ""}`.trim()
+      return `The respondent's reply to "${promptLabel(s.field.label)}" ("${s.reply}") wasn't clear enough to record. Gently ask them to clarify so you can answer this ${s.field.type} question. ${s.field.options && s.field.options.length > 0 ? `Remind them of the options: ${s.field.options.map((o) => o.label).join(", ")}.` : ""}`.trim()
     case "followup":
       return `Ask this follow-up question conversationally: "${s.question}".`
     case "done":
       return s.previous
-        ? `The respondent just answered "${s.previous.label}" with: "${s.previous.reply}". Acknowledge it, then warmly let them know that's the last question and you're recording their response.`
+        ? `The respondent just answered "${promptLabel(s.previous.label)}" with: "${s.previous.reply}". Acknowledge it, then warmly let them know that's the last question and you're recording their response.`
         : `Warmly let the respondent know that's everything and you're recording their response.`
   }
 }

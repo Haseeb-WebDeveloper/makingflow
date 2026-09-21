@@ -602,11 +602,17 @@ function Block({
         ) : (
           <>
             <div className="flex items-start gap-1.5">
-              <AutoText
+              {/* Rich text, like the heading/paragraph blocks: bold, italic and
+                  links only — a question is one line, so lists and quotes have
+                  nothing to structure. Kept in step with the runtime's label
+                  typography (field-control.tsx) so the canvas shows what the
+                  respondent gets. */}
+              <InlineRichText
+                variant="question"
                 value={field.label}
                 onChange={(label) => onChange({ label })}
                 placeholder="Question"
-                className="w-auto min-w-0 flex-1 text-base font-semibold text-foreground sm:text-[17px]"
+                className="min-w-0 flex-1 text-base font-semibold leading-snug text-foreground sm:text-[17px]"
               />
               {/* Always-visible required marker — the state otherwise only lives
                   in the ⋯ menu, so a toggle (manual or AI) looked like a no-op. */}

@@ -1,3 +1,4 @@
+import { markdownToPlainText } from "@/lib/markdown"
 import type { EditorField } from "@/lib/builder/form-model"
 import type { AnswerValue } from "@/lib/db/schema"
 import type { TallyFieldRef } from "@/lib/import/tally-blocks"
@@ -161,7 +162,7 @@ export function planApiImport(
       answered.add(target.field.id)
       answers.push({
         fieldId: target.field.id,
-        question: target.field.label,
+        question: markdownToPlainText(target.field.label),
         type: target.field.type,
         value,
       })

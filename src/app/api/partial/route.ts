@@ -5,6 +5,7 @@ import { getServerSubmissionMeta } from "@/lib/analytics/request-meta"
 import { NON_ANSWER_TYPES, isEmpty } from "@/lib/builder/logic"
 import { MAX_ANSWERS, MAX_VALUE_LEN, valueLength } from "@/lib/submissions/limits"
 import { LIMITS, rateLimit, tooManyRequests } from "@/lib/rate-limit"
+import { markdownToPlainText } from "@/lib/markdown"
 
 export const maxDuration = 15
 
@@ -121,7 +122,7 @@ export async function POST(request: Request) {
           return {
             submissionId: sid as string,
             fieldId: f.id,
-            question: f.label || "",
+            question: markdownToPlainText(f.label),
             type: f.type,
             value,
           }

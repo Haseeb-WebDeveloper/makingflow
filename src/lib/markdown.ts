@@ -1,6 +1,9 @@
 import { Marked } from "marked"
 import TurndownService from "turndown"
 
+import { toInlineMarkdown } from "@/lib/markdown-inline"
+export { toInlineMarkdown }
+
 /**
  * Owner-authored rich text (e.g. the form success page) is STORED as markdown so
  * the public runtime keeps rendering it with react-markdown + sanitize, and so
@@ -19,6 +22,56 @@ export function markdownToHtml(markdown: string): string {
   if (!markdown) return ""
   // Sync: we don't enable marked's async option, so parse returns a string.
   return marked.parse(markdown) as string
+}
+
+// Named entities marked emits when escaping text, plus nbsp (preserveSpacing
+// introduces those). Numeric references are handled separately below.
+const NAMED_ENTITIES: Record<string, string> = {
+  amp: "&",
+  lt: "<",
+  gt: ">",
+  quot: '"',
+  apos: "'",
+  nbsp: " ",
+}
+
+function decodeEntities(s: string): string {
+  return s.replace(/&(#x?[0-9a-f]+|[a-z]+);/gi, (match, ref: string) => {
+    if (ref[0] === "#") {
+      const code =
+        ref[1] === "x" || ref[1] === "X"
+          ? Number.parseInt(ref.slice(2), 16)
+          : Number.parseInt(ref.slice(1), 10)
+      return Number.isFinite(code) && code > 0 ? String.fromCodePoint(code) : match
+    }
+    return NAMED_ENTITIES[ref.toLowerCase()] ?? match
+  })
+}
+
+/**
+ * Markdown -> bare words, for every consumer that needs the TEXT of authored
+ * content rather than its formatting: CSV headers, the `answers.question`
+ * snapshot, Sheets/Notion column names, AI prompts, validation messages, and
+ * builder chrome (logic editor, analytics cards). Without it those surfaces
+ * would print literal `**asterisks**` the moment someone bolds a question.
+ *
+ * Goes via HTML rather than pattern-matching the markdown, which is what makes
+ * it safe to strip tags with a regex: marked escapes any `<` in the source to
+ * `&lt;`, so every remaining angle bracket is a real tag. Block ends and `<br>`
+ * become a space so "One\n\nTwo" reads as "One Two" instead of "OneTwo", then
+ * whitespace collapses — these consumers are all single-line.
+ *
+ * Server-safe: no DOM, unlike `preserveSpacing`.
+ */
+export function markdownToPlainText(markdown: string): string {
+  if (!markdown) return ""
+  // Inline-normalize FIRST. Without it "1. Full Name" parses as a list item and
+  // the number — the part a CSV header most needs — is thrown away.
+  const text = markdownToHtml(toInlineMarkdown(markdown))
+    .replace(/<br\s*\/?>/gi, " ")
+    .replace(/<\/(p|h[1-6]|li|blockquote|div|tr|td|th)>/gi, " ")
+    .replace(/<\/?[a-z][^>]*>/gi, "")
+  return decodeEntities(text).replace(/\s+/g, " ").trim()
 }
 
 let turndown: TurndownService | null = null

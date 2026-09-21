@@ -1,4 +1,5 @@
 import { and, desc, eq, isNull, sql } from "drizzle-orm"
+import { markdownToPlainText } from "@/lib/markdown"
 import { db } from "@/lib/db"
 import {
   forms,
@@ -232,7 +233,7 @@ export async function getFormInsights(
     const count = stoppedAt.get(f.id) ?? 0
     return {
       id: f.id,
-      label: f.label || "Untitled question",
+      label: markdownToPlainText(f.label) || "Untitled question",
       type: f.type,
       count,
       percent: abandoned > 0 ? count / abandoned : 0,
@@ -274,7 +275,7 @@ function buildFieldInsight(
   const nonEmpty = values.filter((v) => !isEmptyValue(v))
   const responses = nonEmpty.length
   const fillRate = submissionsCount > 0 ? responses / submissionsCount : null
-  const base = { id: field.id, label: field.label || "Untitled question", type, responses, fillRate }
+  const base = { id: field.id, label: markdownToPlainText(field.label) || "Untitled question", type, responses, fillRate }
 
   if (NUMERIC.has(type)) {
     const nums = nonEmpty.map((v) => Number(v)).filter((n) => Number.isFinite(n))

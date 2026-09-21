@@ -9,6 +9,7 @@ import rehypeSanitize from "rehype-sanitize"
 import type { PublicField, PublicTheme } from "@/lib/data/public-form"
 import type { AnswerValue } from "@/lib/db/schema"
 import { uploadToCloudinary } from "@/lib/cloudinary/upload"
+import { toInlineMarkdown } from "@/lib/markdown-inline"
 import { cldDeliver } from "@/lib/cloudinary/url"
 import { showToast } from "@/components/ui/toast"
 import {
@@ -107,7 +108,13 @@ const PARAGRAPH_MD: Components = {
 function InlineMarkdown({ content }: { content: string }) {
   return (
     <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]} components={INLINE_MD}>
-      {content}
+      {/* Inline-normalized: INLINE_MD maps no list/heading/quote component, so a
+          block construct here doesn't render badly — it renders WRONG, because
+          the parser eats the marker. "1. Full Name" would lose its number and
+          every numbered question on the form would restart at 1. Most labels
+          predate rich text and are plain prose that must survive being parsed
+          as markdown. See toInlineMarkdown. */}
+      {toInlineMarkdown(content)}
     </ReactMarkdown>
   )
 }
@@ -180,17 +187,23 @@ export function Field({
 
   return (
     <div id={`field-${field.id}`} className="space-y-2.5">
-      <label
+      {/* A <div>, not a <label>: nothing is associated to it (no htmlFor, no
+          nested control — see above), and the question is authored as markdown,
+          so it can legitimately contain a link. A focusable descendant inside a
+          <label> is exactly what the label content model warns against, and the
+          element was never doing a label's job here. `aria-labelledby` on the
+          control reads this subtree either way. */}
+      <div
         id={labelId}
         className="block text-base font-semibold leading-snug text-foreground sm:text-[17px]"
       >
-        {field.label}
+        <InlineMarkdown content={field.label} />
         {field.required ? (
           <span className="ml-1 text-destructive" aria-hidden="true">
             *
           </span>
         ) : null}
-      </label>
+      </div>
       {field.description ? (
         <p id={descId} className="-mt-1 text-sm text-muted-foreground">
           {field.description}

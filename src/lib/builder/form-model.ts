@@ -1,5 +1,6 @@
 import type { AiForm, AiField, AiFieldType, AiOperation } from "@/lib/ai/form-schema"
 import type { FieldLogic, FieldCondition, FieldOption, FieldConfig } from "@/lib/db/schema"
+import { markdownToPlainText } from "@/lib/markdown"
 
 /**
  * The editor's working model. Unlike the AI spec (`AiForm`), every field carries
@@ -164,7 +165,12 @@ export function newField(type: AiFieldType, config?: FieldConfig): EditorField {
 
 // ── Conversions to/from the AI spec ───────────────────────────────────
 
-const normLabel = (s: string) => s.trim().toLowerCase()
+// Markdown is stripped before comparing: question text is authored as inline
+// markdown, but a logic rule refers to a question by the words a human reads.
+// Without this, bolding a question silently breaks every condition pointing at
+// it — the AI writes `fieldLabel: "Full Name"` and the stored label is
+// `**Full Name**`, so the lookup misses and the condition is dropped.
+const normLabel = (s: string) => markdownToPlainText(s).toLowerCase()
 
 /** Build a forgiving label→id map (trim + case-insensitive) for logic resolution. */
 function labelIdMap(fields: EditorField[]): Map<string, string> {
@@ -226,7 +232,7 @@ export function mergeAiIntoEditor(ai: AiForm, prev: EditorForm | null): EditorFo
 
   const built = (ai.fields ?? []).map((af) => {
     const match =
-      take((p) => p.type === af.type && p.label === (af.label ?? "")) ??
+      take((p) => p.type === af.type && normLabel(p.label) === normLabel(af.label ?? "")) ??
       take((p) => p.type === af.type)
     // Preserve-on-omission. On edits the model must re-emit the COMPLETE form,
     // but it routinely drops UNCHANGED properties — most damagingly a choice
@@ -836,7 +842,7 @@ function matchRequiredEdit(instruction: string, form: EditorForm): SimpleEdit | 
   }
   if (matched.length === 0) return null
 
-  const names_ = matched.map((f) => `**${f.label}**`)
+  const names_ = matched.map((f) => `**${markdownToPlainText(f.label)}**`)
   const list =
     names_.length === 1
       ? names_[0]

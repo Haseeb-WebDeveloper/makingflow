@@ -116,7 +116,9 @@ export const aiFieldSchema = z.object({
   type: fieldTypeSchema.describe("The field/block type. Pick the most appropriate for the question."),
   label: z
     .string()
-    .describe("The question text, or for heading/paragraph blocks, the content to display."),
+    .describe(
+      "The question text, or for heading/paragraph blocks, the content to display. Inline Markdown is allowed and is how the builder stores formatting: **bold**, _italic_, and [links](https://example.com). PRESERVE any formatting already present when you re-emit a label you are not changing, and only add formatting when the user asks for it — plain text is the norm for a question.",
+    ),
   description: z
     .string()
     .optional()

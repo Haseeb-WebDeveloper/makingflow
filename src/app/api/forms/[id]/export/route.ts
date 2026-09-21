@@ -6,6 +6,7 @@ import { verifyExportToken } from "@/lib/mcp/export-token"
 import { NON_ANSWER_TYPES } from "@/lib/builder/logic"
 import { answerToCell } from "@/lib/submissions/answer-format"
 import { csvFileName, csvRow } from "@/lib/submissions/csv"
+import { markdownToPlainText } from "@/lib/markdown"
 
 export const maxDuration = 60
 
@@ -80,7 +81,14 @@ export async function GET(
         // BOM so Excel opens UTF-8 correctly on Windows.
         controller.enqueue(encoder.encode("﻿"))
         controller.enqueue(
-          encoder.encode(csvRow(["Submitted", ...columns.map((c) => c.label || "Untitled")]) + "\n"),
+          // Question text is authored as markdown; a spreadsheet header wants
+          // the words, not `**asterisks**`.
+          encoder.encode(
+            csvRow([
+              "Submitted",
+              ...columns.map((c) => markdownToPlainText(c.label) || "Untitled"),
+            ]) + "\n",
+          ),
         )
 
         // Keyset cursor. (created_at, id) is unique and matches the ordering, so
