@@ -41,6 +41,20 @@ const INLINE_GRACE_MS = 15_000
 // it — never store unbounded or malformed data). Shared with /api/partial.
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const URL_RE = /^https?:\/\/\S+\.\S+/i
+/** What a date answer looks like: 2026-09-21, or 2026-09-21T14:30 with a time. */
+const DATE_ANSWER_RE = /^\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2})?$/
+
+/** Today where the server stands, as yyyy-MM-dd. */
+function serverToday(): string {
+  return new Date().toISOString().slice(0, 10)
+}
+
+/** `days` either side of an ISO date, staying in ISO. */
+function shiftDay(iso: string, days: number): string {
+  const d = new Date(`${iso}T00:00:00Z`)
+  d.setUTCDate(d.getUTCDate() + days)
+  return d.toISOString().slice(0, 10)
+}
 
 type FieldRow = typeof formFields.$inferSelect
 
@@ -84,6 +98,25 @@ function validateAnswer(field: FieldRow, value: AnswerValue, strict: boolean): s
     case "yes_no":
       if (value !== "Yes" && value !== "No") return `Invalid answer for "${label}".`
       break
+    case "date": {
+      // A limit the client alone enforces is not a limit — a booking form that
+      // refuses past dates in the picker still has to refuse them here.
+      if (typeof value !== "string" || !DATE_ANSWER_RE.test(value))
+        return `Enter a valid date for "${label}".`
+      const day = value.slice(0, 10)
+      const cfg = field.config
+      if (cfg?.minDate && day < cfg.minDate) return `"${label}" is before the earliest date allowed.`
+      if (cfg?.maxDate && day > cfg.maxDate) return `"${label}" is after the latest date allowed.`
+      // A day of slack on the RELATIVE bounds. The respondent's "today" is
+      // their timezone's; the server's is UTC. Without the slack, someone
+      // legitimately booking today from the other side of the date line gets
+      // told today is in the past.
+      if (cfg?.disablePast && day < shiftDay(serverToday(), -1))
+        return `"${label}" cannot be in the past.`
+      if (cfg?.disableFuture && day > shiftDay(serverToday(), 1))
+        return `"${label}" cannot be in the future.`
+      break
+    }
     case "multiple_choice":
     case "dropdown":
       if (typeof value !== "string") return `Invalid option for "${label}".`

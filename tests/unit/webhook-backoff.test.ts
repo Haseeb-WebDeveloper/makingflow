@@ -16,6 +16,7 @@
 
 import { describe, expect, test } from "vitest"
 import { MAX_ATTEMPTS, nextAttemptDelay } from "@/lib/integrations/webhook-delivery"
+import { BACKOFF_SECONDS } from "@/lib/integrations/webhook-policy"
 
 describe("the retry ladder", () => {
   test("gives up after the last rung, and not before", () => {
@@ -28,13 +29,20 @@ describe("the retry ladder", () => {
   })
 
   test("spans roughly eight hours, so a long outage is survivable", () => {
-    let total = 0
-    for (let attempts = 1; attempts < MAX_ATTEMPTS; attempts += 1) {
-      total += nextAttemptDelay(attempts) ?? 0
-    }
+    // The NOMINAL ladder, not a jittered sample of it.
+    //
+    // This used to sum nextAttemptDelay(), which applies ±20% jitter. The
+    // nominal total is 7.21h against a 6h floor, and jitter reaches 1.44h —
+    // so the assertion failed on roughly 1 run in 50, at random, in whichever
+    // unrelated branch happened to be running. The jitter has its own test
+    // below; what THIS one is about is the shape of the ladder.
+    const total = BACKOFF_SECONDS.reduce((sum, seconds) => sum + seconds, 0)
+
     // Comfortably more than a deploy or a restart, comfortably less than a day.
     expect(total).toBeGreaterThan(6 * 3600)
     expect(total).toBeLessThan(10 * 3600)
+    // And the ladder is what the retry loop actually walks.
+    expect(BACKOFF_SECONDS).toHaveLength(MAX_ATTEMPTS - 1)
   })
 
   test("backs off — each wait is longer than the one before", () => {

@@ -515,6 +515,60 @@ function Block({
                 Other option
               </DropdownMenuSwitchItem>
             ) : null}
+            {/* The only per-field config settable by hand anywhere in the
+                product. Everything else (rating scale, file types…) can still
+                only be changed by asking the AI. The two range options are
+                RELATIVE rather than a stored date on purpose — see FieldConfig. */}
+            {field.type === "date" ? (
+              <>
+                <DropdownMenuSwitchItem
+                  checked={field.config?.includeTime === true}
+                  onCheckedChange={(v) =>
+                    onChange({ config: { ...field.config, includeTime: v || undefined } })
+                  }
+                >
+                  Include time
+                </DropdownMenuSwitchItem>
+                <DropdownMenuCheckboxItem
+                  checked={!field.config?.disablePast && !field.config?.disableFuture}
+                  onCheckedChange={() =>
+                    onChange({
+                      config: {
+                        ...field.config,
+                        disablePast: undefined,
+                        disableFuture: undefined,
+                      },
+                    })
+                  }
+                  onSelect={(e) => e.preventDefault()}
+                >
+                  Any date
+                </DropdownMenuCheckboxItem>
+                <DropdownMenuCheckboxItem
+                  checked={field.config?.disablePast === true}
+                  onCheckedChange={() =>
+                    onChange({
+                      config: { ...field.config, disablePast: true, disableFuture: undefined },
+                    })
+                  }
+                  onSelect={(e) => e.preventDefault()}
+                >
+                  Today or later
+                </DropdownMenuCheckboxItem>
+                <DropdownMenuCheckboxItem
+                  checked={field.config?.disableFuture === true}
+                  onCheckedChange={() =>
+                    onChange({
+                      config: { ...field.config, disableFuture: true, disablePast: undefined },
+                    })
+                  }
+                  onSelect={(e) => e.preventDefault()}
+                >
+                  Today or earlier
+                </DropdownMenuCheckboxItem>
+                <DropdownMenuSeparator />
+              </>
+            ) : null}
             {field.type === "heading" ? (
               <>
                 <DropdownMenuCheckboxItem

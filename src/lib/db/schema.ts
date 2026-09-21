@@ -231,7 +231,15 @@ export type FieldConfig = {
   allowedFileTypes?: string[]
   maxFileSizeMb?: number
   maxFiles?: number
-  includeTime?: boolean
+  includeTime?: boolean // date field also asks for a time of day
+  // Allowed window for a date answer. The absolute bounds are ISO yyyy-MM-dd;
+  // the two flags are RELATIVE on purpose and resolved when the form is filled,
+  // because "no past dates" baked in as a fixed date would quietly start
+  // accepting yesterday a week after the form was published.
+  minDate?: string
+  maxDate?: string
+  disablePast?: boolean
+  disableFuture?: boolean
   allowOther?: boolean
   randomizeOptions?: boolean
   defaultValue?: string // hidden fields / prefill

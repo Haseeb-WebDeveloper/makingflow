@@ -380,7 +380,7 @@ export function Control({
       return (
         <DateControl
           value={str}
-          includeTime={field.config?.includeTime === true}
+          config={field.config}
           invalid={invalid}
           onChange={onChange}
           inputA11y={inputA11y}
@@ -737,20 +737,67 @@ function splitDateTime(value: string): { date: string; time: string } {
   return { date, time }
 }
 
+/**
+ * Formats a typed date is accepted in, tried in order.
+ *
+ * `dd/MM/yyyy` is the stated contract — the placeholder says DD/MM/YYYY — and
+ * it matters that the US order is REJECTED rather than reinterpreted: "09/21"
+ * has no 21st month, so it fails loudly instead of silently becoming the 9th of
+ * an unintended month. There is no per-form date format setting yet; when there
+ * is, this list should follow it.
+ */
+const TYPED_DATE_FORMATS = ["dd/MM/yyyy", "yyyy-MM-dd", "dd-MM-yyyy", "dd.MM.yyyy"]
+
+/** A typed date as `yyyy-MM-dd`, or null when it isn't a date. */
+function parseTypedDate(raw: string): string | null {
+  const v = raw.trim()
+  if (!v) return null
+  for (const f of TYPED_DATE_FORMATS) {
+    const d = parse(v, f, new Date())
+    // A 2-digit year parses to year 26 AD, which is never what anyone meant.
+    if (!isNaN(d.getTime()) && d.getFullYear() >= 1000) return format(d, "yyyy-MM-dd")
+  }
+  return null
+}
+
+/**
+ * The allowed window, as `yyyy-MM-dd` strings (comparable with < and >).
+ *
+ * `disablePast` / `disableFuture` are deliberately separate from the absolute
+ * minDate / maxDate rather than being stored as a date: "no past dates" has to
+ * be resolved when the form is FILLED, not when it was built. Baked in as a
+ * fixed date, a booking form published today would quietly start accepting
+ * yesterday next week.
+ */
+function dateBounds(config: PublicField["config"]): { min?: string; max?: string } {
+  const today =
+    config?.disablePast || config?.disableFuture ? format(new Date(), "yyyy-MM-dd") : undefined
+  const mins = [config?.minDate, config?.disablePast ? today : undefined].filter(Boolean) as string[]
+  const maxs = [config?.maxDate, config?.disableFuture ? today : undefined].filter(Boolean) as string[]
+  return {
+    min: mins.length ? mins.reduce((a, b) => (a > b ? a : b)) : undefined,
+    max: maxs.length ? maxs.reduce((a, b) => (a < b ? a : b)) : undefined,
+  }
+}
+
+function pretty(iso: string): string {
+  return format(parse(iso, "yyyy-MM-dd", new Date()), "d MMM yyyy")
+}
+
 function DateControl({
   value,
-  includeTime = false,
+  config,
   invalid,
   onChange,
   inputA11y,
 }: {
   value: string
-  /** `config.includeTime` — the field asks for a time of day as well. */
-  includeTime?: boolean
+  config: PublicField["config"]
   invalid: boolean
   onChange: (v: AnswerValue) => void
   inputA11y?: Record<string, unknown>
 }) {
+  const includeTime = config?.includeTime === true
   const [open, setOpen] = useState(false)
   const { date, time } = splitDateTime(value)
   // A time typed BEFORE a date is picked has nowhere to live: the answer needs
@@ -760,9 +807,14 @@ function DateControl({
   // cannot hold a time yet.
   const [parkedTime, setParkedTime] = useState("")
   const shownTime = time || parkedTime
+  // In-progress text, held only while it differs from the stored date (someone
+  // mid-type, or something unparseable). Null means "just mirror the answer".
+  const [typed, setTyped] = useState<string | null>(null)
+  const [problem, setProblem] = useState<string | null>(null)
 
   const parsed = date ? parse(date, "yyyy-MM-dd", new Date()) : undefined
   const valid = parsed && !isNaN(parsed.getTime())
+  const shownDate = typed ?? (valid ? format(parsed as Date, "dd/MM/yyyy") : "")
 
   // Warm the calendar chunk as soon as a date field is on screen, so the first
   // click opens the picker instantly instead of showing a loading state.
@@ -775,61 +827,139 @@ function DateControl({
     onChange(includeTime && nextTime ? `${nextDate}T${nextTime}` : nextDate)
   }
 
-  // Bounds for the year dropdown. Computed only once the popover is open, so it
-  // never runs during a prerender — and a hundred years back covers a date of
-  // birth while ten forward covers a start date or a booking.
-  const now = open ? new Date().getFullYear() : 0
+  /** Why this date can't be used, or null. */
+  function outOfRange(iso: string): string | null {
+    const { min, max } = dateBounds(config)
+    if (min && iso < min) return `Pick a date on or after ${pretty(min)}.`
+    if (max && iso > max) return `Pick a date on or before ${pretty(max)}.`
+    return null
+  }
+
+  function onTyped(raw: string) {
+    setTyped(raw)
+    if (!raw.trim()) {
+      setProblem(null)
+      emit("", shownTime)
+      return
+    }
+    const iso = parseTypedDate(raw)
+    if (!iso) {
+      // Not a complete date YET — don't nag someone who is still typing.
+      setProblem(null)
+      return
+    }
+    const why = outOfRange(iso)
+    setProblem(why)
+    if (!why) emit(iso, shownTime)
+  }
+
+  function onTypedBlur() {
+    if (typed === null) return
+    const raw = typed.trim()
+    if (!raw) {
+      setTyped(null)
+      setProblem(null)
+      return
+    }
+    const iso = parseTypedDate(raw)
+    if (!iso) {
+      setProblem("Use DD/MM/YYYY.")
+      return
+    }
+    if (outOfRange(iso)) return // the message is already on screen
+    setTyped(null) // re-mirror the stored answer, normalized
+    setProblem(null)
+  }
+
+  // Calendar bounds, resolved only once it's open so none of this runs during a
+  // prerender. A hundred years back covers a date of birth and ten forward
+  // covers a start date or a booking; the field's own limits narrow that.
+  const bounds = open ? dateBounds(config) : {}
+  const thisYear = open ? new Date().getFullYear() : 0
+  const minDay = bounds.min ? parse(bounds.min, "yyyy-MM-dd", new Date()) : undefined
+  const maxDay = bounds.max ? parse(bounds.max, "yyyy-MM-dd", new Date()) : undefined
 
   return (
-    <div className={cn("flex gap-2", includeTime && "flex-col sm:flex-row")}>
-      <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger
-          type="button"
-          {...inputA11y}
-          className={cn(
-            inputBase,
-            invalid ? "border-destructive" : "border-input",
-            "flex flex-1 items-center justify-between gap-2 text-left",
-            !valid && "text-muted-foreground",
-          )}
-        >
-          <span>{valid ? format(parsed as Date, "PPP") : "Select a date"}</span>
-          <CalendarGlyph className="size-4 shrink-0 text-muted-foreground" />
-        </PopoverTrigger>
-        <PopoverContent align="start" className="w-auto" initialFocus={false}>
-          <Calendar
-            mode="single"
-            // Month + year dropdowns instead of arrow-only navigation. Without
-            // them a date of birth is ~370 clicks away, one month at a time.
-            captionLayout="dropdown"
-            startMonth={new Date(now - 100, 0)}
-            endMonth={new Date(now + 10, 11)}
-            selected={valid ? parsed : undefined}
-            defaultMonth={valid ? parsed : undefined}
-            onSelect={(d) => {
-              emit(d ? format(d, "yyyy-MM-dd") : "", shownTime)
-              setOpen(false)
-            }}
+    <div className="space-y-1.5">
+      <div className={cn("flex gap-2", includeTime && "flex-col sm:flex-row")}>
+        <div className="relative flex-1">
+          {/* A real input, not a button. Typing a date beats any picker for
+              anyone who knows the date already — and a date of birth is the
+              case where clicking through a calendar is worst. */}
+          <input
+            type="text"
+            inputMode="numeric"
+            autoComplete="off"
+            value={shownDate}
+            placeholder="DD/MM/YYYY"
+            {...inputA11y}
+            aria-invalid={invalid || !!problem || undefined}
+            onChange={(e) => onTyped(e.target.value)}
+            onBlur={onTypedBlur}
+            className={cn(
+              inputBase,
+              invalid || problem ? "border-destructive" : "border-input",
+              "pr-10",
+            )}
           />
-        </PopoverContent>
-      </Popover>
-      {includeTime ? (
-        <input
-          type="time"
-          value={shownTime}
-          aria-label="Time"
-          aria-describedby={inputA11y?.["aria-describedby"] as string | undefined}
-          aria-invalid={invalid || undefined}
-          onChange={(e) => {
-            setParkedTime(e.target.value)
-            emit(date, e.target.value)
-          }}
-          className={cn(
-            inputBase,
-            invalid ? "border-destructive" : "border-input",
-            "sm:w-36",
-          )}
-        />
+          <Popover open={open} onOpenChange={setOpen}>
+            <PopoverTrigger
+              type="button"
+              aria-label="Open calendar"
+              className="absolute inset-y-0 right-0 grid w-10 place-items-center rounded-r-md text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/60"
+            >
+              <CalendarGlyph className="size-4" />
+            </PopoverTrigger>
+            <PopoverContent align="start" className="w-auto" initialFocus={false}>
+              <Calendar
+                mode="single"
+                // Month + year dropdowns rather than arrow-only navigation.
+                captionLayout="dropdown"
+                startMonth={minDay ?? new Date(thisYear - 100, 0)}
+                endMonth={maxDay ?? new Date(thisYear + 10, 11)}
+                disabled={
+                  minDay || maxDay
+                    ? [
+                        ...(minDay ? [{ before: minDay }] : []),
+                        ...(maxDay ? [{ after: maxDay }] : []),
+                      ]
+                    : undefined
+                }
+                selected={valid ? parsed : undefined}
+                defaultMonth={valid ? parsed : minDay}
+                onSelect={(d) => {
+                  setTyped(null)
+                  setProblem(null)
+                  emit(d ? format(d, "yyyy-MM-dd") : "", shownTime)
+                  setOpen(false)
+                }}
+              />
+            </PopoverContent>
+          </Popover>
+        </div>
+        {includeTime ? (
+          <input
+            type="time"
+            value={shownTime}
+            aria-label="Time"
+            aria-describedby={inputA11y?.["aria-describedby"] as string | undefined}
+            aria-invalid={invalid || undefined}
+            onChange={(e) => {
+              setParkedTime(e.target.value)
+              emit(date, e.target.value)
+            }}
+            className={cn(
+              inputBase,
+              invalid ? "border-destructive" : "border-input",
+              "sm:w-36",
+            )}
+          />
+        ) : null}
+      </div>
+      {problem ? (
+        <p role="alert" className="text-sm font-medium text-destructive">
+          {problem}
+        </p>
       ) : null}
     </div>
   )
