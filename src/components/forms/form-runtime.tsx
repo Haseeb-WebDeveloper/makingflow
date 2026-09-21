@@ -13,8 +13,7 @@ import {
   AllAtOncePreview,
   OneAtATimePreview,
 } from "@/components/forms/fill-mode-previews";
-import { SuccessContent } from "@/components/forms/success-content";
-import { SuccessMark } from "@/components/forms/success-mark";
+import { SuccessScreen } from "@/components/forms/success-screen";
 import {
   collectClientMeta,
   track,
@@ -554,19 +553,11 @@ export function FormRuntime({
 
   if (done) {
     return (
-      <div className="mx-auto flex min-h-[70dvh] w-full max-w-xl flex-col items-center justify-center text-center">
-        <div className="mx-auto mb-4 flex size-14 items-center justify-center rounded-full bg-success/10 text-success">
-          <SuccessMark className="size-52" />
-        </div>
-        <h2 className="w-full mt-4 text-2xl font-bold tracking-tight text-foreground">
-          {form.thankYou}
-        </h2>
-        <SuccessContent
-          body={form.successBody}
-          videoUrl={form.successVideoUrl}
-          className="mt-6 w-full"
-        />
-      </div>
+      <SuccessScreen
+        title={form.thankYou}
+        body={form.successBody}
+        videoUrl={form.successVideoUrl}
+      />
     );
   }
 

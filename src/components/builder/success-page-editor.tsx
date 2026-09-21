@@ -4,6 +4,14 @@ import { useEffect, useRef, useState } from "react"
 import { RichTextEditor, type RichTextEditorHandle } from "@/components/ui/rich-text-editor"
 import { uploadToCloudinary } from "@/lib/cloudinary/upload"
 import { showToast } from "@/components/ui/toast"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { SuccessScreen } from "@/components/forms/success-screen"
 
 export type SuccessPage = { title: string; body: string; videoUrl: string | null }
 
@@ -26,6 +34,7 @@ export function SuccessPageEditor({
   const iconRef = useRef<HTMLInputElement>(null)
   const videoRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState<"image" | "icon" | "video" | null>(null)
+  const [previewOpen, setPreviewOpen] = useState(false)
 
   // Latest value, so the editor's onChange (markdown body) merges with the most
   // recent title/video instead of a stale snapshot captured at mount.
@@ -81,8 +90,16 @@ export function SuccessPageEditor({
   }
 
   return (
-    <div className="mt-10 rounded-xl border border-border p-4">
-      <p className="mb-3 text-sm font-semibold text-foreground">After submit</p>
+    <div className="mt-10 rounded-md border border-border p-4">
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <p className="text-sm font-semibold text-foreground">After submit</p>
+        <TBtn
+          label="Preview"
+          title="See the thank-you screen exactly as respondents will"
+          onClick={() => setPreviewOpen(true)}
+          className="border border-border"
+        />
+      </div>
 
       <label className="mb-1 block text-xs font-medium text-muted-foreground">Title</label>
       <input
@@ -178,6 +195,25 @@ export function SuccessPageEditor({
           void uploadVideo(f)
         }}
       />
+
+      {/* Full-fidelity preview: the same SuccessScreen the public runtime
+          renders, fed the unsaved editor state so edits show immediately. */}
+      <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
+        <DialogContent className="thin-scroll max-h-[90vh] w-[min(46rem,95vw)] overflow-y-auto sm:max-w-none">
+          <DialogHeader>
+            <DialogTitle>Thank-you screen</DialogTitle>
+            <DialogDescription>
+              Exactly what respondents see after they submit.
+            </DialogDescription>
+          </DialogHeader>
+          <SuccessScreen
+            title={value.title || DEFAULT_TITLE}
+            body={value.body}
+            videoUrl={value.videoUrl}
+            className="min-h-0 py-4"
+          />
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

@@ -34,6 +34,39 @@ export function isEmpty(v: AnswerValue | undefined): boolean {
 const isEmptyVal = isEmpty
 const toStr = (v: unknown) => (v == null ? "" : String(v))
 
+/** What a date / date-time / time field stores: 2026-09-21, 2026-09-21T14:30, 14:30. */
+const DATE_LIKE = /^(?:\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2})?)?|\d{2}:\d{2}(?::\d{2})?)$/
+
+/**
+ * Order two answers for greater_than / less_than, or null when they cannot be
+ * ordered (mixed kinds, free text, a missing answer).
+ *
+ * Dates are compared as STRINGS, which is not a shortcut: the stored format is
+ * zero-padded and most-significant-first, so lexicographic order already IS
+ * chronological order — and it never builds a Date, so there is no timezone to
+ * get wrong. It also puts a bare "2026-09-21" before any time on that day,
+ * which is the right answer when a field gains a time component later.
+ *
+ * This used to be `Number(v) > Number(target)`. For a date that is NaN on both
+ * sides, and every NaN comparison is false, so date rules silently never fired.
+ */
+function order(v: unknown, target: unknown): number | null {
+  const a = toStr(v).trim()
+  const b = toStr(target).trim()
+  if (!a || !b) return null
+
+  if (DATE_LIKE.test(a) && DATE_LIKE.test(b)) {
+    return a < b ? -1 : a > b ? 1 : 0
+  }
+
+  const na = Number(a)
+  const nb = Number(b)
+  if (Number.isFinite(na) && Number.isFinite(nb)) {
+    return na < nb ? -1 : na > nb ? 1 : 0
+  }
+  return null
+}
+
 export function conditionComplete(c: FieldCondition): boolean {
   if (!c.fieldId) return false
   if (NO_VALUE_OPERATORS.has(c.operator)) return true
@@ -61,9 +94,9 @@ export function testCondition(c: FieldCondition, values: Values): boolean {
         ? !v.map(toStr).some((x) => x.toLowerCase().includes(toStr(target).toLowerCase()))
         : !toStr(v).toLowerCase().includes(toStr(target).toLowerCase())
     case "greater_than":
-      return Number(v) > Number(target)
+      return (order(v, target) ?? 0) > 0
     case "less_than":
-      return Number(v) < Number(target)
+      return (order(v, target) ?? 0) < 0
     default:
       return true
   }
