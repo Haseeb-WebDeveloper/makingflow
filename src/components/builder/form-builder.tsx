@@ -277,6 +277,7 @@ export function FormBuilder({
         successVideoUrl: successPage.videoUrl,
         redirectUrl: null, // never redirect in the builder preview
         showProgressBar: initialSettings?.showProgressBar ?? false,
+        chooserEnabled: initialSettings?.chooserEnabled ?? false,
         chooserStyle: initialSettings?.chooserStyle ?? "cards",
         // The preview always renders classic — conversational needs a published,
         // AI-enabled form + the live turn endpoint.
@@ -395,6 +396,7 @@ export function FormBuilder({
       patch.submitButtonLabel = changed.submitButtonLabel || null;
     if (changed.redirectUrl !== undefined) patch.redirectUrl = changed.redirectUrl || null;
     if (changed.showProgressBar !== undefined) patch.showProgressBar = changed.showProgressBar;
+    if (changed.chooserEnabled !== undefined) patch.chooserEnabled = changed.chooserEnabled;
     if (changed.chooserStyle !== undefined) patch.chooserStyle = changed.chooserStyle;
     if (changed.renderMode !== undefined) patch.renderMode = changed.renderMode;
     if (Object.keys(patch).length === 0) return;

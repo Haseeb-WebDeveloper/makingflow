@@ -21,7 +21,12 @@ const COMPONENTS: Components = {
   strong: ({ children }) => <strong className="font-semibold text-foreground">{children}</strong>,
   em: ({ children }) => <em className="italic">{children}</em>,
   a: ({ children, href }) => (
-    <a href={href} target="_blank" rel="noreferrer" className="text-primary underline">
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer"
+      className="text-foreground underline underline-offset-2 decoration-foreground/40 transition-colors hover:decoration-foreground"
+    >
       {children}
     </a>
   ),

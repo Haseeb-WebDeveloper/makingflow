@@ -112,10 +112,17 @@ export function FormRuntime({
   // Respondent's chosen fill style. `null` = the chooser is still showing;
   // "normal" = the paginated all-at-once view; "step" = one question at a time.
   // Locked for the session once picked (persisted so a resumed draft reopens
-  // in the same style). Forms with one (or zero) answerable field skip the
-  // chooser — there's nothing to step through. This guard is deterministic
-  // (no browser APIs) so it's safe as the SSR/first-render initial value.
+  // in the same style).
+  //
+  // Two ways to skip the chooser and open all-at-once:
+  //   - the owner never turned it on (the default — a form should just be a
+  //     form, not a screen asking how you'd like to see the form), or
+  //   - there's one answerable field or fewer, so there is nothing to step
+  //     through and the question would be absurd.
+  // Both are deterministic (no browser APIs), so this is safe as the SSR /
+  // first-render initial value.
   const [fillMode, setFillMode] = useState<"normal" | "step" | null>(() =>
+    !form.chooserEnabled ||
     form.fields.filter((f) => !NON_ANSWER_TYPES.has(f.type)).length <= 1
       ? "normal"
       : null
@@ -545,7 +552,7 @@ export function FormRuntime({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fillMode, currentStep?.key, reduceMotion]);
 
-  if (done) {
+  if (true) {
     return (
       <div className="mx-auto flex min-h-[70dvh] w-full max-w-xl flex-col items-center justify-center text-center">
         <div className="mx-auto mb-4 flex size-14 items-center justify-center rounded-full bg-success/10 text-success">

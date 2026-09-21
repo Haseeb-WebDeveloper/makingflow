@@ -149,6 +149,23 @@ describe("core/forms", () => {
       expect(form.settings?.showProgressBar).toBe(true)
     })
 
+    test("the fill-style chooser is off until the owner turns it on", async () => {
+      const formId = await seedForm(alice.ctx)
+
+      // A freshly-made form writes nothing for it, and absent must read as off
+      // — the chooser is an extra screen before the first question.
+      const [fresh] = await db.select().from(forms).where(eq(forms.id, formId))
+      expect(fresh.settings?.chooserEnabled ?? false).toBe(false)
+
+      await formsCore.updateFormSettings(alice.ctx, formId, { chooserEnabled: true })
+      const [on] = await db.select().from(forms).where(eq(forms.id, formId))
+      expect(on.settings?.chooserEnabled).toBe(true)
+
+      await formsCore.updateFormSettings(alice.ctx, formId, { chooserEnabled: false })
+      const [off] = await db.select().from(forms).where(eq(forms.id, formId))
+      expect(off.settings?.chooserEnabled).toBe(false)
+    })
+
     test("switching to conversational turns AI on, since it cannot run without it", async () => {
       const formId = await seedForm(alice.ctx)
       await formsCore.updateFormSettings(alice.ctx, formId, { renderMode: "conversational" })

@@ -35,6 +35,7 @@ const form: PublicForm = {
   successVideoUrl: null,
   redirectUrl: null,
   showProgressBar: false,
+  chooserEnabled: false,
   chooserStyle: "cards",
   renderMode: "classic",
   baseLanguage: "en",

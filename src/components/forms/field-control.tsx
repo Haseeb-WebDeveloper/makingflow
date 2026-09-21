@@ -82,7 +82,12 @@ const INLINE_MD: Components = {
   strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
   em: ({ children }) => <em className="italic">{children}</em>,
   a: ({ children, href }) => (
-    <a href={href} target="_blank" rel="noreferrer noopener" className="underline">
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer noopener"
+      className="underline underline-offset-2 decoration-current/40 transition-colors hover:decoration-current"
+    >
       {children}
     </a>
   ),
@@ -93,7 +98,12 @@ const PARAGRAPH_MD: Components = {
   strong: ({ children }) => <strong className="font-semibold text-foreground">{children}</strong>,
   em: ({ children }) => <em className="italic">{children}</em>,
   a: ({ children, href }) => (
-    <a href={href} target="_blank" rel="noreferrer noopener" className="text-primary underline">
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer noopener"
+      className="text-foreground underline underline-offset-2 decoration-foreground/40 transition-colors hover:decoration-foreground"
+    >
       {children}
     </a>
   ),

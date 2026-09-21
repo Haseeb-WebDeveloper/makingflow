@@ -32,6 +32,7 @@ export type EditorSettings = {
   redirectUrl?: string
   submitButtonLabel?: string
   showProgressBar?: boolean
+  chooserEnabled?: boolean
   chooserStyle?: "list" | "cards"
   renderMode?: "classic" | "conversational"
 }
@@ -396,6 +397,7 @@ export function toEditContext(form: EditorForm, facts?: FormFacts) {
     redirectUrl: form.settings?.redirectUrl ?? "",
     successBody: form.settings?.successBody ?? "",
     showProgressBar: form.settings?.showProgressBar ?? false,
+    chooserEnabled: form.settings?.chooserEnabled ?? false,
     chooserStyle: form.settings?.chooserStyle ?? "cards",
     renderMode: form.settings?.renderMode ?? "classic",
   }
@@ -675,6 +677,7 @@ export function applyOperations(form: EditorForm, ops: AiOperation[]): EditorFor
         if (s.redirectUrl != null) settings.redirectUrl = s.redirectUrl
         if (s.submitButtonLabel != null) settings.submitButtonLabel = s.submitButtonLabel
         if (s.showProgressBar != null) settings.showProgressBar = s.showProgressBar
+        if (s.chooserEnabled != null) settings.chooserEnabled = s.chooserEnabled
         if (s.chooserStyle != null) settings.chooserStyle = s.chooserStyle
         if (s.renderMode != null) settings.renderMode = s.renderMode
         break

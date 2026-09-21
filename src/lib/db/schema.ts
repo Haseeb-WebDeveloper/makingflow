@@ -182,6 +182,11 @@ export type FormTheme = {
 
 export type FormSettings = {
   showProgressBar?: boolean
+  // Ask the respondent whether to fill the form all at once or one question at
+  // a time. OFF unless the owner turns it on: a form should just BE a form, and
+  // the chooser is an extra screen standing between someone and the first
+  // question. Unset reads as false, so every existing form is opted out too.
+  chooserEnabled?: boolean
   // Presentation of the "how would you like to fill this out?" chooser:
   // 'list' = compact radio rows, 'cards' = preview cards with a radio. Defaults
   // to 'cards' when unset.

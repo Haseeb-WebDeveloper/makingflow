@@ -102,6 +102,7 @@ export async function getFormForEdit(
       submitButtonLabel: row.form.settings?.submitButtonLabel,
       redirectUrl: row.form.redirectUrl ?? undefined,
       showProgressBar: row.form.settings?.showProgressBar,
+      chooserEnabled: row.form.settings?.chooserEnabled,
       chooserStyle: row.form.settings?.chooserStyle,
       renderMode: row.form.renderMode,
     },
@@ -179,6 +180,7 @@ export type FormSettingsData = {
   redirectUrl: string | null
   oneResponsePerPerson: boolean
   showProgressBar: boolean
+  chooserEnabled: boolean
   chooserStyle: "list" | "cards"
   submitButtonLabel: string
   thankYouMessage: string
@@ -232,6 +234,7 @@ export async function getFormSettings(id: string, workspaceId: string): Promise<
     redirectUrl: row.redirectUrl,
     oneResponsePerPerson: row.oneResponsePerPerson,
     showProgressBar: row.settings?.showProgressBar ?? false,
+    chooserEnabled: row.settings?.chooserEnabled ?? false,
     chooserStyle: row.settings?.chooserStyle ?? "cards",
     submitButtonLabel: row.settings?.submitButtonLabel ?? "",
     thankYouMessage: row.settings?.thankYouMessage ?? "",

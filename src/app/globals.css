@@ -503,8 +503,10 @@
   color: var(--color-muted-foreground);
 }
 .tiptap-editor .ProseMirror a {
-  color: var(--color-primary);
+  color: inherit;
   text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-color: color-mix(in oklab, currentColor 40%, transparent);
 }
 .tiptap-editor .ProseMirror img {
   display: block;
@@ -564,7 +566,10 @@
   color: var(--color-muted-foreground);
 }
 .inline-rich-text .ProseMirror a {
+  color: inherit;
   text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-color: color-mix(in oklab, currentColor 40%, transparent);
 }
 .inline-rich-text .ProseMirror p.is-editor-empty:first-child::before {
   content: attr(data-placeholder);

@@ -65,6 +65,7 @@ function diffPatch(base: FormSettingsData, next: FormSettingsData): FormSettings
   if (next.oneResponsePerPerson !== base.oneResponsePerPerson)
     p.oneResponsePerPerson = next.oneResponsePerPerson
   if (next.showProgressBar !== base.showProgressBar) p.showProgressBar = next.showProgressBar
+  if (next.chooserEnabled !== base.chooserEnabled) p.chooserEnabled = next.chooserEnabled
   if (next.chooserStyle !== base.chooserStyle) p.chooserStyle = next.chooserStyle
   if (next.submitButtonLabel !== base.submitButtonLabel) p.submitButtonLabel = next.submitButtonLabel
   // thankYouMessage + success page are edited on the canvas (SuccessPageEditor).
@@ -378,36 +379,50 @@ export const FormSettings = forwardRef<
           }
         />
 
+        {/* Off by default. The chooser is a whole screen before the first
+            question, so it only appears when the owner asks for it; the style
+            picker is meaningless until then and stays hidden, the same way the
+            redirect URL field does above. */}
         <SettingRow
-          title="Fill-style chooser"
-          description="How respondents pick between all-at-once and one-at-a-time."
+          title="Let respondents choose how to fill it"
+          description="Adds a screen before the form offering all-at-once or one question at a time. Off means the form opens all at once."
           control={
-            <div className="inline-flex rounded-md bg-muted p-0.5">
-              {(
-                [
-                  { key: "cards", label: "Cards" },
-                  { key: "list", label: "List" },
-                ] as const
-              ).map((o) => (
-                <button
-                  key={o.key}
-                  type="button"
-                  onClick={() =>
-                    setState((s) => ({ ...s, chooserStyle: o.key }))
-                  }
-                  className={
-                    "rounded px-3 py-1 text-sm font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/60 " +
-                    (state.chooserStyle === o.key
-                      ? "bg-background text-foreground shadow-sm"
-                      : "text-muted-foreground hover:text-foreground")
-                  }
-                >
-                  {o.label}
-                </button>
-              ))}
-            </div>
+            <Switch
+              checked={state.chooserEnabled}
+              onCheckedChange={(v) => setState((s) => ({ ...s, chooserEnabled: v }))}
+            />
           }
-        />
+        >
+          {state.chooserEnabled ? (
+            <div className="flex items-center justify-between gap-4">
+              <p className="text-sm text-muted-foreground">Chooser style</p>
+              <div className="inline-flex rounded-md bg-muted p-0.5">
+                {(
+                  [
+                    { key: "cards", label: "Cards" },
+                    { key: "list", label: "List" },
+                  ] as const
+                ).map((o) => (
+                  <button
+                    key={o.key}
+                    type="button"
+                    onClick={() =>
+                      setState((s) => ({ ...s, chooserStyle: o.key }))
+                    }
+                    className={
+                      "rounded px-3 py-1 text-sm font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/60 " +
+                      (state.chooserStyle === o.key
+                        ? "bg-background text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground")
+                    }
+                  >
+                    {o.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </SettingRow>
 
         <SettingRow
           title="Submit button label"

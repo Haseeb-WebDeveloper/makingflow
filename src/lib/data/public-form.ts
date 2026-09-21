@@ -49,6 +49,8 @@ export type PublicForm = {
   successVideoUrl: string | null
   redirectUrl: string | null
   showProgressBar: boolean
+  /** Whether respondents are ASKED to choose a fill style at all (default off). */
+  chooserEnabled: boolean
   /** Presentation of the fill-style chooser: 'list' rows or 'cards' with previews. */
   chooserStyle: "list" | "cards"
   /** How the form is presented to respondents. */
@@ -95,6 +97,7 @@ function mapForm(row: FormRow, fields: PublicField[]): PublicForm {
     successVideoUrl: row.settings?.successVideoUrl || null,
     redirectUrl: row.redirectUrl ?? null,
     showProgressBar: row.settings?.showProgressBar ?? false,
+    chooserEnabled: row.settings?.chooserEnabled === true,
     chooserStyle: row.settings?.chooserStyle ?? "cards",
     renderMode: row.renderMode,
     baseLanguage: row.baseLanguage,

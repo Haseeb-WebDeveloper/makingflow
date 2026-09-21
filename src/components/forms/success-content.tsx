@@ -43,7 +43,12 @@ function alignClass(style?: CSSProperties): string {
 const COMPONENTS: Components = {
   p: ({ children, style }) => <p className={cn("leading-relaxed", alignClass(style))}>{children}</p>,
   a: ({ children, href }) => (
-    <a href={href} target="_blank" rel="noreferrer noopener" className="text-primary underline">
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer noopener"
+      className="text-foreground underline underline-offset-2 decoration-foreground/40 transition-colors hover:decoration-foreground"
+    >
       {children}
     </a>
   ),
