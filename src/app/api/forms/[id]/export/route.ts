@@ -5,6 +5,7 @@ import {
   exportSpecSchema,
   isSyncEligible,
   parseExportSpec,
+  syncCeilingFor,
   type ExportSpec,
 } from "@/lib/submissions/export-spec"
 import { countExportRows, openExport } from "@/lib/submissions/export-query"
@@ -14,6 +15,7 @@ import {
   exportFileName,
   jsonChunks,
 } from "@/lib/submissions/export-serialize"
+import { writeXlsx } from "@/lib/submissions/export-xlsx"
 
 export const maxDuration = 60
 
@@ -32,12 +34,15 @@ export const maxDuration = 60
  * entirely: a link minted for two columns must not turn into a link for forty
  * by editing the URL.
  *
- * THIS ROUTE ONLY EVER STREAMS WHAT IT CAN FINISH. `maxDuration` is 60s and the
+ * THIS ROUTE ONLY EVER SERVES WHAT IT CAN FINISH. `maxDuration` is 60s and the
  * headers are flushed with the first chunk, so an export that runs out of time
  * would arrive as a valid-looking file with rows missing — the exact failure the
  * streaming rewrite was meant to remove. A pre-flight count refuses anything
- * above SYNC_ROW_CEILING with a 413, and the Export dialog turns that into a
- * queued job.
+ * above the format's ceiling with a 413 naming the count and the limit.
+ *
+ * CSV AND JSON STREAM; XLSX DOES NOT. A workbook is only valid once finalised,
+ * so it is built whole and sent in one body, under a lower ceiling. That is an
+ * inherent property of the format, not a policy choice.
  */
 type Authorized = { workspaceId: string; spec: ExportSpec }
 
@@ -69,12 +74,32 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   const rowCount = await countExportRows(id, auth.spec)
   if (!isSyncEligible(auth.spec, rowCount)) {
     return new Response(
-      "This export is too large to download directly. Use the Export dialog to queue it and we will email you a link.",
+      `This export is too large to build in one request (${rowCount.toLocaleString()} responses, limit ${syncCeilingFor(
+        auth.spec.format,
+      ).toLocaleString()}). Narrow it with a filter or a date range${
+        auth.spec.format === "xlsx" ? ", or export as CSV, which has no such limit" : ""
+      }.`,
       { status: 413 },
     )
   }
 
   const now = new Date()
+  const filename = exportFileName(source.form.title, auth.spec.format, now)
+
+  // A WORKBOOK IS NOT STREAMABLE: it is only valid once finalised, so this one
+  // format is buffered and sent whole. Bounded by its own lower row ceiling
+  // above, which is why that is not the same number as the streaming formats'.
+  if (auth.spec.format === "xlsx") {
+    const { bytes } = await writeXlsx(source)
+    return new Response(bytes as unknown as BodyInit, {
+      headers: {
+        "content-type": CONTENT_TYPES.xlsx,
+        "content-disposition": `attachment; filename="${filename}"`,
+        "cache-control": "no-store",
+      },
+    })
+  }
+
   const chunks =
     auth.spec.format === "json"
       ? jsonChunks(source, { spec: auth.spec, exportedAt: now })
@@ -103,11 +128,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   return new Response(stream, {
     headers: {
       "content-type": CONTENT_TYPES[auth.spec.format],
-      "content-disposition": `attachment; filename="${exportFileName(
-        source.form.title,
-        auth.spec.format,
-        now,
-      )}"`,
+      "content-disposition": `attachment; filename="${filename}"`,
       "cache-control": "no-store",
     },
   })

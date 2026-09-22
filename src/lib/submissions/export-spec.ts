@@ -146,15 +146,32 @@ export function parseExportSpec(
 }
 
 /**
- * May this export be streamed inside one request?
+ * May this export be served inside one request?
  *
  * The row count is the PRE-FILTER upper bound (see export-query.ts), so this is
- * deliberately conservative: an export that might not finish becomes a job.
- * XLSX needs a workbook assembled before a byte can be sent, and a ZIP needs
- * Cloudinary, so neither is ever inline.
+ * deliberately conservative: an export that might not finish is refused rather
+ * than started.
+ *
+ * The ceiling is per format, and XLSX's may never exceed the streaming ones:
+ * a workbook is only valid once finalised, so the whole file sits in memory
+ * before a byte goes out, where CSV and JSON stream as they go.
+ *
+ * A ZIP is never served here at all: archives come from `requestMediaArchive`,
+ * which hands back Cloudinary's own URLs rather than bytes.
  */
 export function isSyncEligible(spec: ExportSpec, rowCount: number): boolean {
-  if (spec.format === "xlsx") return false
   if (spec.files === "zip" || spec.files === "zip-only") return false
-  return rowCount <= SYNC_ROW_CEILING
+  return rowCount <= syncCeilingFor(spec.format)
 }
+
+/** The row ceiling for one format, in a single request. */
+export function syncCeilingFor(format: ExportFormat): number {
+  return format === "xlsx" ? XLSX_SYNC_ROW_CEILING : SYNC_ROW_CEILING
+}
+
+/**
+ * Kept here rather than imported from export-xlsx.ts, which is server-only —
+ * the dialog needs this number to tell somebody why Excel is unavailable.
+ * It must stay equal to XLSX_ROW_CEILING there; the unit test pins that.
+ */
+export const XLSX_SYNC_ROW_CEILING = 5000

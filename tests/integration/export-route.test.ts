@@ -202,6 +202,31 @@ describe("GET /api/forms/[id]/export", () => {
     expect(body.trim().split("\n")[0]).toBe(`"Submission ID"`)
   })
 
+  test("an xlsx request comes back as a real workbook, not a streamed body", async () => {
+    const f = await seed(2)
+    session.workspaceId = f.workspaceId
+    const spec = encodeSpec(exportSpecSchema.parse({ format: "xlsx" }))
+    const url = new URL(`http://localhost/api/forms/${f.formId}/export?spec=${spec}`)
+    const res = await GET(new Request(url), { params: Promise.resolve({ id: f.formId }) })
+
+    expect(res.status).toBe(200)
+    expect(res.headers.get("content-type")).toContain("spreadsheetml.sheet")
+    expect(res.headers.get("content-disposition")).toMatch(/job-application-\d{4}-\d{2}-\d{2}\.xlsx/)
+
+    // Parsed back, so this proves a valid workbook rather than just some bytes.
+    const ExcelJS = (await import("exceljs")).default
+    const wb = new ExcelJS.Workbook()
+    await wb.xlsx.load(Buffer.from(await res.arrayBuffer()) as never)
+    const sheet = wb.worksheets[0]
+    expect(sheet.name).toBe("Responses")
+    expect((sheet.getRow(1).values as unknown[]).slice(1)).toEqual([
+      "Submitted (UTC)",
+      "Name",
+      "Notes",
+    ])
+    expect(sheet.rowCount).toBe(3) // header + 2 responses
+  })
+
   test("the filename carries the form and the day", async () => {
     const f = await seed(1)
     session.workspaceId = f.workspaceId

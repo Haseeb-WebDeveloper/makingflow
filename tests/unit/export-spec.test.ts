@@ -7,7 +7,9 @@ import {
   isSyncEligible,
   parseExportSpec,
   safeTimezone,
+  syncCeilingFor,
   SYNC_ROW_CEILING,
+  XLSX_SYNC_ROW_CEILING,
 } from "@/lib/submissions/export-spec"
 
 describe("export spec", () => {
@@ -48,14 +50,27 @@ describe("export spec", () => {
     expect(safeTimezone(undefined)).toBe("UTC")
   })
 
-  test("only small csv/json exports without a zip may stream inline", () => {
+  test("a request is served inline only up to its format's ceiling", () => {
     const csv = DEFAULT_SPEC
     expect(isSyncEligible(csv, SYNC_ROW_CEILING)).toBe(true)
     expect(isSyncEligible(csv, SYNC_ROW_CEILING + 1)).toBe(false)
-    expect(isSyncEligible({ ...csv, format: "xlsx" }, 10)).toBe(false)
-    expect(isSyncEligible({ ...csv, files: "zip" }, 10)).toBe(false)
-    expect(isSyncEligible({ ...csv, files: "zip-only" }, 10)).toBe(false)
-    expect(isSyncEligible({ ...csv, format: "json" }, 10)).toBe(true)
+    expect(isSyncEligible({ ...csv, format: "json" }, SYNC_ROW_CEILING)).toBe(true)
+  })
+
+  test("xlsx is never allowed a higher ceiling than the streaming formats", () => {
+    // It does strictly more work: the same scan, plus a whole workbook in
+    // memory, with no streaming. A higher limit here would be a lie.
+    const xlsx = { ...DEFAULT_SPEC, format: "xlsx" as const }
+    expect(syncCeilingFor("xlsx")).toBeLessThanOrEqual(syncCeilingFor("csv"))
+    expect(isSyncEligible(xlsx, XLSX_SYNC_ROW_CEILING)).toBe(true)
+    expect(isSyncEligible(xlsx, XLSX_SYNC_ROW_CEILING + 1)).toBe(false)
+  })
+
+  test("an archive is never served by the download route, whatever its size", () => {
+    // Archives come back as Cloudinary URLs from requestMediaArchive, not as
+    // bytes from this route.
+    expect(isSyncEligible({ ...DEFAULT_SPEC, files: "zip" }, 10)).toBe(false)
+    expect(isSyncEligible({ ...DEFAULT_SPEC, files: "zip-only" }, 10)).toBe(false)
   })
 
   test("filters are capped so a signed link cannot carry an unbounded workload", () => {
