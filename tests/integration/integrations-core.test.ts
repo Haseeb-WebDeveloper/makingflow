@@ -243,3 +243,100 @@ describe("core/integrations", () => {
     expect(JSON.stringify(alicesView)).not.toContain("bob@example.com")
   })
 })
+
+/**
+ * Sharing the response spreadsheets hands other people access to ONE person's
+ * Google account, which is why it is the one part of the integrations surface
+ * that is owner-only — connecting an account deliberately is not.
+ */
+describe("spreadsheet sharing is an owner's decision", () => {
+  async function connected(label: string) {
+    const t = await seedTenant(label)
+    await db.insert(workspaceConnections).values({
+      workspaceId: t.workspaceId,
+      provider: "google",
+      accountEmail: "owner@example.test",
+      accessToken: "encrypted-placeholder",
+    })
+    return t
+  }
+
+  test("a member cannot change it", async () => {
+    const t = await connected("share-gate")
+    const asMember = testContext({
+      userId: t.ctx.userId,
+      workspaceId: t.workspaceId,
+      role: "member",
+    })
+
+    const res = await integrationsCore.setSheetSharing(asMember, {
+      role: "reader",
+      audience: "all",
+    })
+
+    expect(res).toEqual({ success: false, error: "Only owners can do that" })
+  })
+
+  test("an owner's setting is stored on the connection", async () => {
+    const t = await connected("share-set")
+
+    const res = await integrationsCore.setSheetSharing(t.ctx, { role: "writer", audience: "all" })
+
+    expect(res).toEqual({ success: true })
+    const [conn] = await db
+      .select({ metadata: workspaceConnections.metadata })
+      .from(workspaceConnections)
+      .where(eq(workspaceConnections.workspaceId, t.workspaceId))
+      .limit(1)
+    expect(conn.metadata?.google?.share).toEqual({ role: "writer", audience: "all" })
+  })
+
+  test("turning it off clears the setting without disturbing Notion's metadata", async () => {
+    // One jsonb column holds both providers' extras, so a careless write here
+    // would lose the Notion parent page and strand every Notion database.
+    const t = await seedTenant("share-off")
+    await db.insert(workspaceConnections).values({
+      workspaceId: t.workspaceId,
+      provider: "google",
+      accountEmail: "owner@example.test",
+      accessToken: "encrypted-placeholder",
+      metadata: {
+        notion: { parentPageId: "page-1" },
+        google: { share: { role: "reader", audience: "all" } },
+      },
+    })
+
+    await integrationsCore.setSheetSharing(t.ctx, null)
+
+    const [conn] = await db
+      .select({ metadata: workspaceConnections.metadata })
+      .from(workspaceConnections)
+      .where(eq(workspaceConnections.workspaceId, t.workspaceId))
+      .limit(1)
+    expect(conn.metadata?.google?.share).toBeUndefined()
+    expect(conn.metadata?.notion?.parentPageId).toBe("page-1")
+  })
+
+  test("there is nothing to set when Google is not connected", async () => {
+    const t = await seedTenant("share-unconnected")
+
+    const res = await integrationsCore.setSheetSharing(t.ctx, { role: "reader", audience: "all" })
+
+    expect(res).toEqual({ success: false, error: "Connect a Google account first" })
+  })
+
+  test("a member cannot trigger a re-check either", async () => {
+    const t = await connected("share-recheck")
+    const asMember = testContext({
+      userId: t.ctx.userId,
+      workspaceId: t.workspaceId,
+      role: "member",
+    })
+
+    expect(await integrationsCore.reconcileSheetSharing(asMember)).toEqual({
+      success: false,
+      error: "Only owners can do that",
+    })
+    expect(await integrationsCore.reconcileSheetSharing(t.ctx)).toEqual({ success: true })
+  })
+})

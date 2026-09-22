@@ -12,7 +12,11 @@
  * existing import path changed.
  */
 
-export type WorkspaceAction = "manage_team" | "delete_workspace" | "update_workspace"
+export type WorkspaceAction =
+  | "manage_team"
+  | "delete_workspace"
+  | "update_workspace"
+  | "manage_integrations"
 
 /**
  * Actions only owners may perform. Anything NOT listed is allowed for any
@@ -24,6 +28,10 @@ export const OWNER_ONLY: Record<WorkspaceAction, true> = {
   delete_workspace: true,
   // Name, slug, and logo — the workspace's identity to everyone in it.
   update_workspace: true,
+  // Handing the whole workspace access to one person's Google Drive. Note that
+  // CONNECTING an account is deliberately NOT gated: any member may wire up
+  // their own sync, and only the decision to share it out is an owner's.
+  manage_integrations: true,
 }
 
 export function can(role: string | undefined, action: WorkspaceAction): boolean {

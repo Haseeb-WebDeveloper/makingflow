@@ -11,6 +11,7 @@
 
 import { sessionContext } from "@/lib/auth/context-web"
 import * as integrationsCore from "@/lib/core/integrations"
+import type { SheetSharingSetting } from "@/lib/db/schema"
 
 type Result = { success: true } | { success: false; error: string }
 
@@ -33,6 +34,20 @@ export async function disconnectGoogle(returnFormId?: string): Promise<Result> {
   const session = await sessionContext()
   if (!session.ok) return { success: false, error: session.error }
   return integrationsCore.disconnectGoogle(session.ctx, returnFormId)
+}
+
+/** Set or clear who gets access to the workspace's response spreadsheets. */
+export async function setSheetSharing(share: SheetSharingSetting | null): Promise<Result> {
+  const session = await sessionContext()
+  if (!session.ok) return { success: false, error: session.error }
+  return integrationsCore.setSheetSharing(session.ctx, share)
+}
+
+/** Re-attempt any spreadsheet shares that failed. */
+export async function reconcileSheetSharing(): Promise<Result> {
+  const session = await sessionContext()
+  if (!session.ok) return { success: false, error: session.error }
+  return integrationsCore.reconcileSheetSharing(session.ctx)
 }
 
 /** Resume / create a form's Notion sync. */

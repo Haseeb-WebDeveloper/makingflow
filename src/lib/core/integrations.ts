@@ -6,9 +6,10 @@ import {
   formIntegrations,
   workspaceConnections,
   type GoogleSheetsIntegrationConfig,
+  type SheetSharingSetting,
   type NotionIntegrationConfig,
 } from "@/lib/db/schema"
-import type { AuthContext } from "@/lib/auth/context"
+import { authorize, type AuthContext } from "@/lib/auth/context"
 import { invalidate } from "@/lib/core/cache"
 import {
   createFormSheet,
@@ -16,7 +17,10 @@ import {
   refreshFormSheetHeader,
 } from "@/lib/integrations/sheets-provision"
 import { backfillFormSheet } from "@/lib/integrations/sync"
-import { reconcileSheetShares } from "@/lib/integrations/sheets-sharing"
+import {
+  reconcileSheetShares,
+  reconcileWorkspaceSheetShares,
+} from "@/lib/integrations/sheets-sharing"
 import { backfillFormNotionDatabase } from "@/lib/integrations/notion-sync"
 import {
   createFormDatabase,
@@ -215,6 +219,62 @@ export async function disconnectGoogle(ctx: AuthContext, returnFormId?: string):
       ? [`/forms/${returnFormId}/integrations`, "/integrations"]
       : ["/integrations"],
   })
+  return { success: true }
+}
+
+/**
+ * Set — or clear — who in the workspace gets access to the spreadsheets the
+ * connected Google account owns, then make the existing sheets match.
+ *
+ * Owner-only, unlike the rest of this module: connecting an account affects only
+ * the person doing it, while this hands everybody else access to that person's
+ * Drive.
+ */
+export async function setSheetSharing(
+  ctx: AuthContext,
+  share: SheetSharingSetting | null,
+): Promise<Result> {
+  const denied = authorize(ctx, {
+    scopes: ["integrations:write"],
+    action: "manage_integrations",
+  })
+  if (denied) return { success: false, error: denied }
+
+  const conn = await workspaceGoogleConnection(ctx)
+  if (!conn) return { success: false, error: "Connect a Google account first" }
+
+  // MERGE, never replace: Notion's parent page lives in the same jsonb column,
+  // and losing it strands every Notion database this workspace has.
+  const metadata = { ...(conn.metadata ?? {}), google: { ...(conn.metadata?.google ?? {}) } }
+  if (share) metadata.google.share = share
+  else delete metadata.google.share
+
+  await db
+    .update(workspaceConnections)
+    .set({ metadata })
+    .where(eq(workspaceConnections.id, conn.id))
+
+  // Applying it to the sheets that already exist is the whole point of the
+  // setting, and it is far too slow to hold the response open for.
+  after(() => reconcileWorkspaceSheetShares(ctx.workspaceId))
+
+  invalidate(ctx, { paths: ["/integrations"] })
+  return { success: true }
+}
+
+/**
+ * Re-attempt the shares that failed — what "Re-check access" does. Also the way
+ * out of a transient Drive failure, since nothing retries in a loop.
+ */
+export async function reconcileSheetSharing(ctx: AuthContext): Promise<Result> {
+  const denied = authorize(ctx, {
+    scopes: ["integrations:write"],
+    action: "manage_integrations",
+  })
+  if (denied) return { success: false, error: denied }
+
+  await reconcileWorkspaceSheetShares(ctx.workspaceId)
+  invalidate(ctx, { paths: ["/integrations"] })
   return { success: true }
 }
 
