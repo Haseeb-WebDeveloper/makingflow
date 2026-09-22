@@ -43,8 +43,18 @@ export const ARCHIVE_SIZE_NOTE = "100 MB"
 const TIMEOUT_MS = 55_000
 
 export type ResourceType = "image" | "video" | "raw"
-export type MediaAsset = { publicId: string; resourceType: ResourceType }
-export type ArchiveGroup = { resourceType: ResourceType; publicIds: string[] }
+export type MediaAsset = {
+  publicId: string
+  resourceType: ResourceType
+  /** Lower-case extension without the dot, for naming the archive's contents. */
+  ext: string
+}
+export type ArchiveGroup = {
+  resourceType: ResourceType
+  publicIds: string[]
+  /** Distinct file types inside, upper-case: ["PDF"], ["DOCX", "DOC"]. */
+  formats: string[]
+}
 
 export type MediaArchive = {
   name: string
@@ -55,6 +65,14 @@ export type MediaArchive = {
   /** Files we asked for. Higher than `fileCount` means storage lost some. */
   requested: number
   bytes: number
+  /**
+   * What is inside, for a label a person can read.
+   *
+   * NOT the Cloudinary resource type. An archive is split by that — and
+   * Cloudinary files a PDF under `image` — so "Images" on a zip of resumes
+   * would be actively misleading. The file types are the honest answer.
+   */
+  formats: string[]
 }
 
 function creds() {
@@ -93,15 +111,47 @@ export function archiveEntryName(
 ): string {
   const base = storageKey.split("/").pop() || storageKey
   if (base.includes(".")) return base
+  const ext = assetExtension(storageKey, uploadedName, deliveryUrl)
+  return ext ? `${base}.${ext}` : base
+}
 
-  const fromUrl = extension(deliveryUrl?.split("?")[0]?.split("/").pop())
-  return `${base}${fromUrl || extension(uploadedName)}`
+/** The extension an archived file will actually have, without the dot. */
+export function assetExtension(
+  storageKey: string,
+  uploadedName: string,
+  deliveryUrl?: string,
+): string {
+  const fromKey = extension(storageKey.split("/").pop())
+  if (fromKey) return fromKey
+  return extension(deliveryUrl?.split("?")[0]?.split("/").pop()) || extension(uploadedName)
 }
 
 function extension(name: string | undefined): string {
   if (!name) return ""
   const dot = name.lastIndexOf(".")
-  return dot > 0 ? name.slice(dot) : ""
+  return dot > 0 ? name.slice(dot + 1).toLowerCase() : ""
+}
+
+/**
+ * A short, filesystem-safe stem for a download.
+ *
+ * CAPPED, because form titles are long: "Meta Paid Advertising Specialist —
+ * Application & Screening Form" produced an eighty-character filename that
+ * overflowed its own dialog and told a person nothing the dialog had not
+ * already said.
+ */
+export function archiveSlug(formTitle: string, max = 32): string {
+  const slug = formTitle
+    .replace(/[^\w-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .toLowerCase()
+  if (!slug) return "form"
+  // Cut at a word boundary where there is one nearby, so the stem stays
+  // readable rather than ending mid-word.
+  if (slug.length <= max) return slug
+  const cut = slug.slice(0, max)
+  const lastDash = cut.lastIndexOf("-")
+  return (lastDash > max / 2 ? cut.slice(0, lastDash) : cut).replace(/-+$/, "")
 }
 
 /**
@@ -134,7 +184,11 @@ export async function collectAssets(source: ExportSource): Promise<MediaAsset[]>
       if (!asset?.publicId) continue
       const resourceType = (asset.resourceType ?? "raw") as ResourceType
       if (!seen.has(asset.publicId)) {
-        seen.set(asset.publicId, { publicId: asset.publicId, resourceType })
+        seen.set(asset.publicId, {
+          publicId: asset.publicId,
+          resourceType,
+          ext: assetExtension(asset.publicId, f.name, f.url),
+        })
       }
     }
   }
@@ -143,16 +197,21 @@ export async function collectAssets(source: ExportSource): Promise<MediaAsset[]>
 
 /** Split into per-resource-type calls, each within Cloudinary's asset ceiling. */
 export function groupByResourceType(assets: MediaAsset[]): ArchiveGroup[] {
-  const buckets = new Map<ResourceType, string[]>()
+  const buckets = new Map<ResourceType, MediaAsset[]>()
   for (const a of assets) {
     const list = buckets.get(a.resourceType) ?? []
-    list.push(a.publicId)
+    list.push(a)
     buckets.set(a.resourceType, list)
   }
   const groups: ArchiveGroup[] = []
-  for (const [resourceType, ids] of buckets) {
-    for (let i = 0; i < ids.length; i += ARCHIVE_ASSET_LIMIT) {
-      groups.push({ resourceType, publicIds: ids.slice(i, i + ARCHIVE_ASSET_LIMIT) })
+  for (const [resourceType, bucket] of buckets) {
+    for (let i = 0; i < bucket.length; i += ARCHIVE_ASSET_LIMIT) {
+      const slice = bucket.slice(i, i + ARCHIVE_ASSET_LIMIT)
+      groups.push({
+        resourceType,
+        publicIds: slice.map((a) => a.publicId),
+        formats: [...new Set(slice.map((a) => a.ext).filter(Boolean))].sort().map((e) => e.toUpperCase()),
+      })
     }
   }
   return groups
@@ -245,6 +304,7 @@ async function createArchive(group: ArchiveGroup, name: string): Promise<MediaAr
     // What we asked for, so a caller can tell the owner when storage no longer
     // has every file — `allow_missing` would otherwise swallow that silently.
     requested: group.publicIds.length,
+    formats: group.formats,
     bytes: typeof data.bytes === "number" ? data.bytes : 0,
   }
 }
@@ -282,11 +342,7 @@ export async function buildMediaArchives(
   const assets = await collectAssets(counting)
   if (assets.length === 0) return { archives: [], fileCount: 0, rowCount }
 
-  const slug =
-    source.form.title
-      .replace(/[^\w-]+/g, "-")
-      .replace(/^-+|-+$/g, "")
-      .toLowerCase() || "form"
+  const slug = archiveSlug(source.form.title)
   const day = now.toISOString().slice(0, 10)
   const groups = groupByResourceType(assets)
 

@@ -36,6 +36,7 @@ vi.mock("@/lib/submissions/export-media", async (importOriginal) => {
           url: `https://res.test/archive-${i}.zip`,
           fileCount: g.publicIds.length,
           requested: g.publicIds.length,
+          formats: g.formats,
           bytes: 1024,
         })),
         fileCount: assets.length,

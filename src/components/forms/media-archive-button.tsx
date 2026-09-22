@@ -40,6 +40,12 @@ type MediaArchive = Extract<
   { success: true }
 >["archives"][number]
 
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  const mb = bytes / (1024 * 1024)
+  return mb < 1 ? `${Math.round(bytes / 1024)} KB` : `${mb.toFixed(mb < 10 ? 1 : 0)} MB`
+}
+
 export function MediaArchiveButton({
   formId,
   live,
@@ -116,27 +122,36 @@ export function MediaArchiveButton({
       </button>
 
       <Dialog open={archives !== null} onOpenChange={(open) => !open && setArchives(null)}>
-        <DialogContent className="max-w-md">
+        {/* `min-w-0` all the way down, or a long archive name refuses to shrink
+            and pushes the dialog wider than the screen — `truncate` cannot
+            shorten a flex child that is allowed to define its own width. */}
+        <DialogContent className="w-full max-w-[min(28rem,calc(100%-2rem))]">
           <DialogHeader>
             <DialogTitle>Your files are ready</DialogTitle>
             <DialogDescription>
-              They came out as {archives?.length} archives, because images and documents are stored
-              separately. Download each one.
+              {archives?.length} downloads, split by file type. Take each one.
             </DialogDescription>
           </DialogHeader>
-          <ul className="space-y-2">
+          <ul className="min-w-0 space-y-2">
             {archives?.map((a) => (
-              <li key={a.url}>
+              <li key={a.url} className="min-w-0">
                 <a
                   href={a.url}
-                  className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2 text-sm text-foreground transition-colors hover:bg-muted"
+                  download
+                  className="flex min-w-0 items-center gap-3 rounded-md border border-border px-3 py-2.5 text-sm text-foreground transition-colors hover:bg-muted"
                 >
-                  <span className="flex items-center gap-2 truncate">
-                    <Icon name="download" className="size-4 shrink-0 text-muted-foreground" />
-                    <span className="truncate">{a.name}</span>
-                  </span>
-                  <span className="shrink-0 text-xs text-muted-foreground">
-                    {a.fileCount} {a.fileCount === 1 ? "file" : "files"}
+                  <Icon name="download" className="size-4 shrink-0 text-muted-foreground" />
+                  <span className="min-w-0 flex-1">
+                    {/* The file type, not the filename: an eighty-character
+                        slug of the form title is noise, and the dialog has
+                        already said which form this is. */}
+                    <span className="block font-medium">
+                      {a.formats.length > 0 ? a.formats.join(" + ") : "Files"}
+                    </span>
+                    <span className="block text-xs text-muted-foreground">
+                      {a.fileCount} {a.fileCount === 1 ? "file" : "files"}
+                      {a.bytes > 0 ? ` · ${formatBytes(a.bytes)}` : ""}
+                    </span>
                   </span>
                 </a>
               </li>

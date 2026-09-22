@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test, vi } from "vitest"
 import {
   archiveEntryName,
   ARCHIVE_ASSET_LIMIT,
+  archiveSlug,
   attachmentUrl,
   buildMediaArchives,
   collectAssets,
@@ -84,8 +85,8 @@ describe("export media", () => {
       ]),
     )
     expect(assets).toEqual([
-      { publicId: "k1", resourceType: "raw" },
-      { publicId: "k2", resourceType: "image" },
+      { publicId: "k1", resourceType: "raw", ext: "pdf" },
+      { publicId: "k2", resourceType: "image", ext: "png" },
     ])
   })
 
@@ -101,7 +102,9 @@ describe("export media", () => {
         ]),
       ]),
     )
-    expect(assets).toEqual([{ publicId: "makingflow/submissions/legacy", resourceType: "image" }])
+    expect(assets).toEqual([
+      { publicId: "makingflow/submissions/legacy", resourceType: "image", ext: "png" },
+    ])
   })
 
   test("a file we cannot address at all is skipped rather than failing the export", async () => {
@@ -115,12 +118,18 @@ describe("export media", () => {
     const many = Array.from({ length: ARCHIVE_ASSET_LIMIT + 5 }, (_, i) => ({
       publicId: `k${i}`,
       resourceType: "raw" as const,
+      ext: "docx",
     }))
-    const groups = groupByResourceType([...many, { publicId: "img", resourceType: "image" }])
+    const groups = groupByResourceType([
+      ...many,
+      { publicId: "img", resourceType: "image", ext: "pdf" },
+    ])
     expect(groups).toHaveLength(3)
     expect(groups[0].publicIds).toHaveLength(ARCHIVE_ASSET_LIMIT)
     expect(groups[1].publicIds).toHaveLength(5)
-    expect(groups[2]).toEqual({ resourceType: "image", publicIds: ["img"] })
+    expect(groups[2]).toEqual({ resourceType: "image", publicIds: ["img"], formats: ["PDF"] })
+    // The label a person reads comes from the file types, not the resource type.
+    expect(groups[0].formats).toEqual(["DOCX"])
     expect(ARCHIVE_ASSET_LIMIT).toBe(1000)
   })
 
@@ -200,6 +209,7 @@ describe("createArchive over the wire", () => {
     expect(calls[0].body.get("signature")).toBeTruthy()
     expect(result.archives[0].fileCount).toBe(2)
     expect(result.archives[0].requested).toBe(2)
+    expect(result.archives[0].formats).toEqual(["DOCX"])
     expect(result.archives[0].url).toContain("fl_attachment:roles-files-2026-09-22")
   })
 
@@ -235,5 +245,31 @@ describe("createArchive over the wire", () => {
       new Date("2026-09-22T00:00:00.000Z"),
     )
     expect(result.archives[0]).toMatchObject({ fileCount: 1, requested: 2 })
+  })
+})
+
+/**
+ * Download names, which a person reads twice: once in a dialog and once in
+ * their Downloads folder.
+ */
+describe("archiveSlug", () => {
+  test("a long form title is cut at a word boundary, not left to run", () => {
+    const slug = archiveSlug("Meta Paid Advertising Specialist — Application & Screening Form")
+    expect(slug).toBe("meta-paid-advertising")
+    expect(slug.length).toBeLessThanOrEqual(32)
+  })
+
+  test("a short title is left alone", () => {
+    expect(archiveSlug("Job Application")).toBe("job-application")
+  })
+
+  test("a title with no ASCII words still produces a usable name", () => {
+    expect(archiveSlug("استمارة")).toBe("form")
+  })
+
+  test("a single long word is cut rather than dropped", () => {
+    expect(archiveSlug("Supercalifragilisticexpialidociousapplication")).toBe(
+      "supercalifragilisticexpialidocio",
+    )
   })
 })
