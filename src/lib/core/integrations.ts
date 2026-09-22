@@ -1,4 +1,4 @@
-import { and, eq, isNull } from "drizzle-orm"
+import { and, eq, isNull, sql } from "drizzle-orm"
 import { after } from "next/server"
 import { db } from "@/lib/db"
 import {
@@ -249,10 +249,25 @@ export async function setSheetSharing(
   if (share) metadata.google.share = share
   else delete metadata.google.share
 
-  await db
-    .update(workspaceConnections)
-    .set({ metadata })
-    .where(eq(workspaceConnections.id, conn.id))
+  await db.transaction(async (tx) => {
+    await tx
+      .update(workspaceConnections)
+      .set({ metadata })
+      .where(eq(workspaceConnections.id, conn.id))
+
+    // "For all forms" means all forms. Leaving per-form choices standing would
+    // make this control quietly skip exactly the forms somebody cared enough
+    // about to customise — the UI warns before calling this when any exist.
+    await tx
+      .update(formIntegrations)
+      .set({ config: sql`${formIntegrations.config} - 'shareOverride'` })
+      .where(
+        and(
+          eq(formIntegrations.workspaceId, ctx.workspaceId),
+          eq(formIntegrations.type, "google_sheets"),
+        ),
+      )
+  })
 
   // Applying it to the sheets that already exist is the whole point of the
   // setting, and it is far too slow to hold the response open for.
@@ -260,6 +275,84 @@ export async function setSheetSharing(
 
   invalidate(ctx, { paths: ["/integrations"] })
   return { success: true }
+}
+
+/**
+ * Set — or clear — who can open ONE form's spreadsheet.
+ *
+ * `null` puts the form back under the workspace setting; `"none"` keeps it
+ * private while the rest of the workspace stays shared. Owner-only, like the
+ * workspace-wide control.
+ */
+export async function setFormSheetSharing(
+  ctx: AuthContext,
+  formId: string,
+  override: SheetSharingSetting | "none" | null,
+): Promise<Result> {
+  const denied = authorize(ctx, {
+    scopes: ["integrations:write"],
+    action: "manage_integrations",
+  })
+  if (denied) return { success: false, error: denied }
+
+  // Tenancy: the form must be this workspace's before we touch its row.
+  const [form] = await db
+    .select({ id: forms.id })
+    .from(forms)
+    .where(and(eq(forms.id, formId), eq(forms.workspaceId, ctx.workspaceId), isNull(forms.deletedAt)))
+    .limit(1)
+  if (!form) return { success: false, error: "Form not found" }
+
+  const conn = await workspaceGoogleConnection(ctx)
+  if (!conn) return { success: false, error: "Connect a Google account first" }
+
+  const [row] = await db
+    .select({ id: formIntegrations.id, config: formIntegrations.config })
+    .from(formIntegrations)
+    .where(
+      and(
+        eq(formIntegrations.formId, formId),
+        eq(formIntegrations.workspaceId, ctx.workspaceId),
+        eq(formIntegrations.type, "google_sheets"),
+      ),
+    )
+    .limit(1)
+  if (!row) return { success: false, error: "This form has no spreadsheet yet" }
+
+  const config = row.config as GoogleSheetsIntegrationConfig
+  const next = { ...config }
+  if (override === null) delete next.shareOverride
+  else next.shareOverride = override
+
+  await db.update(formIntegrations).set({ config: next }).where(eq(formIntegrations.id, row.id))
+
+  // Deferred: the Drive calls are somebody else's API, and the choice is already
+  // stored — the card can render the new intent immediately.
+  after(() => reconcileSheetShares(conn, { id: row.id, formId, config: next }))
+
+  invalidate(ctx, { paths: [`/forms/${formId}/integrations`, "/integrations"] })
+  return { success: true }
+}
+
+/**
+ * How many of the workspace's forms answer the access question for themselves.
+ *
+ * Exists so the bulk control can say "2 forms are customised — this replaces
+ * them" BEFORE replacing them, rather than after.
+ */
+export async function customisedSheetAccessCount(ctx: AuthContext): Promise<number> {
+  const rows = await db
+    .select({ config: formIntegrations.config })
+    .from(formIntegrations)
+    .where(
+      and(
+        eq(formIntegrations.workspaceId, ctx.workspaceId),
+        eq(formIntegrations.type, "google_sheets"),
+      ),
+    )
+  return rows.filter(
+    (r) => (r.config as GoogleSheetsIntegrationConfig).shareOverride !== undefined,
+  ).length
 }
 
 /**

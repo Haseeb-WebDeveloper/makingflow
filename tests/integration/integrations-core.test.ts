@@ -340,3 +340,120 @@ describe("spreadsheet sharing is an owner's decision", () => {
     expect(await integrationsCore.reconcileSheetSharing(t.ctx)).toEqual({ success: true })
   })
 })
+
+/**
+ * Access set on ONE form, and the bulk control's relationship with it.
+ */
+describe("per-form spreadsheet access", () => {
+  async function connectedWithSheet(label: string) {
+    const t = await seedTenant(label)
+    const [conn] = await db
+      .insert(workspaceConnections)
+      .values({
+        workspaceId: t.workspaceId,
+        provider: "google",
+        accountEmail: "owner@example.test",
+        accessToken: "encrypted-placeholder",
+        metadata: { google: { share: { role: "reader", audience: "all" } } },
+      })
+      .returning({ id: workspaceConnections.id })
+    const [row] = await db
+      .insert(formIntegrations)
+      .values({
+        formId: t.formId,
+        workspaceId: t.workspaceId,
+        type: "google_sheets",
+        enabled: true,
+        config: { connectionId: conn.id, spreadsheetId: "sheet-1" },
+      })
+      .returning({ id: formIntegrations.id })
+    return { ...t, rowId: row.id }
+  }
+
+  async function configOf(rowId: string) {
+    const [row] = await db
+      .select({ config: formIntegrations.config })
+      .from(formIntegrations)
+      .where(eq(formIntegrations.id, rowId))
+      .limit(1)
+    return row.config as { shareOverride?: unknown }
+  }
+
+  test("a member cannot set it", async () => {
+    const t = await connectedWithSheet("form-access-gate")
+    const asMember = testContext({
+      userId: t.ctx.userId,
+      workspaceId: t.workspaceId,
+      role: "member",
+    })
+
+    const res = await integrationsCore.setFormSheetSharing(asMember, t.formId, {
+      role: "reader",
+      audience: "all",
+    })
+
+    expect(res).toEqual({ success: false, error: "Only owners can do that" })
+  })
+
+  test("an owner's choice is stored on that form", async () => {
+    const t = await connectedWithSheet("form-access-set")
+
+    const res = await integrationsCore.setFormSheetSharing(t.ctx, t.formId, {
+      role: "writer",
+      audience: { emails: ["a@example.test"] },
+    })
+
+    expect(res).toEqual({ success: true })
+    expect((await configOf(t.rowId)).shareOverride).toEqual({
+      role: "writer",
+      audience: { emails: ["a@example.test"] },
+    })
+  })
+
+  test("a form can be kept private", async () => {
+    const t = await connectedWithSheet("form-access-none")
+
+    await integrationsCore.setFormSheetSharing(t.ctx, t.formId, "none")
+
+    expect((await configOf(t.rowId)).shareOverride).toBe("none")
+  })
+
+  test("clearing it puts the form back under the workspace setting", async () => {
+    const t = await connectedWithSheet("form-access-clear")
+    await integrationsCore.setFormSheetSharing(t.ctx, t.formId, "none")
+
+    await integrationsCore.setFormSheetSharing(t.ctx, t.formId, null)
+
+    expect((await configOf(t.rowId)).shareOverride).toBeUndefined()
+  })
+
+  test("another workspace's form cannot be touched", async () => {
+    const mine = await connectedWithSheet("form-access-mine")
+    const theirs = await connectedWithSheet("form-access-theirs")
+
+    const res = await integrationsCore.setFormSheetSharing(mine.ctx, theirs.formId, "none")
+
+    expect(res).toEqual({ success: false, error: "Form not found" })
+    expect((await configOf(theirs.rowId)).shareOverride).toBeUndefined()
+  })
+
+  test("setting access for the whole workspace clears the per-form ones", async () => {
+    // "For all forms" has to mean all forms, or the bulk control quietly does
+    // nothing to the forms someone customised and they go on diverging.
+    const t = await connectedWithSheet("form-access-bulk")
+    await integrationsCore.setFormSheetSharing(t.ctx, t.formId, "none")
+
+    await integrationsCore.setSheetSharing(t.ctx, { role: "writer", audience: "all" })
+
+    expect((await configOf(t.rowId)).shareOverride).toBeUndefined()
+  })
+
+  test("the count of customised forms is reported, so the UI can warn first", async () => {
+    const t = await connectedWithSheet("form-access-count")
+    expect(await integrationsCore.customisedSheetAccessCount(t.ctx)).toBe(0)
+
+    await integrationsCore.setFormSheetSharing(t.ctx, t.formId, "none")
+
+    expect(await integrationsCore.customisedSheetAccessCount(t.ctx)).toBe(1)
+  })
+})

@@ -43,6 +43,16 @@ export async function setSheetSharing(share: SheetSharingSetting | null): Promis
   return integrationsCore.setSheetSharing(session.ctx, share)
 }
 
+/** Set or clear who can open one form's spreadsheet. */
+export async function setFormSheetSharing(
+  formId: string,
+  override: SheetSharingSetting | "none" | null,
+): Promise<Result> {
+  const session = await sessionContext()
+  if (!session.ok) return { success: false, error: session.error }
+  return integrationsCore.setFormSheetSharing(session.ctx, formId, override)
+}
+
 /** Re-attempt any spreadsheet shares that failed. */
 export async function reconcileSheetSharing(): Promise<Result> {
   const session = await sessionContext()
