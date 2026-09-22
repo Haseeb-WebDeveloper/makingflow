@@ -26,6 +26,7 @@ import {
   isOrphanedSheetConfig,
   reconcileFormSheet,
 } from "@/lib/integrations/sheets-provision"
+import { reconcileSheetShares } from "@/lib/integrations/sheets-sharing"
 import { answerToCell } from "@/lib/submissions/answer-format"
 import type { DeliveryContent, SendOutcome } from "@/lib/integrations/submission-content"
 import { neutralizeFormula } from "@/lib/submissions/csv"
@@ -112,6 +113,9 @@ async function reprovisionOrphanedSheet(
   // The new sheet is empty and every response predates it, so the history is the
   // backfill's job — exactly as on first provisioning.
   await backfillFormSheet(conn, config, form.id)
+  // A replacement file carries none of the old file's permissions, so without
+  // this an account switch silently locks the rest of the team out.
+  await reconcileSheetShares(conn, { id: rowId, formId: form.id, config })
   return config
 }
 
@@ -225,6 +229,7 @@ export async function syncSubmissionToSheets(
         // The backfill skips submission ids already in the sheet, so it is
         // safe to reach twice and this delivery is covered by it.
         await backfillFormSheet(conn, created, form.id)
+        await reconcileSheetShares(conn, { id: claimed.id, formId: form.id, config: created })
         return { ok: true }
       }
     }
@@ -338,6 +343,7 @@ export async function ensureFormSheet(form: {
     // workspace that connects after collecting responses gets an empty sheet
     // and rows only from the next submission on.
     await backfillFormSheet(conn, config, form.id)
+    await reconcileSheetShares(conn, { id: claimed.id, formId: form.id, config })
   } catch (err) {
     console.error("[sync] eager google sheet provisioning failed", err)
   }

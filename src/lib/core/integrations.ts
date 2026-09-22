@@ -16,6 +16,7 @@ import {
   refreshFormSheetHeader,
 } from "@/lib/integrations/sheets-provision"
 import { backfillFormSheet } from "@/lib/integrations/sync"
+import { reconcileSheetShares } from "@/lib/integrations/sheets-sharing"
 import { backfillFormNotionDatabase } from "@/lib/integrations/notion-sync"
 import {
   createFormDatabase,
@@ -123,6 +124,14 @@ export async function enableFormSheet(ctx: AuthContext, formId: string): Promise
   // history is more rows than a server action's budget wants to sit through.
   after(async () => {
     await backfillFormSheet(conn, config, formId)
+    const [row] = await db
+      .select({ id: formIntegrations.id })
+      .from(formIntegrations)
+      .where(
+        and(eq(formIntegrations.formId, formId), eq(formIntegrations.type, "google_sheets")),
+      )
+      .limit(1)
+    if (row) await reconcileSheetShares(conn, { id: row.id, formId, config })
     invalidate(ctx, { paths: [`/forms/${formId}/integrations`] })
   })
 

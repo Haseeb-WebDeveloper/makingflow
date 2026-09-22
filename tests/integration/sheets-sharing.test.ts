@@ -317,3 +317,46 @@ describe("reconcileWorkspaceSheetShares", () => {
     expect(shareCalls).toEqual([])
   })
 })
+
+describe("a newly created spreadsheet", () => {
+  test("is shared as soon as it exists", async () => {
+    // A brand-new file has no permissions of its own, so sharing on creation is
+    // a requirement rather than an optimisation: otherwise every form a workspace
+    // makes after turning this on starts out private again.
+    const { ensureFormSheet } = await import("@/lib/integrations/sync")
+    const s = await seed({ share: { role: "reader", audience: "all" } })
+    await db.delete(formIntegrations).where(eq(formIntegrations.id, s.rowId))
+
+    await ensureFormSheet({ id: s.formId, workspaceId: s.workspaceId, title: "Job Application" })
+
+    const row = await rowFor(s.formId)
+    expect(row.config.spreadsheetId).toBe("new-sheet-1")
+    expect((row.config.shares ?? []).filter((sh) => sh.permissionId)).toHaveLength(2)
+  })
+})
+
+describe("a spreadsheet replaced after an account switch", () => {
+  test("is shared with the members again", async () => {
+    // THE case this trigger exists for. The replacement is a new file carrying
+    // none of the old one's permissions, so without re-sharing, switching the
+    // workspace's Google account quietly locks the whole team out.
+    const { ensureFormSheet } = await import("@/lib/integrations/sync")
+    const s = await seed({ share: { role: "reader", audience: "all" } })
+    await reconcileSheetShares(await conn(s.workspaceId), await rowFor(s.formId))
+    const before = await rowFor(s.formId)
+    // Point the config at a grant that no longer exists — what disconnecting and
+    // reconnecting a different account leaves behind.
+    await db
+      .update(formIntegrations)
+      .set({ config: { ...before.config, connectionId: randomUUID() } })
+      .where(eq(formIntegrations.id, s.rowId))
+    shareCalls.length = 0
+
+    await ensureFormSheet({ id: s.formId, workspaceId: s.workspaceId, title: "Job Application" })
+
+    const after = await rowFor(s.formId)
+    expect(after.config.spreadsheetId).toBe("new-sheet-1")
+    expect(shareCalls.every((c) => c.fileId === "new-sheet-1")).toBe(true)
+    expect((after.config.shares ?? []).filter((sh) => sh.permissionId)).toHaveLength(2)
+  })
+})
