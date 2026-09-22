@@ -31,6 +31,7 @@ import "server-only"
  */
 
 import { createHmac, timingSafeEqual } from "node:crypto"
+import type { ExportSpec } from "@/lib/submissions/export-spec"
 
 /** Fifteen minutes: a human clicking a link an assistant just produced. */
 const TTL_MS = 15 * 60 * 1000
@@ -41,6 +42,12 @@ export type ExportGrant = {
   userId: string
   /** The key that minted this, or null for a browser session. */
   apiKeyId: string | null
+  /**
+   * What this handle may download. Inside the signed payload rather than the
+   * query string on purpose: a link minted for "the submission ids only" must
+   * not become a link for every answer by editing the URL.
+   */
+  spec?: ExportSpec
   expiresAt: number
 }
 

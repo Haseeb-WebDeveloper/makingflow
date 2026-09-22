@@ -23,6 +23,10 @@ vi.mock("@/lib/auth/session", () => ({
 
 const { mintExportToken, EXPORT_TOKEN_TTL_MS } = await import("@/lib/mcp/export-token")
 const { GET } = await import("@/app/api/forms/[id]/export/route")
+const { encodeSpec, exportSpecSchema, SYNC_ROW_CEILING } = await import(
+  "@/lib/submissions/export-spec"
+)
+const query = await import("@/lib/submissions/export-query")
 
 let seq = 0
 
@@ -95,12 +99,12 @@ describe("GET /api/forms/[id]/export", () => {
     const { res, body } = await exportCsv(f.formId)
     expect(res.status).toBe(200)
     expect(res.headers.get("content-type")).toContain("text/csv")
-    expect(res.headers.get("content-disposition")).toContain("job-application-submissions.csv")
+    expect(res.headers.get("content-disposition")).toContain("job-application-")
 
     const lines = body.trim().split("\n")
     // 1 header + 250 responses. The partial draft is excluded.
     expect(lines).toHaveLength(251)
-    expect(lines[0]).toBe(`"Submitted","Name","Notes"`) // the heading block is not a column
+    expect(lines[0]).toBe(`"Submitted (UTC)","Name","Notes"`) // the heading block is not a column
     expect(body).toContain("Person 0")
     expect(body).toContain("Person 249")
   })
@@ -136,7 +140,73 @@ describe("GET /api/forms/[id]/export", () => {
     session.workspaceId = f.workspaceId
     const { body } = await exportCsv(f.formId)
     expect(body.trim().split("\n")).toHaveLength(1)
-    expect(body).toContain(`"Submitted","Name","Notes"`)
+    expect(body).toContain(`"Submitted (UTC)","Name","Notes"`)
+  })
+
+  test("the default download is the export we shipped before specs existed", async () => {
+    const f = await seed(2)
+    session.workspaceId = f.workspaceId
+    const { body } = await exportCsv(f.formId)
+    expect(body.trim().split("\n")[0]).toBe(`"Submitted (UTC)","Name","Notes"`)
+  })
+
+  test("a spec selects format, columns and scope", async () => {
+    const f = await seed(3)
+    session.workspaceId = f.workspaceId
+    const spec = encodeSpec(
+      exportSpecSchema.parse({
+        format: "json",
+        columns: { meta: ["submissionId"], fields: [] },
+        scope: { limit: 2, order: "newest" },
+      }),
+    )
+    const url = new URL(`http://localhost/api/forms/${f.formId}/export?spec=${spec}`)
+    const res = await GET(new Request(url), { params: Promise.resolve({ id: f.formId }) })
+    expect(res.headers.get("content-type")).toContain("application/json")
+    const body = JSON.parse(await res.text())
+    expect(body.rowCount).toBe(2)
+    expect(Object.keys(body.rows[0])).toEqual(["Submission ID"])
+  })
+
+  test("an export too large to finish in one request is refused, not truncated", async () => {
+    const f = await seed(1)
+    session.workspaceId = f.workspaceId
+    // Faked rather than seeded: proving the refusal does not require inserting
+    // 5,001 rows, and this is the only assertion that needs the count to lie.
+    const spy = vi.spyOn(query, "countExportRows").mockResolvedValue(SYNC_ROW_CEILING + 1)
+    try {
+      const { res, body } = await exportCsv(f.formId)
+      expect(res.status).toBe(413)
+      expect(body).toContain("too large")
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
+  test("a signed link carries its own spec and the query string cannot widen it", async () => {
+    const f = await seed(2)
+    session.workspaceId = null
+    const token = mintExportToken({
+      formId: f.formId,
+      workspaceId: f.workspaceId,
+      userId: "someone",
+      apiKeyId: null,
+      spec: exportSpecSchema.parse({ columns: { meta: ["submissionId"], fields: [] } }),
+    })
+    const wider = encodeSpec(
+      exportSpecSchema.parse({ columns: { meta: ["submissionId", "aiSummary"] } }),
+    )
+    const url = new URL(`http://localhost/api/forms/${f.formId}/export?token=${token}&spec=${wider}`)
+    const res = await GET(new Request(url), { params: Promise.resolve({ id: f.formId }) })
+    const body = await res.text()
+    expect(body.trim().split("\n")[0]).toBe(`"Submission ID"`)
+  })
+
+  test("the filename carries the form and the day", async () => {
+    const f = await seed(1)
+    session.workspaceId = f.workspaceId
+    const { res } = await exportCsv(f.formId)
+    expect(res.headers.get("content-disposition")).toMatch(/job-application-\d{4}-\d{2}-\d{2}\.csv/)
   })
 
   /**

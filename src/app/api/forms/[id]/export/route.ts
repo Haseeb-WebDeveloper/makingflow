@@ -1,169 +1,113 @@
-import { and, asc, eq, gt, inArray, isNull, or } from "drizzle-orm"
-import { db } from "@/lib/db"
-import { answers, formFields, forms, submissions, type AnswerValue } from "@/lib/db/schema"
 import { getDefaultWorkspace } from "@/lib/auth/session"
 import { verifyExportToken } from "@/lib/mcp/export-token"
-import { NON_ANSWER_TYPES } from "@/lib/builder/logic"
-import { answerToCell } from "@/lib/submissions/answer-format"
-import { csvFileName, csvRow } from "@/lib/submissions/csv"
-import { markdownToPlainText } from "@/lib/markdown"
+import {
+  DEFAULT_SPEC,
+  exportSpecSchema,
+  isSyncEligible,
+  parseExportSpec,
+  type ExportSpec,
+} from "@/lib/submissions/export-spec"
+import { countExportRows, openExport } from "@/lib/submissions/export-query"
+import {
+  CONTENT_TYPES,
+  csvChunks,
+  exportFileName,
+  jsonChunks,
+} from "@/lib/submissions/export-serialize"
 
 export const maxDuration = 60
 
-/** Submissions pulled (and streamed) per round-trip. */
-const PAGE = 500
-
 /**
- * Which workspace may download this export.
+ * Downloading one form's responses.
  *
- * Two ways in. A browser session is the ordinary one. A `?token=` handle is for
- * links minted by `makingflow_export_submissions`, where the person opening it
- * may not be signed in at all — that is the whole reason the handle exists.
+ * TWO WAYS IN, ONE TENANCY CHECK. A browser session is the ordinary one; a
+ * `?token=` handle is for links minted by `makingflow_export_submissions`,
+ * where the person opening it may not be signed in at all. The token names its
+ * own form and is checked against the requested id — a valid handle for form A
+ * must not download form B — and its workspace then goes through the same
+ * `openExport` tenancy query a session's does. A signed URL is a shortcut past
+ * the login page and nothing more.
  *
- * The token names its own form, and it is checked against the requested id
- * rather than trusted to be the right one: a valid handle for form A must not
- * download form B. Its workspace then goes through the SAME tenancy query as a
- * session's, so a signed URL is a shortcut past the login page and nothing more.
+ * A TOKEN'S SPEC WINS. When a handle carries one, the query string is ignored
+ * entirely: a link minted for two columns must not turn into a link for forty
+ * by editing the URL.
+ *
+ * THIS ROUTE ONLY EVER STREAMS WHAT IT CAN FINISH. `maxDuration` is 60s and the
+ * headers are flushed with the first chunk, so an export that runs out of time
+ * would arrive as a valid-looking file with rows missing — the exact failure the
+ * streaming rewrite was meant to remove. A pre-flight count refuses anything
+ * above SYNC_ROW_CEILING with a 413, and the Export dialog turns that into a
+ * queued job.
  */
-async function authorizeExport(request: Request, formId: string): Promise<string | null> {
-  const token = new URL(request.url).searchParams.get("token")
+type Authorized = { workspaceId: string; spec: ExportSpec }
+
+async function authorize(request: Request, formId: string): Promise<Authorized | null> {
+  const params = new URL(request.url).searchParams
+  const token = params.get("token")
+
   if (token) {
     const grant = verifyExportToken(token)
     if (!grant || grant.formId !== formId) return null
-    return grant.workspaceId
+    const spec = grant.spec ? exportSpecSchema.parse(grant.spec) : DEFAULT_SPEC
+    return { workspaceId: grant.workspaceId, spec }
   }
 
   const workspace = await getDefaultWorkspace()
-  return workspace?.id ?? null
+  if (!workspace) return null
+  return { workspaceId: workspace.id, spec: parseExportSpec(params) }
 }
 
-/**
- * CSV export of EVERY completed response to a form.
- *
- * Replaces the old client-side export, which serialized whatever the responses
- * table happened to be holding — and that table is capped at 200 rows. A form
- * with 500 responses exported 200 of them, silently, with no indication the
- * rest existed.
- *
- * Streams in keyset-paginated chunks rather than materializing the whole export:
- * an unbounded `SELECT` plus every answer row would sit in memory at once, and
- * responses are the table that grows without limit.
- */
-export async function GET(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> },
-) {
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const workspaceId = await authorizeExport(request, id)
-  if (!workspaceId) return new Response("Unauthorized", { status: 401 })
+  const auth = await authorize(request, id)
+  if (!auth) return new Response("Unauthorized", { status: 401 })
 
-  // Tenancy: the form must belong to the caller's workspace. Same guard as
-  // getFormSubmissions — an id from another tenant is indistinguishable from
-  // one that doesn't exist.
-  const [form] = await db
-    .select({ id: forms.id, title: forms.title })
-    .from(forms)
-    .where(and(eq(forms.id, id), eq(forms.workspaceId, workspaceId), isNull(forms.deletedAt)))
-    .limit(1)
-  if (!form) return new Response("Not found", { status: 404 })
+  const source = await openExport(id, auth.workspaceId, auth.spec)
+  // An id from another tenant is indistinguishable from one that never existed.
+  if (!source) return new Response("Not found", { status: 404 })
 
-  const fields = await db
-    .select({ id: formFields.id, label: formFields.label, type: formFields.type })
-    .from(formFields)
-    .where(and(eq(formFields.formId, form.id), isNull(formFields.deletedAt)))
-    .orderBy(formFields.position)
-  const columns = fields.filter((f) => !NON_ANSWER_TYPES.has(f.type))
+  const rowCount = await countExportRows(id, auth.spec)
+  if (!isSyncEligible(auth.spec, rowCount)) {
+    return new Response(
+      "This export is too large to download directly. Use the Export dialog to queue it and we will email you a link.",
+      { status: 413 },
+    )
+  }
+
+  const now = new Date()
+  const chunks =
+    auth.spec.format === "json"
+      ? jsonChunks(source, { spec: auth.spec, exportedAt: now })
+      : csvChunks(source)
 
   const encoder = new TextEncoder()
   const stream = new ReadableStream<Uint8Array>({
-    async start(controller) {
+    async pull(controller) {
+      // `pull`, not a loop in `start`: the stream asks for the next chunk when
+      // the consumer is ready for it, so a slow client cannot make us buffer
+      // the whole export in memory.
       try {
-        // BOM so Excel opens UTF-8 correctly on Windows.
-        controller.enqueue(encoder.encode("﻿"))
-        controller.enqueue(
-          // Question text is authored as markdown; a spreadsheet header wants
-          // the words, not `**asterisks**`.
-          encoder.encode(
-            csvRow([
-              "Submitted",
-              ...columns.map((c) => markdownToPlainText(c.label) || "Untitled"),
-            ]) + "\n",
-          ),
-        )
-
-        // Keyset cursor. (created_at, id) is unique and matches the ordering, so
-        // pages can't overlap or skip even as new responses arrive mid-export.
-        type Cursor = { createdAt: Date; id: string }
-        let cursor: Cursor | null = null
-        for (;;) {
-          // Annotated because `cursor` is both an input to this query and
-          // assigned from its result, which TS can't infer through the cycle.
-          const page: Cursor[] = await db
-            .select({ id: submissions.id, createdAt: submissions.createdAt })
-            .from(submissions)
-            .where(
-              and(
-                eq(submissions.formId, form.id),
-                eq(submissions.status, "completed"),
-                cursor
-                  ? or(
-                      gt(submissions.createdAt, cursor.createdAt),
-                      and(
-                        eq(submissions.createdAt, cursor.createdAt),
-                        gt(submissions.id, cursor.id),
-                      ),
-                    )
-                  : undefined,
-              ),
-            )
-            .orderBy(asc(submissions.createdAt), asc(submissions.id))
-            .limit(PAGE)
-          if (page.length === 0) break
-
-          const rows = await db
-            .select({
-              submissionId: answers.submissionId,
-              fieldId: answers.fieldId,
-              value: answers.value,
-            })
-            .from(answers)
-            .where(inArray(answers.submissionId, page.map((s) => s.id)))
-
-          const bySubmission = new Map<string, Map<string, AnswerValue>>()
-          for (const a of rows) {
-            if (!a.fieldId) continue // AI follow-ups have no column
-            let byField = bySubmission.get(a.submissionId)
-            if (!byField) bySubmission.set(a.submissionId, (byField = new Map()))
-            byField.set(a.fieldId, a.value)
-          }
-
-          let chunk = ""
-          for (const s of page) {
-            const byField = bySubmission.get(s.id)
-            chunk +=
-              csvRow([
-                s.createdAt.toISOString(),
-                ...columns.map((c) => answerToCell(byField?.get(c.id))),
-              ]) + "\n"
-          }
-          controller.enqueue(encoder.encode(chunk))
-
-          if (page.length < PAGE) break
-          const last = page[page.length - 1]
-          cursor = { createdAt: last.createdAt, id: last.id }
-        }
-        controller.close()
+        const next = await chunks.next()
+        if (next.done) controller.close()
+        else controller.enqueue(encoder.encode(next.value))
       } catch (err) {
         console.error("[export] failed", err)
         controller.error(err)
       }
     },
+    cancel() {
+      void chunks.return(undefined)
+    },
   })
 
   return new Response(stream, {
     headers: {
-      "content-type": "text/csv; charset=utf-8",
-      "content-disposition": `attachment; filename="${csvFileName(form.title)}"`,
+      "content-type": CONTENT_TYPES[auth.spec.format],
+      "content-disposition": `attachment; filename="${exportFileName(
+        source.form.title,
+        auth.spec.format,
+        now,
+      )}"`,
       "cache-control": "no-store",
     },
   })
