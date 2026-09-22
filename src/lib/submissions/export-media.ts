@@ -169,25 +169,56 @@ export function attachmentUrl(url: string, downloadName: string): string {
   return `${url.slice(0, at + marker.length)}fl_attachment:${safe}/${url.slice(at + marker.length)}`
 }
 
+/**
+ * Which Cloudinary bucket an asset lives in.
+ *
+ * THE DELIVERY URL DECIDES, NOT THE MIME TYPE. Cloudinary files a PDF under
+ * `image`, but its mime type is `application/pdf`, so guessing from the mime
+ * sends every resume to `/raw/generate_archive` — where it does not exist. With
+ * `allow_missing=true` that is not an error: the archive simply comes back
+ * without them. On one real form that silently dropped 12 of 22 files.
+ *
+ * The URL carries the bucket Cloudinary actually chose
+ * (`/res.cloudinary.com/<cloud>/image/upload/...`), which is ground truth. The
+ * mime type is the fallback for a row whose URL we cannot parse.
+ */
+function resourceTypeFor(file: { url: string; mime?: string }): ResourceType {
+  return (assetFromUrl(file.url)?.resourceType ?? resourceTypeFromMime(file.mime)) as ResourceType
+}
+
+/**
+ * The public id to archive.
+ *
+ * `storageKey` is authoritative when the upload recorded one. Otherwise the URL
+ * is parsed — but `assetFromUrl` strips the extension, which is right for an
+ * image (whose public id has none) and wrong for a raw asset (whose public id
+ * ends in `.docx`), so it is put back for that bucket.
+ */
+function publicIdFor(file: { url: string; storageKey?: string }, resourceType: ResourceType) {
+  if (file.storageKey) return file.storageKey
+  const parsed = assetFromUrl(file.url)
+  if (!parsed?.publicId) return null
+  if (resourceType !== "raw") return parsed.publicId
+  const ext = extension(file.url.split("?")[0]?.split("/").pop())
+  return ext ? `${parsed.publicId}.${ext}` : parsed.publicId
+}
+
 /** Every archivable asset in scope, de-duplicated, in encounter order. */
 export async function collectAssets(source: ExportSource): Promise<MediaAsset[]> {
   const seen = new Map<string, MediaAsset>()
   for await (const sub of source.rows) {
     for (const f of sub.files) {
-      // Prefer what the upload recorded; fall back to parsing the delivery URL
-      // for rows written before `storageKey` was kept. A file on somebody
-      // else's CDN — an import — is skipped: we cannot archive what we do not
-      // host, and one such file must not fail the whole export.
-      const asset = f.storageKey
-        ? { publicId: f.storageKey, resourceType: resourceTypeFromMime(f.mime) }
-        : assetFromUrl(f.url)
-      if (!asset?.publicId) continue
-      const resourceType = (asset.resourceType ?? "raw") as ResourceType
-      if (!seen.has(asset.publicId)) {
-        seen.set(asset.publicId, {
-          publicId: asset.publicId,
+      const resourceType = resourceTypeFor(f)
+      const publicId = publicIdFor(f, resourceType)
+      // A file on somebody else's CDN — an import — is skipped: we cannot
+      // archive what we do not host, and one such file must not fail the
+      // whole export.
+      if (!publicId) continue
+      if (!seen.has(publicId)) {
+        seen.set(publicId, {
+          publicId,
           resourceType,
-          ext: assetExtension(asset.publicId, f.name, f.url),
+          ext: assetExtension(publicId, f.name, f.url),
         })
       }
     }

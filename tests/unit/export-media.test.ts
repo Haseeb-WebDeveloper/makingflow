@@ -90,6 +90,67 @@ describe("export media", () => {
     ])
   })
 
+  /**
+   * The bug this test exists for: on a real form, 12 of 22 files were missing
+   * from the zip. A PDF's mime type is `application/pdf`, so guessing the
+   * bucket from the mime sent every resume to /raw/generate_archive — where
+   * Cloudinary, which files PDFs under `image`, does not have them. With
+   * allow_missing that is not an error; the files just are not there.
+   */
+  test("a PDF is archived from the image bucket, where Cloudinary actually put it", async () => {
+    const assets = await collectAssets(
+      source([
+        sub([
+          {
+            path: "p",
+            name: "Ayesha CV.pdf",
+            // Exactly what the database holds: mime says pdf, URL says image.
+            mime: "application/pdf",
+            storageKey: "makingflow/submissions/cv1",
+            url: "https://res.cloudinary.com/demo/image/upload/v17/makingflow/submissions/cv1.pdf",
+          },
+          {
+            path: "p",
+            name: "notes.md",
+            mime: "text/markdown",
+            storageKey: "makingflow/submissions/notes1.md",
+            url: "https://res.cloudinary.com/demo/raw/upload/v17/makingflow/submissions/notes1.md",
+          },
+        ]),
+      ]),
+    )
+    expect(assets).toEqual([
+      { publicId: "makingflow/submissions/cv1", resourceType: "image", ext: "pdf" },
+      { publicId: "makingflow/submissions/notes1.md", resourceType: "raw", ext: "md" },
+    ])
+
+    // And so the PDF is requested from the endpoint that has it.
+    const groups = groupByResourceType(assets)
+    expect(groups).toEqual([
+      { resourceType: "image", publicIds: ["makingflow/submissions/cv1"], formats: ["PDF"] },
+      { resourceType: "raw", publicIds: ["makingflow/submissions/notes1.md"], formats: ["MD"] },
+    ])
+  })
+
+  test("a raw file recovered from its URL keeps the extension its public id needs", async () => {
+    const assets = await collectAssets(
+      source([
+        sub([
+          {
+            path: "p",
+            name: "cv.docx",
+            url: "https://res.cloudinary.com/demo/raw/upload/v17/makingflow/submissions/ab12.docx",
+          },
+        ]),
+      ]),
+    )
+    // assetFromUrl strips the extension, which is correct for an image and
+    // wrong for raw — a raw public id IS `ab12.docx`.
+    expect(assets).toEqual([
+      { publicId: "makingflow/submissions/ab12.docx", resourceType: "raw", ext: "docx" },
+    ])
+  })
+
   test("a file with no storage key is recovered from its delivery URL", async () => {
     const assets = await collectAssets(
       source([

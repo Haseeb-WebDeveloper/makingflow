@@ -77,6 +77,17 @@ async function seed() {
       .insert(answers)
       .values({ submissionId: sub.id, fieldId: city.id, question: "City", type: "short_text", value: city_ })
     if (file) {
+      // The delivery URL carries the bucket CLOUDINARY chose, and it files a
+      // PDF under `image` despite its mime type — which is exactly the trap
+      // that dropped 12 of 22 files on a real form. The seed mirrors that, so
+      // these tests exercise the real decision rather than a tidier one.
+      const bucket =
+        file.mime.startsWith("image/") || file.mime === "application/pdf" ? "image" : "raw"
+      // A raw public id keeps its extension; an image public id does not.
+      const storageKey =
+        bucket === "raw"
+          ? `makingflow/submissions/${file.key}.${file.name.split(".").pop()}`
+          : `makingflow/submissions/${file.key}`
       await db.insert(answers).values({
         submissionId: sub.id,
         fieldId: cv.id,
@@ -85,8 +96,9 @@ async function seed() {
         value: {
           files: [
             {
-              storageKey: `makingflow/submissions/${file.key}`,
-              url: `https://res.cloudinary.com/demo/raw/upload/v17/makingflow/submissions/${file.key}`,
+              storageKey,
+              // A raw storageKey already ends in its extension; an image one does not.
+              url: `https://res.cloudinary.com/demo/${bucket}/upload/v17/${storageKey}${bucket === "raw" ? "" : `.${file.name.split(".").pop()}`}`,
               name: file.name,
               mime: file.mime,
             },
@@ -141,17 +153,38 @@ describe("requestMediaArchive", () => {
     expect(archiveCalls[0].publicIds).toEqual(["makingflow/submissions/bbb"])
   })
 
-  test("mixed file types produce one archive per Cloudinary resource type", async () => {
+  test("a PDF is archived from the image bucket, not the one its mime type implies", async () => {
     const f = await seed()
     await f.add("Lahore", { key: "aaa", mime: "application/pdf", name: "cv.pdf" })
-    await f.add("Karachi", { key: "bbb", mime: "image/png", name: "id.png" })
+    session.workspaceId = f.workspaceId
+
+    const res = await requestMediaArchive(f.formId, exportSpecSchema.parse({ files: "zip-only" }))
+    expect(res.success && res.fileCount).toBe(1)
+    // The regression: application/pdf reads as "raw" but Cloudinary stores it
+    // under image, and a raw request comes back silently short.
+    expect(archiveCalls).toEqual([
+      { resourceType: "image", publicIds: ["makingflow/submissions/aaa"] },
+    ])
+  })
+
+  test("genuinely different buckets produce one archive each", async () => {
+    const f = await seed()
+    await f.add("Lahore", { key: "aaa", mime: "application/pdf", name: "cv.pdf" })
+    await f.add("Karachi", {
+      key: "bbb",
+      mime: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      name: "cv.docx",
+    })
     session.workspaceId = f.workspaceId
 
     const res = await requestMediaArchive(f.formId, exportSpecSchema.parse({ files: "zip-only" }))
     expect(res.success).toBe(true)
     if (!res.success) return
     expect(res.archives).toHaveLength(2)
-    expect(archiveCalls.map((c) => c.resourceType)).toEqual(["raw", "image"])
+    expect(archiveCalls).toEqual([
+      { resourceType: "image", publicIds: ["makingflow/submissions/aaa"] },
+      { resourceType: "raw", publicIds: ["makingflow/submissions/bbb.docx"] },
+    ])
   })
 
   test("a form with no uploads says so instead of handing back an empty zip", async () => {
