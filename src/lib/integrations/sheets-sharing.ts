@@ -37,49 +37,48 @@ const key = (email: string) => email.trim().toLowerCase()
 /**
  * Which setting governs one spreadsheet: its own, or the workspace's.
  *
- * A form's override beats the workspace in both directions — it can share a form
- * the workspace does not, and `"none"` keeps a form private while everything
- * else is shared. Returning undefined means nobody, which is exactly what the
- * rest of this module already does with "sharing is off".
+ * A form's setting beats the workspace in both directions — it can share a form
+ * the workspace does not, and `{ general: null }` keeps a form private while
+ * everything else is shared.
  */
 export function resolveSharing(
   workspace: SheetSharingSetting | undefined,
-  override: SheetSharingSetting | 'none' | undefined,
+  own: SheetSharingSetting | undefined,
 ): SheetSharingSetting | undefined {
-  if (override === 'none') return undefined
-  return override ?? workspace
+  return own ?? workspace
 }
 
 /**
- * Who should be able to open the spreadsheets this connection owns.
+ * Who should be able to open this spreadsheet, and as what.
  *
- * The account's own address is always excluded: Drive refuses to share a file
- * with its owner, and recording that refusal would park a permanent "blocked"
- * row on the card for the one person who definitely has access.
+ * General access applies to every member; a named person's own role replaces it,
+ * and `'none'` removes them. The account that owns the files is always left out:
+ * Drive refuses to share a file with its owner, and recording that refusal would
+ * park a permanent failure against the one person who certainly has access.
  */
-export function desiredShareEmails(
+export function desiredRoles(
   setting: SheetSharingSetting | undefined,
   memberEmails: string[],
   ownerEmail: string,
-): string[] {
-  if (!setting) return []
+): Map<string, 'reader' | 'writer'> {
+  const out = new Map<string, 'reader' | 'writer'>()
+  if (!setting) return out
+
   const owner = key(ownerEmail)
-  const chosen = setting.audience === "all" ? null : new Set(setting.audience.emails.map(key))
-  const seen = new Set<string>()
-  const out: string[] = []
+  const named = new Map((setting.people ?? []).map((p) => [key(p.email), p.role]))
+
   for (const email of memberEmails) {
     const k = key(email)
-    if (k === owner || seen.has(k)) continue
-    if (chosen && !chosen.has(k)) continue
-    seen.add(k)
-    out.push(email)
+    if (k === owner || out.has(k)) continue
+    const role = named.get(k) ?? setting.general
+    if (role && role !== 'none') out.set(email, role)
   }
   return out
 }
 
 /**
  * What has to change on one spreadsheet for the right people to have the right
- * access.
+ * role.
  *
  * THE RULE: `revoke` only ever contains entries carrying a `permissionId` we
  * recorded. An entry without one is either a failed attempt of ours or a share
@@ -91,32 +90,34 @@ export function desiredShareEmails(
  * code path instead of two, and the id we have recorded stays true at every step.
  */
 export function planShareChanges(
-  desired: string[],
-  role: "reader" | "writer",
+  desired: Map<string, 'reader' | 'writer'>,
   current: SheetShare[],
-): { grant: string[]; revoke: SheetShare[]; keep: SheetShare[] } {
-  const wanted = new Map(desired.map((e) => [key(e), e]))
-  const grant: string[] = []
+): {
+  grant: { email: string; role: 'reader' | 'writer' }[]
+  revoke: SheetShare[]
+  keep: SheetShare[]
+} {
+  const wanted = new Map([...desired].map(([email, role]) => [key(email), { email, role }]))
+  const grant: { email: string; role: 'reader' | 'writer' }[] = []
   const revoke: SheetShare[] = []
   const keep: SheetShare[] = []
 
   for (const share of current) {
     const k = key(share.email)
-    const stillWanted = wanted.has(k)
-    const correctRole = share.role === role
+    const want = wanted.get(k)
     const isOurs = Boolean(share.permissionId)
 
-    if (stillWanted && correctRole && isOurs) {
+    if (want && want.role === share.role && isOurs) {
       keep.push(share)
       wanted.delete(k)
       continue
     }
     if (isOurs) revoke.push(share)
-    // An entry with no permissionId is left for the grant loop below to retry
-    // (if still wanted) or simply forgotten (if not). Never revoked.
+    // An entry with no permissionId is left for the grant loop to retry (if still
+    // wanted) or simply forgotten (if not). Never revoked.
   }
 
-  for (const email of wanted.values()) grant.push(email)
+  for (const want of wanted.values()) grant.push(want)
   return { grant, revoke, keep }
 }
 
@@ -155,13 +156,12 @@ export async function reconcileSheetShares(
     if (!config.spreadsheetId) return // nothing provisioned yet, nothing to share
 
     const setting = resolveSharing(conn.metadata?.google?.share, config.shareOverride)
-    const role = setting?.role ?? "reader"
-    const desired = desiredShareEmails(
+    const desired = desiredRoles(
       setting,
       await memberEmails(conn.workspaceId),
       conn.accountEmail,
     )
-    const { grant, revoke, keep } = planShareChanges(desired, role, config.shares ?? [])
+    const { grant, revoke, keep } = planShareChanges(desired, config.shares ?? [])
     if (!grant.length && !revoke.length) return
 
     const accessToken = await getValidAccessToken(conn)
@@ -177,7 +177,7 @@ export async function reconcileSheetShares(
       }
     }
 
-    for (const email of grant) {
+    for (const { email, role } of grant) {
       try {
         const { permissionId } = await shareFile(accessToken, config.spreadsheetId, email, role)
         next.push({ email, role, permissionId, syncedAt: new Date().toISOString() })

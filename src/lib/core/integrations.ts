@@ -280,14 +280,14 @@ export async function setSheetSharing(
 /**
  * Set — or clear — who can open ONE form's spreadsheet.
  *
- * `null` puts the form back under the workspace setting; `"none"` keeps it
- * private while the rest of the workspace stays shared. Owner-only, like the
- * workspace-wide control.
+ * `null` puts the form back under the workspace setting; `{ general: null }`
+ * keeps it private while the rest of the workspace stays shared. Owner-only, like
+ * the workspace-wide control.
  */
 export async function setFormSheetSharing(
   ctx: AuthContext,
   formId: string,
-  override: SheetSharingSetting | "none" | null,
+  override: SheetSharingSetting | null,
 ): Promise<Result> {
   const denied = authorize(ctx, {
     scopes: ["integrations:write"],

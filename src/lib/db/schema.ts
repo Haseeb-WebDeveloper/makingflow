@@ -333,29 +333,38 @@ export type SheetShare = {
 }
 
 /**
- * Who gets access to the spreadsheets a connection owns. Absent = off, so every
- * existing connection reads as off with no backfill.
+ * Who gets access to a spreadsheet, in the same two parts the share dialog shows.
+ *
+ * `general` is the workspace-wide line — every member gets this role, or nobody
+ * does when it is null ("restricted"). `people` names individuals whose own role
+ * beats it, including `'none'`, which is how one person is shut out of an
+ * otherwise open sheet. Absent altogether = nothing is shared.
  */
 export type SheetSharingSetting = {
-  role: 'reader' | 'writer'
-  audience: 'all' | { emails: string[] }
+  general: 'reader' | 'writer' | null
+  people?: { email: string; role: 'reader' | 'writer' | 'none' }[]
 }
 
 export type GoogleSheetsIntegrationConfig = {
   connectionId: string // workspace_connections.id holding the OAuth grant
   spreadsheetId: string
   spreadsheetUrl?: string // deep link shown in the UI ("Open spreadsheet")
-  sheetName?: string // tab name (default "Submissions")
-  // Inner tab id (gid) — required to delete a row via the Sheets batchUpdate API.
+  // The tab's name when it was provisioned. DISPLAY AND BACK-COMPAT ONLY — no
+  // read or write addresses the sheet by name any more, because the owner can
+  // rename the tab and every range built from this string then failed. Use
+  // sheetId. Kept because old configs carry it.
+  sheetName?: string
+  // Inner tab id (gid). How every request now targets the tab.
   sheetId?: number
-  // True once the sheet carries the leading "Submission ID" column that lets us
-  // locate (and delete) the exact row for a given submission. Sheets created
-  // before this feature lack it until reconciled.
+  // True once the sheet carries a "Submission ID" column. Retained for configs
+  // written before the column positions became self-describing; the column's
+  // actual whereabouts come from developer metadata (see sheet-layout.ts).
   hasIdColumn?: boolean
-  // Append-only column set (frozen order). Values are appended in this order so
-  // they stay aligned with the header row. New form fields are appended to the
-  // END on the next sync (existing rows stay aligned, blank in the new column);
-  // removed fields keep their column so historical rows still resolve.
+  // Which questions the sheet knows about, and the order a FRESH sheet lays
+  // them out in. Not where they physically sit: the owner may hide, drag or
+  // insert around them, so position is resolved per sync from the tags Sheets
+  // moves along with each column. Removed fields keep their entry so historical
+  // rows still resolve.
   columns?: { fieldId: string; label: string }[]
   // Access we have granted on this spreadsheet, one entry per person. See
   // SheetShare — an entry with no permissionId is a failed attempt, not a grant.
@@ -363,13 +372,12 @@ export type GoogleSheetsIntegrationConfig = {
   /**
    * This form's own answer to "who can open it", overriding the workspace's.
    *
-   * Absent means follow the workspace. `"none"` means nobody, and has to be its
-   * own value rather than an empty audience: "this form is private" and "nobody
-   * has chosen for this form yet" are different states, and collapsing them would
-   * make a deliberately private form re-share itself the next time the workspace
-   * setting changed.
+   * Absent means follow the workspace. A setting of `{ general: null }` means
+   * nobody — private is a choice, not the absence of one, and collapsing the two
+   * would make a deliberately private form re-open itself the next time the
+   * workspace setting changed.
    */
-  shareOverride?: SheetSharingSetting | 'none'
+  shareOverride?: SheetSharingSetting
 }
 
 export type EmailIntegrationConfig = {

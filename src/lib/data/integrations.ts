@@ -49,11 +49,21 @@ function statusOf(
  * repeating a setting the person did not choose here — the difference between
  * inheriting and having decided is the whole point of the per-form control.
  */
+/** One member, the role the setting gives them, and what became of it. */
+export type AccessMemberState = {
+  email: string
+  /** What the setting says they should have — what the dialog's select shows. */
+  role: "reader" | "writer" | "none"
+  state: "shared" | "blocked" | "failed" | "pending"
+  reason: SheetShareError | null
+}
+
 export type FormAccess = {
   source: "workspace" | "form"
-  /** null = nobody (sharing off, or this form kept private). */
-  role: "reader" | "writer" | null
-  audience: "all" | { emails: string[] } | null
+  /** The general-access line: every member gets this, or nobody when null. */
+  general: "reader" | "writer" | null
+  /** Named people whose own role beats the general one ("none" shuts them out). */
+  people: { email: string; role: "reader" | "writer" | "none" }[]
   /** People who can open it, and people we could not give access to. */
   granted: number
   blocked: number
@@ -69,44 +79,44 @@ function accessOf(
   const shares = config?.shares ?? []
   return {
     source: override === undefined ? "workspace" : "form",
-    role: effective?.role ?? null,
-    audience: effective?.audience ?? null,
+    general: effective?.general ?? null,
+    people: effective?.people ?? [],
     granted: shares.filter((sh) => sh.permissionId).length,
     blocked: shares.filter((sh) => !sh.permissionId && sh.error).length,
   }
 }
 
-/** One member's standing on one spreadsheet, for the pickers. */
+/**
+ * Every member's standing on one spreadsheet: the role the setting gives them,
+ * and what actually became of it.
+ *
+ * Everyone is listed whether or not they currently have access — this is the list
+ * the share dialog is built from, so leaving people out would make them
+ * unreachable.
+ */
 function memberStates(
   config: GoogleSheetsIntegrationConfig | undefined,
   access: FormAccess,
   memberEmails: string[],
   ownerEmail: string | undefined,
-): { email: string; state: "shared" | "blocked" | "failed" | "pending"; reason: SheetShareError | null }[] {
+): AccessMemberState[] {
   const byEmail = new Map((config?.shares ?? []).map((sh) => [sh.email.toLowerCase(), sh]))
-  const chosen =
-    access.audience && access.audience !== "all"
-      ? new Set(access.audience.emails.map((e) => e.toLowerCase()))
-      : null
-  const out: { email: string; state: "shared" | "blocked" | "failed" | "pending"; reason: SheetShareError | null }[] = []
+  const named = new Map(access.people.map((p) => [p.email.toLowerCase(), p.role]))
+  const out: AccessMemberState[] = []
+
   for (const email of memberEmails) {
     const k = email.toLowerCase()
     if (k === ownerEmail) continue
+    const role = named.get(k) ?? access.general ?? "none"
     const share = byEmail.get(k)
-    // Listed whether or not they are in the audience: this is the list you pick
-    // FROM, so leaving people out would make them unpickable.
-    const inAudience = access.role !== null && (!chosen || chosen.has(k))
-    if (share?.permissionId) out.push({ email, state: "shared", reason: null })
-    else if (share?.error)
-      out.push({
-        email,
-        state:
-          share.error === "domain_policy" || share.error === "not_a_google_account"
-            ? "blocked"
-            : "failed",
-        reason: share.error,
-      })
-    else out.push({ email, state: inAudience ? "pending" : "pending", reason: null })
+    const state: AccessMemberState["state"] = share?.permissionId
+      ? "shared"
+      : share?.error === "domain_policy" || share?.error === "not_a_google_account"
+        ? "blocked"
+        : share?.error
+          ? "failed"
+          : "pending"
+    out.push({ email, role, state, reason: share?.error ?? null })
   }
   return out
 }
@@ -132,11 +142,7 @@ export type GoogleSheetsState = {
   /** Who can open THIS form's spreadsheet, and whether that was chosen here. */
   access: FormAccess
   /** Everyone who could be given access, with where each of them stands. */
-  members: {
-    email: string
-    state: "shared" | "blocked" | "failed" | "pending"
-    reason: SheetShareError | null
-  }[]
+  members: AccessMemberState[]
 }
 
 export async function getGoogleSheetsState(formId: string, workspaceId: string): Promise<GoogleSheetsState | null> {
@@ -498,13 +504,15 @@ export async function getWorkspaceIntegrations(
       .innerJoin(users, eq(users.id, workspaceMembers.userId))
       .where(eq(workspaceMembers.workspaceId, workspaceId))
       .orderBy(users.email)
-    const chosen =
-      sharingSetting.audience === "all"
-        ? null
-        : new Set(sharingSetting.audience.emails.map((e) => e.toLowerCase()))
+    const named = new Map(
+      (sharingSetting.people ?? []).map((p) => [p.email.toLowerCase(), p.role]),
+    )
     for (const { email } of memberRows) {
       const k = email.toLowerCase()
-      if (k === ownerEmail || (chosen && !chosen.has(k))) continue
+      if (k === ownerEmail) continue
+      // Anyone the setting gives no role to is not waiting on anything.
+      const role = named.get(k) ?? sharingSetting.general
+      if (!role || role === "none") continue
       memberRollup.set(k, { email, state: "pending", reason: null, sheets: 0 })
     }
     for (const row of integrationRows) {

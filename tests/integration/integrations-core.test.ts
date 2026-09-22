@@ -270,8 +270,7 @@ describe("spreadsheet sharing is an owner's decision", () => {
     })
 
     const res = await integrationsCore.setSheetSharing(asMember, {
-      role: "reader",
-      audience: "all",
+      general: "reader",
     })
 
     expect(res).toEqual({ success: false, error: "Only owners can do that" })
@@ -280,7 +279,7 @@ describe("spreadsheet sharing is an owner's decision", () => {
   test("an owner's setting is stored on the connection", async () => {
     const t = await connected("share-set")
 
-    const res = await integrationsCore.setSheetSharing(t.ctx, { role: "writer", audience: "all" })
+    const res = await integrationsCore.setSheetSharing(t.ctx, { general: "writer" })
 
     expect(res).toEqual({ success: true })
     const [conn] = await db
@@ -288,7 +287,7 @@ describe("spreadsheet sharing is an owner's decision", () => {
       .from(workspaceConnections)
       .where(eq(workspaceConnections.workspaceId, t.workspaceId))
       .limit(1)
-    expect(conn.metadata?.google?.share).toEqual({ role: "writer", audience: "all" })
+    expect(conn.metadata?.google?.share).toEqual({ general: "writer" })
   })
 
   test("turning it off clears the setting without disturbing Notion's metadata", async () => {
@@ -302,7 +301,7 @@ describe("spreadsheet sharing is an owner's decision", () => {
       accessToken: "encrypted-placeholder",
       metadata: {
         notion: { parentPageId: "page-1" },
-        google: { share: { role: "reader", audience: "all" } },
+        google: { share: { general: "reader" } },
       },
     })
 
@@ -320,7 +319,7 @@ describe("spreadsheet sharing is an owner's decision", () => {
   test("there is nothing to set when Google is not connected", async () => {
     const t = await seedTenant("share-unconnected")
 
-    const res = await integrationsCore.setSheetSharing(t.ctx, { role: "reader", audience: "all" })
+    const res = await integrationsCore.setSheetSharing(t.ctx, { general: "reader" })
 
     expect(res).toEqual({ success: false, error: "Connect a Google account first" })
   })
@@ -354,7 +353,7 @@ describe("per-form spreadsheet access", () => {
         provider: "google",
         accountEmail: "owner@example.test",
         accessToken: "encrypted-placeholder",
-        metadata: { google: { share: { role: "reader", audience: "all" } } },
+        metadata: { google: { share: { general: "reader" } } },
       })
       .returning({ id: workspaceConnections.id })
     const [row] = await db
@@ -388,8 +387,7 @@ describe("per-form spreadsheet access", () => {
     })
 
     const res = await integrationsCore.setFormSheetSharing(asMember, t.formId, {
-      role: "reader",
-      audience: "all",
+      general: "reader",
     })
 
     expect(res).toEqual({ success: false, error: "Only owners can do that" })
@@ -399,28 +397,28 @@ describe("per-form spreadsheet access", () => {
     const t = await connectedWithSheet("form-access-set")
 
     const res = await integrationsCore.setFormSheetSharing(t.ctx, t.formId, {
-      role: "writer",
-      audience: { emails: ["a@example.test"] },
+      general: null,
+      people: [{ email: "a@example.test", role: "writer" }],
     })
 
     expect(res).toEqual({ success: true })
     expect((await configOf(t.rowId)).shareOverride).toEqual({
-      role: "writer",
-      audience: { emails: ["a@example.test"] },
+      general: null,
+      people: [{ email: "a@example.test", role: "writer" }],
     })
   })
 
   test("a form can be kept private", async () => {
     const t = await connectedWithSheet("form-access-none")
 
-    await integrationsCore.setFormSheetSharing(t.ctx, t.formId, "none")
+    await integrationsCore.setFormSheetSharing(t.ctx, t.formId, { general: null })
 
-    expect((await configOf(t.rowId)).shareOverride).toBe("none")
+    expect((await configOf(t.rowId)).shareOverride).toEqual({ general: null })
   })
 
   test("clearing it puts the form back under the workspace setting", async () => {
     const t = await connectedWithSheet("form-access-clear")
-    await integrationsCore.setFormSheetSharing(t.ctx, t.formId, "none")
+    await integrationsCore.setFormSheetSharing(t.ctx, t.formId, { general: null })
 
     await integrationsCore.setFormSheetSharing(t.ctx, t.formId, null)
 
@@ -431,7 +429,7 @@ describe("per-form spreadsheet access", () => {
     const mine = await connectedWithSheet("form-access-mine")
     const theirs = await connectedWithSheet("form-access-theirs")
 
-    const res = await integrationsCore.setFormSheetSharing(mine.ctx, theirs.formId, "none")
+    const res = await integrationsCore.setFormSheetSharing(mine.ctx, theirs.formId, { general: null })
 
     expect(res).toEqual({ success: false, error: "Form not found" })
     expect((await configOf(theirs.rowId)).shareOverride).toBeUndefined()
@@ -441,9 +439,9 @@ describe("per-form spreadsheet access", () => {
     // "For all forms" has to mean all forms, or the bulk control quietly does
     // nothing to the forms someone customised and they go on diverging.
     const t = await connectedWithSheet("form-access-bulk")
-    await integrationsCore.setFormSheetSharing(t.ctx, t.formId, "none")
+    await integrationsCore.setFormSheetSharing(t.ctx, t.formId, { general: null })
 
-    await integrationsCore.setSheetSharing(t.ctx, { role: "writer", audience: "all" })
+    await integrationsCore.setSheetSharing(t.ctx, { general: "writer" })
 
     expect((await configOf(t.rowId)).shareOverride).toBeUndefined()
   })
@@ -452,7 +450,7 @@ describe("per-form spreadsheet access", () => {
     const t = await connectedWithSheet("form-access-count")
     expect(await integrationsCore.customisedSheetAccessCount(t.ctx)).toBe(0)
 
-    await integrationsCore.setFormSheetSharing(t.ctx, t.formId, "none")
+    await integrationsCore.setFormSheetSharing(t.ctx, t.formId, { general: null })
 
     expect(await integrationsCore.customisedSheetAccessCount(t.ctx)).toBe(1)
   })

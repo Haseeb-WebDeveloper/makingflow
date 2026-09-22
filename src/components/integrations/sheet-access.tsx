@@ -10,19 +10,14 @@ import {
   SheetDescription,
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
+import { Icon } from "@/components/ui/icon";
 import { showToast } from "@/components/ui/toast";
 import { setSheetSharing, setFormSheetSharing } from "@/lib/actions/integrations";
-import type { FormAccess } from "@/lib/data/integrations";
-import type { SheetShareError } from "@/lib/db/schema";
-
-export type AccessMember = {
-  email: string;
-  state: "shared" | "blocked" | "failed" | "pending";
-  reason: SheetShareError | null;
-};
+import type { AccessMemberState, FormAccess } from "@/lib/data/integrations";
+import type { SheetShareError, SheetSharingSetting } from "@/lib/db/schema";
 
 /**
- * What this button governs: one form, or every form in the workspace.
+ * What a Share button governs: one form, or every form in the workspace.
  *
  * `customisedForms` travels with the workspace scope because applying a
  * workspace-wide choice replaces the per-form ones, and the person clicking
@@ -32,76 +27,83 @@ export type AccessScope =
   | { kind: "form"; formId: string }
   | { kind: "workspace"; customisedForms: number };
 
-type Choice = "off" | "reader" | "writer";
+type Role = "reader" | "writer" | "none";
 
-/** The shortest true summary of who can open a spreadsheet. */
-function label(access: FormAccess): string {
-  if (access.blocked > 0) return `${access.blocked} blocked`;
-  if (access.role === null) return "Private";
-  if (access.audience === "all") return "All members";
-  const n = access.audience?.emails.length ?? 0;
-  return `${n} member${n === 1 ? "" : "s"}`;
+/** Initials, for the avatar beside each address. */
+function initials(email: string) {
+  return email.slice(0, 2).toUpperCase();
 }
 
 /** Why someone could not be given access, in words rather than a status code. */
-function reasonText(reason: SheetShareError | null, ownerEmail?: string): string {
-  const domain = ownerEmail?.split("@")[1];
+function reasonText(reason: SheetShareError | null, accountEmail: string): string {
+  const domain = accountEmail.split("@")[1];
   switch (reason) {
     case "domain_policy":
-      return domain ? `${domain} blocks sharing outside the domain` : "blocked by domain policy";
+      return domain
+        ? `${domain} blocks sharing outside the domain`
+        : "blocked by domain policy";
     case "not_a_google_account":
       return "not a Google account";
     default:
-      return "failed — try again";
+      return "couldn’t be shared — try again";
   }
 }
 
 /**
- * Who can open a response spreadsheet, as one button.
+ * The Share button, and the dialog behind it.
  *
- * The button carries the answer; the dialog carries the choice. Nothing is
- * explained twice, and the only prose kept is a blocked person's reason — the one
- * thing nobody can act on without being told.
+ * Deliberately Google's own shape: people with a role each, then one general
+ * access line. It is the dialog everybody has already used for exactly this
+ * decision, so there is nothing here to learn — and the role select per person is
+ * what lets one teammate edit while the rest only look.
+ *
+ * The trigger carries one piece of state and no more: a warning dot when somebody
+ * could not be given access, because that is the only thing you cannot discover
+ * by opening the dialog yourself.
  */
-export function AccessButton({
+export function ShareButton({
   scope,
   access,
   members,
   accountEmail,
   canManage = true,
+  label = "Share",
 }: {
   scope: AccessScope;
   access: FormAccess;
-  members: AccessMember[];
-  accountEmail?: string;
+  members: AccessMemberState[];
+  accountEmail: string;
   canManage?: boolean;
+  label?: string;
 }) {
   const [open, setOpen] = React.useState(false);
-  const attention = access.blocked > 0;
 
   return (
     <>
       <Button
         size="sm"
         variant="ghost"
-        className={
-          attention
-            ? "h-7 px-2 text-xs text-destructive"
-            : "h-7 px-2 text-xs text-muted-foreground"
-        }
+        className="h-7 gap-1.5 px-2 text-xs text-muted-foreground hover:text-foreground"
         onClick={() => setOpen(true)}
       >
-        {label(access)}
+        <Icon name="add-user" className="size-3.5" />
+        {label}
+        {access.blocked > 0 ? (
+          <span
+            aria-label={`${access.blocked} blocked`}
+            className="size-1.5 rounded-full bg-destructive"
+          />
+        ) : null}
       </Button>
 
       {open ? (
-        <AccessDialog
-          onClose={() => setOpen(false)}
+        <ShareDialog
           scope={scope}
           access={access}
           members={members}
           accountEmail={accountEmail}
           canManage={canManage}
+          onClose={() => setOpen(false)}
         />
       ) : null}
     </>
@@ -109,43 +111,47 @@ export function AccessButton({
 }
 
 /**
- * Mounted only while open, which is also how the checkbox state is seeded from
- * the current audience without an effect that writes state during render.
+ * Mounted only while open, which is also how the draft below is seeded from the
+ * current state without an effect that writes state during render.
  */
-function AccessDialog({
-  onClose,
+function ShareDialog({
   scope,
   access,
   members,
   accountEmail,
   canManage,
+  onClose,
 }: {
-  onClose: () => void;
   scope: AccessScope;
   access: FormAccess;
-  members: AccessMember[];
-  accountEmail?: string;
+  members: AccessMemberState[];
+  accountEmail: string;
   canManage: boolean;
+  onClose: () => void;
 }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
-  const [picking, setPicking] = React.useState(false);
-  const [ticked, setTicked] = React.useState<string[]>(
-    access.audience && access.audience !== "all"
-      ? access.audience.emails
-      : members.map((m) => m.email)
+
+  // The dialog is a draft: nothing is written until Save, so a half-made change
+  // cannot leave somebody sharing a file they did not mean to share.
+  const [general, setGeneral] = React.useState<"reader" | "writer" | null>(access.general);
+  const [roles, setRoles] = React.useState<Record<string, Role>>(() =>
+    Object.fromEntries(members.map((m) => [m.email, m.role])),
   );
 
-  const choice: Choice = access.role ?? "off";
   const perForm = scope.kind === "form";
   const customised = scope.kind === "workspace" ? scope.customisedForms : 0;
+  const inheriting = perForm && access.source === "workspace";
 
-  function apply(
-    action: () => Promise<{ success: boolean; error?: string }>,
-    done: string
-  ) {
+  const dirty =
+    general !== access.general ||
+    members.some((m) => (roles[m.email] ?? "none") !== m.role);
+
+  function save(setting: SheetSharingSetting | null, done: string) {
     startTransition(async () => {
-      const res = await action();
+      const res = perForm
+        ? await setFormSheetSharing((scope as { formId: string }).formId, setting)
+        : await setSheetSharing(setting);
       if (res.success) {
         showToast(done, { type: "success" });
         router.refresh();
@@ -156,152 +162,141 @@ function AccessDialog({
     });
   }
 
-  /** One place that knows which action a scope writes through. */
-  function save(role: "reader" | "writer" | null, audience: "all" | { emails: string[] }) {
-    if (perForm) {
-      const override = role === null ? ("none" as const) : { role, audience };
-      apply(() => setFormSheetSharing(scope.formId, override), "Access updated");
-      return;
-    }
-    apply(
-      () => setSheetSharing(role === null ? null : { role, audience }),
-      role === null ? "Access removed from every form" : "Access applied to every form"
+  function saveDraft() {
+    // Only the people who differ from the general line are worth storing; the
+    // rest follow it, so a later membership change carries them automatically.
+    const people = members
+      .map((m) => ({ email: m.email, role: roles[m.email] ?? "none" }))
+      .filter((p) => p.role !== (general ?? "none"));
+    save(
+      { general, ...(people.length ? { people } : {}) },
+      perForm ? "Access updated" : "Access updated on every sheet",
     );
   }
-
-  const audienceNow = access.audience ?? "all";
 
   return (
     <Sheet open onOpenChange={(next) => (next ? undefined : onClose())}>
       <SheetContent side="right" className="w-full sm:max-w-md">
         <SheetHeader>
-          <SheetTitle>{perForm ? "Access to this sheet" : "Access to every sheet"}</SheetTitle>
+          <SheetTitle>{perForm ? "Share this sheet" : "Share every sheet"}</SheetTitle>
           <SheetDescription>
-            {perForm && access.source === "workspace"
+            {inheriting
               ? "Following the workspace setting."
-              : accountEmail
-                ? `Files live in ${accountEmail}'s Drive.`
-                : "Members you choose can open the spreadsheet."}
+              : `Files live in ${accountEmail}’s Drive.`}
           </SheetDescription>
         </SheetHeader>
 
         <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 lg:px-6">
           {customised > 0 ? (
             <p className="rounded-md bg-warning-bg px-3 py-2 text-xs text-warning-foreground">
-              {customised} {customised === 1 ? "form is" : "forms are"} customised. Applying
-              this replaces {customised === 1 ? "it" : "them"}.
+              {customised} {customised === 1 ? "form has" : "forms have"} its own access.
+              Saving here replaces {customised === 1 ? "it" : "them"}.
             </p>
           ) : null}
 
-          {canManage ? (
-            <div className="flex gap-2">
-              {(
-                [
-                  ["off", "Off"],
-                  ["reader", "Viewer"],
-                  ["writer", "Editor"],
-                ] as const
-              ).map(([value, text]) => (
-                <Button
-                  key={value}
-                  size="sm"
-                  variant={choice === value ? "default" : "outline"}
-                  disabled={pending}
-                  onClick={() =>
-                    save(value === "off" ? null : value, picking ? { emails: ticked } : audienceNow)
-                  }
-                >
-                  {text}
-                </Button>
-              ))}
-            </div>
-          ) : null}
+          <ul className="space-y-3">
+            <li className="flex items-center gap-2.5">
+              <Avatar email={accountEmail} />
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-xs font-medium text-foreground">{accountEmail}</p>
+                <p className="text-[11px] text-muted-foreground">Owns the files</p>
+              </div>
+              <span className="text-[11px] text-muted-foreground">Owner</span>
+            </li>
 
-          {choice !== "off" ? (
-            <>
-              {canManage ? (
-                <div className="flex gap-2">
-                  <Button
-                    size="sm"
-                    variant={audienceNow === "all" && !picking ? "default" : "outline"}
-                    disabled={pending}
-                    onClick={() => {
-                      setPicking(false);
-                      save(access.role, "all");
-                    }}
-                  >
-                    Everyone
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant={audienceNow !== "all" || picking ? "default" : "outline"}
-                    disabled={pending || members.length === 0}
-                    onClick={() => setPicking(true)}
-                  >
-                    Choose
-                  </Button>
-                </div>
-              ) : null}
-
-              <ul className="space-y-2">
-                {members.map((m) => (
-                  <li
-                    key={m.email}
-                    className="flex items-center justify-between gap-3 text-xs"
-                  >
-                    <label className="flex min-w-0 items-center gap-2">
-                      {picking && canManage ? (
-                        <input
-                          type="checkbox"
-                          className="size-4 rounded border-border"
-                          checked={ticked.includes(m.email)}
-                          onChange={(e) =>
-                            setTicked((prev) =>
-                              e.target.checked
-                                ? [...prev, m.email]
-                                : prev.filter((x) => x !== m.email)
-                            )
-                          }
-                        />
-                      ) : null}
-                      <span className="truncate text-foreground">{m.email}</span>
-                    </label>
+            {members.map((m) => {
+              const role = roles[m.email] ?? "none";
+              return (
+                <li key={m.email} className="flex items-center gap-2.5">
+                  <Avatar email={m.email} danger={m.state === "blocked"} />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-xs font-medium text-foreground">{m.email}</p>
                     {m.state === "blocked" || m.state === "failed" ? (
-                      <span className="shrink-0 text-destructive">
+                      <p className="text-[11px] text-destructive">
                         {reasonText(m.reason, accountEmail)}
-                      </span>
-                    ) : m.state === "shared" ? (
-                      <span className="shrink-0 text-muted-foreground">has access</span>
+                      </p>
+                    ) : m.state === "pending" && role !== "none" ? (
+                      <p className="text-[11px] text-muted-foreground">not shared yet</p>
                     ) : null}
-                  </li>
-                ))}
-              </ul>
-            </>
-          ) : null}
+                  </div>
+                  {canManage ? (
+                    <select
+                      aria-label={`Access for ${m.email}`}
+                      value={role}
+                      disabled={pending}
+                      onChange={(e) =>
+                        setRoles((r) => ({ ...r, [m.email]: e.target.value as Role }))
+                      }
+                      className="rounded-md border border-border bg-background px-1.5 py-1 text-[11px] text-foreground"
+                    >
+                      <option value="none">No access</option>
+                      <option value="reader">Viewer</option>
+                      <option value="writer">Editor</option>
+                    </select>
+                  ) : (
+                    <span className="text-[11px] text-muted-foreground">
+                      {role === "none" ? "No access" : role === "reader" ? "Viewer" : "Editor"}
+                    </span>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+
+          <div className="border-t border-border pt-4">
+            <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              General access
+            </p>
+            <div className="mt-2 flex items-center gap-2">
+              <Icon
+                name={general ? "unlock" : "lock"}
+                className="size-4 text-muted-foreground"
+              />
+              {canManage ? (
+                <select
+                  aria-label="General access"
+                  value={general ?? "restricted"}
+                  disabled={pending}
+                  onChange={(e) =>
+                    setGeneral(
+                      e.target.value === "restricted"
+                        ? null
+                        : (e.target.value as "reader" | "writer"),
+                    )
+                  }
+                  className="rounded-md border border-border bg-background px-1.5 py-1 text-xs text-foreground"
+                >
+                  <option value="restricted">Restricted — only people above</option>
+                  <option value="reader">Everyone in the workspace can view</option>
+                  <option value="writer">Everyone in the workspace can edit</option>
+                </select>
+              ) : (
+                <span className="text-xs text-foreground">
+                  {general === null
+                    ? "Restricted"
+                    : general === "reader"
+                      ? "Everyone in the workspace can view"
+                      : "Everyone in the workspace can edit"}
+                </span>
+              )}
+            </div>
+            <p className="mt-2 text-[11px] text-muted-foreground">
+              Members can always read responses in MakingFlow — this is Drive access.
+            </p>
+          </div>
         </div>
 
         {canManage ? (
-          <div className="flex items-center gap-2 border-t border-border p-4 lg:p-6">
-            {picking ? (
-              <Button
-                size="sm"
-                disabled={pending}
-                onClick={() => save(access.role ?? "reader", { emails: ticked })}
-              >
-                Save
-              </Button>
-            ) : null}
+          <div className="flex items-center justify-between gap-2 border-t border-border p-4 lg:p-6">
+            <Button size="sm" disabled={pending || !dirty} onClick={saveDraft}>
+              Save
+            </Button>
             {perForm && access.source === "form" ? (
               <Button
                 size="sm"
                 variant="ghost"
                 disabled={pending}
-                onClick={() =>
-                  apply(
-                    () => setFormSheetSharing(scope.formId, null),
-                    "Following the workspace again"
-                  )
-                }
+                onClick={() => save(null, "Following the workspace again")}
               >
                 Follow workspace
               </Button>
@@ -310,5 +305,17 @@ function AccessDialog({
         ) : null}
       </SheetContent>
     </Sheet>
+  );
+}
+
+function Avatar({ email, danger }: { email: string; danger?: boolean }) {
+  return (
+    <span
+      className={`flex size-7 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold ${
+        danger ? "bg-destructive/15 text-destructive" : "bg-muted text-foreground"
+      }`}
+    >
+      {initials(email)}
+    </span>
   );
 }

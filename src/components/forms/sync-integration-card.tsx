@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { showToast } from "@/components/ui/toast";
 import { CardShell, StatusBadge } from "@/components/integrations/cards";
-import { AccessButton, type AccessMember } from "@/components/integrations/sheet-access";
+import { ShareButton } from "@/components/integrations/sheet-access";
 import { DeliveryLog } from "@/components/forms/delivery-log";
 import {
   enableFormSheet,
@@ -77,7 +77,7 @@ export function SyncIntegrationCard({
   access?: {
     formId: string;
     state: import("@/lib/data/integrations").FormAccess;
-    members: AccessMember[];
+    members: import("@/lib/data/integrations").AccessMemberState[];
     accountEmail: string;
     canManage: boolean;
   };
@@ -222,14 +222,14 @@ export function SyncIntegrationCard({
                   ) : null}
                 </div>
                 {access ? (
-                  <div className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
-                    <span>Access</span>
-                    <AccessButton
+                  <div className="mt-1">
+                    <ShareButton
                       scope={{ kind: "form", formId: access.formId }}
                       access={access.state}
                       members={access.members}
                       accountEmail={access.accountEmail}
                       canManage={access.canManage}
+                      label="Share"
                     />
                   </div>
                 ) : null}

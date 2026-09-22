@@ -23,7 +23,7 @@ import {
   disconnectNotion,
 } from "@/lib/actions/integrations";
 import { CardShell, StatusBadge } from "@/components/integrations/cards";
-import { AccessButton } from "@/components/integrations/sheet-access";
+import { ShareButton } from "@/components/integrations/sheet-access";
 import type { WorkspaceIntegrations } from "@/lib/data/integrations";
 import { McpCard, type McpCardProps } from "@/components/integrations/mcp-card";
 import { SVGIcon } from "../ui/svg-icon";
@@ -518,21 +518,31 @@ export function WorkspaceIntegrationsPanel({
                 <span className="text-xs font-medium text-foreground">
                   Access to every sheet
                 </span>
-                <AccessButton
+                <ShareButton
                   scope={{
                     kind: "workspace",
                     customisedForms: sharing.customisedForms,
                   }}
                   access={{
                     source: "workspace",
-                    role: sharing.setting?.role ?? null,
-                    audience: sharing.setting?.audience ?? null,
+                    general: sharing.setting?.general ?? null,
+                    people: sharing.setting?.people ?? [],
                     granted: sharing.members.filter((m) => m.state === "shared").length,
                     blocked: sharing.members.filter(
                       (m) => m.state === "blocked" || m.state === "failed"
                     ).length,
                   }}
-                  members={sharing.members}
+                  members={sharing.members.map((m) => ({
+                    email: m.email,
+                    role:
+                      sharing.setting?.people?.find(
+                        (p) => p.email.toLowerCase() === m.email.toLowerCase()
+                      )?.role ??
+                      sharing.setting?.general ??
+                      "none",
+                    state: m.state,
+                    reason: m.reason,
+                  }))}
                   accountEmail={connection.accountEmail}
                   canManage={canManageSharing}
                 />
@@ -566,10 +576,20 @@ export function WorkspaceIntegrationsPanel({
                         <div className="mt-1 flex items-center gap-2">
                           <StatusBadge status={f.status} />
                           {connection ? (
-                            <AccessButton
+                            <ShareButton
                               scope={{ kind: "form", formId: f.id }}
                               access={f.access}
-                              members={sharing.members}
+                              members={sharing.members.map((m) => ({
+                                email: m.email,
+                                role:
+                                  f.access.people.find(
+                                    (p) => p.email.toLowerCase() === m.email.toLowerCase()
+                                  )?.role ??
+                                  f.access.general ??
+                                  "none",
+                                state: m.state,
+                                reason: m.reason,
+                              }))}
                               accountEmail={connection.accountEmail}
                               canManage={canManageSharing}
                             />

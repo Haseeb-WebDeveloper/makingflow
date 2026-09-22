@@ -201,7 +201,7 @@ describe("reconcileSheetShares", () => {
   })
 
   test("grants every member but the account owner, recording the permission id", async () => {
-    const s = await seed({ share: { role: "reader", audience: "all" } })
+    const s = await seed({ share: { general: "reader" } })
 
     await reconcileSheetShares(await conn(s.workspaceId), await rowFor(s.formId))
 
@@ -213,7 +213,7 @@ describe("reconcileSheetShares", () => {
   })
 
   test("a refusal is recorded against that person and nobody else suffers", async () => {
-    const s = await seed({ share: { role: "reader", audience: "all" } })
+    const s = await seed({ share: { general: "reader" } })
     const members = await otherMembers(s.workspaceId)
     refuse.set(members[0], "domain_policy")
 
@@ -227,7 +227,7 @@ describe("reconcileSheetShares", () => {
   })
 
   test("reconciling twice makes no further Drive calls", async () => {
-    const s = await seed({ share: { role: "reader", audience: "all" } })
+    const s = await seed({ share: { general: "reader" } })
     await reconcileSheetShares(await conn(s.workspaceId), await rowFor(s.formId))
     shareCalls.length = 0
 
@@ -238,7 +238,7 @@ describe("reconcileSheetShares", () => {
   })
 
   test("turning sharing off withdraws the grants we made", async () => {
-    const s = await seed({ share: { role: "reader", audience: "all" } })
+    const s = await seed({ share: { general: "reader" } })
     await reconcileSheetShares(await conn(s.workspaceId), await rowFor(s.formId))
     await db
       .update(workspaceConnections)
@@ -262,11 +262,11 @@ describe("reconcileSheetShares", () => {
   })
 
   test("raising the role re-grants it", async () => {
-    const s = await seed({ share: { role: "reader", audience: "all" } })
+    const s = await seed({ share: { general: "reader" } })
     await reconcileSheetShares(await conn(s.workspaceId), await rowFor(s.formId))
     await db
       .update(workspaceConnections)
-      .set({ metadata: { google: { share: { role: "writer", audience: "all" } } } })
+      .set({ metadata: { google: { share: { general: "writer" } } } })
       .where(eq(workspaceConnections.id, s.connId))
     shareCalls.length = 0
 
@@ -278,12 +278,12 @@ describe("reconcileSheetShares", () => {
   })
 
   test("narrowing the audience withdraws access from everyone else", async () => {
-    const s = await seed({ share: { role: "reader", audience: "all" } })
+    const s = await seed({ share: { general: "reader" } })
     await reconcileSheetShares(await conn(s.workspaceId), await rowFor(s.formId))
     const members = await otherMembers(s.workspaceId)
     await db
       .update(workspaceConnections)
-      .set({ metadata: { google: { share: { role: "reader", audience: { emails: [members[0]] } } } } })
+      .set({ metadata: { google: { share: { general: null, people: [{ email: members[0], role: "reader" }] } } } })
       .where(eq(workspaceConnections.id, s.connId))
 
     await reconcileSheetShares(await conn(s.workspaceId), await rowFor(s.formId))
@@ -293,7 +293,7 @@ describe("reconcileSheetShares", () => {
   })
 
   test("a sheet with no spreadsheet yet is skipped", async () => {
-    const s = await seed({ share: { role: "reader", audience: "all" } })
+    const s = await seed({ share: { general: "reader" } })
     const row = await rowFor(s.formId)
     await db
       .update(formIntegrations)
@@ -308,7 +308,7 @@ describe("reconcileSheetShares", () => {
 
 describe("reconcileWorkspaceSheetShares", () => {
   test("covers every sheet in the workspace and never throws", async () => {
-    const s = await seed({ share: { role: "reader", audience: "all" } })
+    const s = await seed({ share: { general: "reader" } })
 
     await expect(reconcileWorkspaceSheetShares(s.workspaceId)).resolves.toBeUndefined()
 
@@ -316,7 +316,7 @@ describe("reconcileWorkspaceSheetShares", () => {
   })
 
   test("a workspace with no Google account is a no-op", async () => {
-    const s = await seed({ share: { role: "reader", audience: "all" } })
+    const s = await seed({ share: { general: "reader" } })
     await db.delete(workspaceConnections).where(eq(workspaceConnections.id, s.connId))
 
     await reconcileWorkspaceSheetShares(s.workspaceId)
@@ -331,7 +331,7 @@ describe("a newly created spreadsheet", () => {
     // a requirement rather than an optimisation: otherwise every form a workspace
     // makes after turning this on starts out private again.
     const { ensureFormSheet } = await import("@/lib/integrations/sync")
-    const s = await seed({ share: { role: "reader", audience: "all" } })
+    const s = await seed({ share: { general: "reader" } })
     await db.delete(formIntegrations).where(eq(formIntegrations.id, s.rowId))
 
     await ensureFormSheet({ id: s.formId, workspaceId: s.workspaceId, title: "Job Application" })
@@ -348,7 +348,7 @@ describe("a spreadsheet replaced after an account switch", () => {
     // none of the old one's permissions, so without re-sharing, switching the
     // workspace's Google account quietly locks the whole team out.
     const { ensureFormSheet } = await import("@/lib/integrations/sync")
-    const s = await seed({ share: { role: "reader", audience: "all" } })
+    const s = await seed({ share: { general: "reader" } })
     await reconcileSheetShares(await conn(s.workspaceId), await rowFor(s.formId))
     const before = await rowFor(s.formId)
     // Point the config at a grant that no longer exists — what disconnecting and
@@ -380,7 +380,7 @@ describe("membership changes", () => {
     const teamCore = await import("@/lib/core/team")
     const { testContext } = await import("../helpers/context")
 
-    const s = await seed({ share: { role: "reader", audience: "all" } })
+    const s = await seed({ share: { general: "reader" } })
     await reconcileSheetShares(await conn(s.workspaceId), await rowFor(s.formId))
 
     const members = await db
@@ -415,14 +415,14 @@ describe("membership changes", () => {
 describe("what the integrations page is told", () => {
   test("reports the setting and each member's state", async () => {
     const { getWorkspaceIntegrations } = await import("@/lib/data/integrations")
-    const s = await seed({ share: { role: "reader", audience: "all" } })
+    const s = await seed({ share: { general: "reader" } })
     const members = await otherMembers(s.workspaceId)
     refuse.set(members[1], "domain_policy")
     await reconcileSheetShares(await conn(s.workspaceId), await rowFor(s.formId))
 
     const view = await getWorkspaceIntegrations(s.workspaceId)
 
-    expect(view?.sharing.setting).toEqual({ role: "reader", audience: "all" })
+    expect(view?.sharing.setting).toEqual({ general: "reader" })
     const blocked = view?.sharing.members.find((m) => m.email === members[1])
     expect(blocked?.state).toBe("blocked")
     expect(blocked?.reason).toBe("domain_policy")
@@ -447,7 +447,7 @@ describe("what the integrations page is told", () => {
     // The setting is on but nothing has reconciled — the state the card shows
     // between turning it on and the Drive calls finishing.
     const { getWorkspaceIntegrations } = await import("@/lib/data/integrations")
-    const s = await seed({ share: { role: "reader", audience: "all" } })
+    const s = await seed({ share: { general: "reader" } })
 
     const view = await getWorkspaceIntegrations(s.workspaceId)
 
@@ -457,12 +457,12 @@ describe("what the integrations page is told", () => {
 
 describe("a form with its own access setting", () => {
   test("shares with only the people that form names", async () => {
-    const s = await seed({ share: { role: "reader", audience: "all" } })
+    const s = await seed({ share: { general: "reader" } })
     const members = await otherMembers(s.workspaceId)
     const row = await rowFor(s.formId)
     await db
       .update(formIntegrations)
-      .set({ config: { ...row.config, shareOverride: { role: "writer", audience: { emails: [members[0]] } } } })
+      .set({ config: { ...row.config, shareOverride: { general: null, people: [{ email: members[0], role: "writer" }] } } })
       .where(eq(formIntegrations.id, s.rowId))
 
     await reconcileSheetShares(await conn(s.workspaceId), await rowFor(s.formId))
@@ -471,12 +471,12 @@ describe("a form with its own access setting", () => {
   })
 
   test("can keep itself private while the rest of the workspace is shared", async () => {
-    const s = await seed({ share: { role: "reader", audience: "all" } })
+    const s = await seed({ share: { general: "reader" } })
     await reconcileSheetShares(await conn(s.workspaceId), await rowFor(s.formId))
     const row = await rowFor(s.formId)
     await db
       .update(formIntegrations)
-      .set({ config: { ...row.config, shareOverride: "none" } })
+      .set({ config: { ...row.config, shareOverride: { general: null } } })
       .where(eq(formIntegrations.id, s.rowId))
 
     await reconcileSheetShares(await conn(s.workspaceId), await rowFor(s.formId))
@@ -491,7 +491,7 @@ describe("a form with its own access setting", () => {
     const row = await rowFor(s.formId)
     await db
       .update(formIntegrations)
-      .set({ config: { ...row.config, shareOverride: { role: "reader", audience: { emails: [members[1]] } } } })
+      .set({ config: { ...row.config, shareOverride: { general: null, people: [{ email: members[1], role: "reader" }] } } })
       .where(eq(formIntegrations.id, s.rowId))
 
     await reconcileSheetShares(await conn(s.workspaceId), await rowFor(s.formId))
@@ -503,7 +503,7 @@ describe("a form with its own access setting", () => {
 describe("per-form access, as the UI reads it", () => {
   test("a form following the workspace says so", async () => {
     const { getWorkspaceIntegrations } = await import("@/lib/data/integrations")
-    const s = await seed({ share: { role: "reader", audience: "all" } })
+    const s = await seed({ share: { general: "reader" } })
     await reconcileSheetShares(await conn(s.workspaceId), await rowFor(s.formId))
 
     const view = await getWorkspaceIntegrations(s.workspaceId)
@@ -511,8 +511,8 @@ describe("per-form access, as the UI reads it", () => {
 
     expect(form?.access).toMatchObject({
       source: "workspace",
-      role: "reader",
-      audience: "all",
+      general: "reader",
+      people: [],
       granted: 2,
       blocked: 0,
     })
@@ -521,7 +521,7 @@ describe("per-form access, as the UI reads it", () => {
 
   test("a customised form reports its own setting and is counted", async () => {
     const { getWorkspaceIntegrations } = await import("@/lib/data/integrations")
-    const s = await seed({ share: { role: "reader", audience: "all" } })
+    const s = await seed({ share: { general: "reader" } })
     const members = await otherMembers(s.workspaceId)
     const row = await rowFor(s.formId)
     await db
@@ -529,7 +529,7 @@ describe("per-form access, as the UI reads it", () => {
       .set({
         config: {
           ...row.config,
-          shareOverride: { role: "writer", audience: { emails: [members[0]] } },
+          shareOverride: { general: null, people: [{ email: members[0], role: "writer" }] },
         },
       })
       .where(eq(formIntegrations.id, s.rowId))
@@ -537,29 +537,29 @@ describe("per-form access, as the UI reads it", () => {
     const view = await getWorkspaceIntegrations(s.workspaceId)
     const form = view?.forms.find((f) => f.id === s.formId)
 
-    expect(form?.access).toMatchObject({ source: "form", role: "writer" })
-    expect(form?.access.audience).toEqual({ emails: [members[0]] })
+    expect(form?.access).toMatchObject({ source: "form", general: null })
+    expect(form?.access.people).toEqual([{ email: members[0], role: "writer" }])
     expect(view?.sharing.customisedForms).toBe(1)
   })
 
   test("a private form reads as nobody rather than as inheriting", async () => {
     const { getWorkspaceIntegrations } = await import("@/lib/data/integrations")
-    const s = await seed({ share: { role: "reader", audience: "all" } })
+    const s = await seed({ share: { general: "reader" } })
     const row = await rowFor(s.formId)
     await db
       .update(formIntegrations)
-      .set({ config: { ...row.config, shareOverride: "none" } })
+      .set({ config: { ...row.config, shareOverride: { general: null } } })
       .where(eq(formIntegrations.id, s.rowId))
 
     const view = await getWorkspaceIntegrations(s.workspaceId)
     const form = view?.forms.find((f) => f.id === s.formId)
 
-    expect(form?.access).toMatchObject({ source: "form", role: null, granted: 0 })
+    expect(form?.access).toMatchObject({ source: "form", general: null, granted: 0 })
   })
 
   test("a blocked member is counted against the form they are blocked on", async () => {
     const { getWorkspaceIntegrations } = await import("@/lib/data/integrations")
-    const s = await seed({ share: { role: "reader", audience: "all" } })
+    const s = await seed({ share: { general: "reader" } })
     const members = await otherMembers(s.workspaceId)
     refuse.set(members[0], "domain_policy")
     await reconcileSheetShares(await conn(s.workspaceId), await rowFor(s.formId))
@@ -572,12 +572,12 @@ describe("per-form access, as the UI reads it", () => {
 
   test("the form's own Integrations tab reads the same state", async () => {
     const { getGoogleSheetsState } = await import("@/lib/data/integrations")
-    const s = await seed({ share: { role: "reader", audience: "all" } })
+    const s = await seed({ share: { general: "reader" } })
     await reconcileSheetShares(await conn(s.workspaceId), await rowFor(s.formId))
 
     const state = await getGoogleSheetsState(s.formId, s.workspaceId)
 
-    expect(state?.access).toMatchObject({ source: "workspace", role: "reader", granted: 2 })
+    expect(state?.access).toMatchObject({ source: "workspace", general: "reader", granted: 2 })
     // The tab needs the people, not just the counts — it is where they are picked.
     expect(state?.members.map((m) => m.state)).toEqual(["shared", "shared"])
   })

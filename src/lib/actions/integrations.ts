@@ -46,7 +46,7 @@ export async function setSheetSharing(share: SheetSharingSetting | null): Promis
 /** Set or clear who can open one form's spreadsheet. */
 export async function setFormSheetSharing(
   formId: string,
-  override: SheetSharingSetting | "none" | null,
+  override: SheetSharingSetting | null,
 ): Promise<Result> {
   const session = await sessionContext()
   if (!session.ok) return { success: false, error: session.error }
