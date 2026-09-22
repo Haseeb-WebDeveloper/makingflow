@@ -15,8 +15,17 @@ import type { AnswerValue, SubmissionMeta } from "@/lib/db/schema"
 import { answerToCell } from "@/lib/submissions/answer-format"
 import type { ExportColumn } from "@/lib/submissions/export-columns"
 
-/** One uploaded file, with the path it will have inside a media archive. */
-export type ExportFileRef = { path: string; url: string; name: string }
+/**
+ * One uploaded file. `path` is its entry name inside a media archive, so a
+ * `Files` cell in the data export names the file to open in the zip.
+ */
+export type ExportFileRef = {
+  path: string
+  url: string
+  name: string
+  storageKey?: string
+  mime?: string
+}
 
 export type ExportSubmission = {
   id: string

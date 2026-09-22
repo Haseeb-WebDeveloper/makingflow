@@ -11,6 +11,7 @@ import {
   type SubmissionRow,
 } from "@/components/forms/submissions-table"
 import { SubmissionsFilterDialog } from "@/components/forms/submissions-filter-dialog"
+import { MediaArchiveButton } from "@/components/forms/media-archive-button"
 import { SubmissionDetailSheet, type SubmissionDetail } from "@/components/forms/submission-detail"
 import {
   AlertDialog,
@@ -168,6 +169,7 @@ export function SubmissionsView({
 
   const activeCount = filters.filter(conditionComplete).length
   const columnLabels = columns.map((c) => c.label)
+  const hasFileFields = columns.some((c) => FILE_TYPES.has(c.type))
 
   // Show the Score column once any response carries a screening score.
   const scoreById = useMemo(
@@ -255,6 +257,12 @@ export function SubmissionsView({
           <Icon name="download" className="size-4" />
           Export
         </a>
+        {/* Only where there is something to archive: a form with no upload
+            question can never produce a zip, and a button that always errors
+            is worse than one that is not there. */}
+        {hasFileFields ? (
+          <MediaArchiveButton formId={formId} live={{ search, filters, match }} />
+        ) : null}
       </div>
 
       <p className="mb-3 text-sm text-muted-foreground">

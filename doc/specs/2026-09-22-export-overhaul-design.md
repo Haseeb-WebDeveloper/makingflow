@@ -95,6 +95,19 @@ both, so a signed link stays a shortcut past the login page and nothing more.
 Keeping the spec in the query string means the download is still a plain GET —
 `<a href>` and `window.location` work, no POST-to-download dance.
 
+### D4a — Media archives ship without the queue (amended 2026-09-22)
+
+D4 below says a media ZIP is always job work. It is not, and the reason is D7:
+Cloudinary builds the archive and returns its URL in one synchronous call, so
+the only work on our side is scanning the scope for assets — bounded by the
+same `SYNC_ROW_CEILING` the CSV download uses. Requiring a table, a worker and
+an email before a recruiter can download a CV was cost with no benefit.
+
+Above the ceiling the request is refused with a message naming the count and
+suggesting a filter or date range, rather than half-built. When the queue lands
+(Phase B), media exports move onto it for the large cases and this path stays
+as the fast one.
+
 ### D4 — Small exports stream; large ones become jobs
 
 A pre-flight `COUNT(*)` decides, before a single byte is written:
@@ -149,6 +162,31 @@ Unique-by-construction names plus a `Files` column in the data export (holding
 the exact in-zip path for each submission) loses nothing and cannot silently
 drop a file. Nicely-named entries would mean zipping the bytes ourselves — see
 non-goals.
+
+**Verified against the live account on 2026-09-22**, because three details of
+this API are not what a careful reading of the docs suggests:
+
+1. **`public_ids` must be sent as repeated `public_ids[]` fields, while the
+   signature is computed over the comma-joined value.** One comma-joined field
+   is read as a single literal public id, matches nothing, and — with
+   `allow_missing=true` — returns HTTP 200 holding a 22-byte empty zip. With
+   `allow_missing` off the same request is a 400 naming every id as missing.
+   This is the whole reason the archive call has a wire-shape regression test.
+2. **A raw asset's public id already carries its extension**
+   (`makingflow/submissions/ab12.docx`) while an image asset's does not
+   (`.../ab12`, `format: pdf`) — and Cloudinary treats a PDF as an image. With
+   `flatten_folders=true` the entry is the id's last segment, plus the stored
+   format for image assets. So the predicted entry name takes its extension
+   from the delivery URL, not from the respondent's filename.
+3. **`mode=create` returns `secure_url`, `public_id`, `bytes` and `file_count`
+   synchronously**, and `fl_attachment:<name>` on the delivery URL makes the
+   browser save it as `<name>.zip` (confirmed: `content-disposition:
+   attachment; filename="probe.zip"`).
+
+`allow_missing` stays on, so one upload purged from storage cannot fail a
+recruiter's whole download — but `file_count` is compared against the number of
+assets requested, and any shortfall is reported to the owner. A zero count is
+refused outright: it is always our bug, never a legitimate result.
 
 ### D8 — AI follow-ups become numbered column pairs
 

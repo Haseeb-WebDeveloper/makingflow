@@ -1,6 +1,17 @@
 import type { AnswerValue } from "@/lib/db/schema"
 
-export type AnswerFile = { name: string; url: string }
+export type AnswerFile = {
+  name: string
+  url: string
+  /**
+   * Cloudinary public id, when the upload recorded one — `field-control.tsx`
+   * writes it as `storageKey`. It is what lets an export archive the file
+   * rather than just link to it; rows written before it was stored fall back
+   * to parsing the delivery URL.
+   */
+  storageKey?: string
+  mime?: string
+}
 
 /**
  * Files attached to a file-upload / signature answer, or null if the value
@@ -14,7 +25,12 @@ export function answerFiles(value: AnswerValue | undefined): AnswerFile[] | null
   for (const f of files) {
     if (f && typeof f === "object") {
       const r = f as Record<string, unknown>
-      out.push({ name: r.name ? String(r.name) : "file", url: r.url ? String(r.url) : "" })
+      out.push({
+        name: r.name ? String(r.name) : "file",
+        url: r.url ? String(r.url) : "",
+        storageKey: r.storageKey ? String(r.storageKey) : undefined,
+        mime: r.mime ? String(r.mime) : undefined,
+      })
     }
   }
   return out.length ? out : null

@@ -31,6 +31,7 @@ import {
 import { NON_ANSWER_TYPES } from "@/lib/builder/logic"
 import { applyFilters, type FilterColumn } from "@/lib/submissions/filter"
 import { answerFiles } from "@/lib/submissions/answer-format"
+import { archiveEntryName } from "@/lib/submissions/export-media"
 import { buildColumns, type ColumnSources, type ExportColumn } from "@/lib/submissions/export-columns"
 import { safeTimezone, type ExportSpec } from "@/lib/submissions/export-spec"
 import type { ExportFileRef, ExportSubmission } from "@/lib/submissions/export-row"
@@ -304,10 +305,17 @@ async function answersFor(ids: string[]): Promise<Map<string, Attached>> {
     bucket.values[a.fieldId] = a.value
 
     for (const f of answerFiles(a.value) ?? []) {
-      // `path` is where the file will sit inside a media archive once archives
-      // exist; until then it is the delivery URL, so the Files column always
-      // points at something real.
-      bucket.files.push({ path: f.url, url: f.url, name: f.name })
+      // `path` is this file's entry name inside a media archive, which is what
+      // makes the Files column usable: a row in the CSV names the file to open
+      // in the zip. Without a storage key we cannot archive it at all, so the
+      // delivery URL stands in — still something real to click.
+      bucket.files.push({
+        path: f.storageKey ? archiveEntryName(f.storageKey, f.name, f.url) : f.url,
+        url: f.url,
+        name: f.name,
+        storageKey: f.storageKey,
+        mime: f.mime,
+      })
     }
   }
   return out
