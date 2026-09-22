@@ -11,12 +11,17 @@
  * IT DOES NOT DECIDE WHETHER THE EXPORT IS SERVABLE. Only the server knows how
  * many responses the scope holds, and the limit differs by format, so
  * `prepareExport` is asked first and an oversized request arrives as a sentence
- * in the dialog rather than as a 413 the browser renders as a failed download.
+ * rather than as a 413 the browser renders as a failed download.
  *
- * THE FILES THEMSELVES ARE NOT HERE. This dialog produces the data file; the
- * uploads come from the Files (ZIP) button beside it, because a single click
- * cannot hand a browser two downloads. The spec has `files: "zip"` for the day
- * a queue can email both together.
+ * THE COLUMN PICKER STAYS FOLDED AWAY until asked for. Three sections fit
+ * without scrolling; twenty checkboxes do not, and the first version put a
+ * scrollbar through the middle of a dialog whose defaults are what almost
+ * everybody wants. The summary line says what those defaults are, so opening
+ * the picker is a choice rather than a thing to read past.
+ *
+ * THE FILES THEMSELVES ARE NOT HERE. This produces the data file; the uploads
+ * come from the Files (ZIP) button beside it, because one click cannot hand a
+ * browser two downloads.
  */
 
 import { useMemo, useState, useTransition } from "react"
@@ -40,6 +45,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { showToast } from "@/components/ui/toast"
+import { cn } from "@/lib/utils"
 import { prepareExport } from "@/lib/actions/exports"
 import {
   exportSpecSchema,
@@ -51,15 +57,16 @@ import { META_HEADERS } from "@/lib/submissions/export-columns"
 import type { Filter, FilterColumn, MatchMode } from "@/lib/submissions/filter"
 
 type Scope = "current" | "all" | "recent"
+type Format = ExportSpec["format"]
 
-/** Columns worth offering first — the rest are behind "more". */
+const FORMATS: { value: Format; label: string; hint: string }[] = [
+  { value: "csv", label: "CSV", hint: "Opens anywhere. Best for large exports." },
+  { value: "xlsx", label: "Excel", hint: "A real workbook, with a frozen header row." },
+  { value: "json", label: "JSON", hint: "For another system. Keeps AI follow-ups nested." },
+]
+
+/** Offered first; the rest are behind "Show every column". */
 const COMMON_META: MetaColumnKey[] = ["submissionId", "started", "status", "aiScore", "aiSummary"]
-
-const FORMAT_HINTS: Record<ExportSpec["format"], string> = {
-  csv: "Opens anywhere. Best for large exports.",
-  xlsx: "A real Excel workbook, with a frozen header.",
-  json: "For feeding another system. Keeps AI follow-ups nested.",
-}
 
 export function ExportDialog({
   formId,
@@ -80,9 +87,10 @@ export function ExportDialog({
   const filtered = live.search.trim().length > 0 || live.filters.length > 0
 
   const [scope, setScope] = useState<Scope>(filtered ? "current" : "all")
-  const [format, setFormat] = useState<ExportSpec["format"]>("csv")
+  const [format, setFormat] = useState<Format>("csv")
   const [recent, setRecent] = useState(100)
   const [includePartials, setIncludePartials] = useState(false)
+  const [customising, setCustomising] = useState(false)
   const [meta, setMeta] = useState<MetaColumnKey[]>(["submitted"])
   const [showAllMeta, setShowAllMeta] = useState(false)
   const [allFields, setAllFields] = useState(true)
@@ -91,15 +99,22 @@ export function ExportDialog({
   const [aiFollowUps, setAiFollowUps] = useState(false)
   const [pending, start] = useTransition()
 
-  // The zone the owner will read the spreadsheet in, not the server's.
+  // The zone the owner will read the file in, not the server's.
   const timezone = useMemo(() => Intl.DateTimeFormat().resolvedOptions().timeZone, [])
 
   function toggleMeta(key: MetaColumnKey, on: boolean) {
     setMeta((prev) => {
       const next = on ? [...prev, key] : prev.filter((k) => k !== key)
-      // Kept in META_COLUMNS order so the column order does not depend on the
-      // order somebody happened to click the boxes in.
+      // Held in META_COLUMNS order, so column order never depends on the order
+      // somebody happened to tick the boxes.
       return META_COLUMNS.filter((k) => next.includes(k))
+    })
+  }
+
+  function toggleField(id: string, on: boolean) {
+    setFields((prev) => {
+      const next = on ? [...prev, id] : prev.filter((f) => f !== id)
+      return columns.filter((c) => next.includes(c.id)).map((c) => c.id)
     })
   }
 
@@ -114,12 +129,7 @@ export function ExportDialog({
         limit: scope === "recent" ? recent : undefined,
         order: scope === "recent" ? "newest" : "oldest",
       },
-      columns: {
-        meta,
-        fields: allFields ? "all" : fields,
-        removedQuestions,
-        aiFollowUps,
-      },
+      columns: { meta, fields: allFields ? "all" : fields, removedQuestions, aiFollowUps },
       // Links in the data file; the archive is its own button.
       files: "urls",
       timezone,
@@ -140,138 +150,176 @@ export function ExportDialog({
     })
   }
 
-  const columnCount =
-    meta.length + (allFields ? columns.length : fields.length) + (aiFollowUps ? 2 : 0)
+  const questionCount = allFields ? columns.length : fields.length
+  const columnCount = meta.length + questionCount + (aiFollowUps ? 2 : 0)
+  const summary = [
+    `${questionCount === columns.length ? "All" : questionCount} ${
+      questionCount === 1 ? "question" : "questions"
+    }`,
+    `${meta.length} extra`,
+  ].join(" · ")
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-full max-w-[min(32rem,calc(100%-2rem))]">
+      <DialogContent className="w-full max-w-[min(30rem,calc(100%-2rem))]">
         <DialogHeader>
           <DialogTitle>Export responses</DialogTitle>
           <DialogDescription>
-            {filtered
-              ? "Your search and filters are already applied below."
-              : `${totalCompleted} ${totalCompleted === 1 ? "response" : "responses"} in this form.`}
+            {totalCompleted} {totalCompleted === 1 ? "response" : "responses"} · times in{" "}
+            {timezone}
           </DialogDescription>
         </DialogHeader>
 
-        <div className="max-h-[55dvh] space-y-5 overflow-y-auto pr-1">
-          <Field label="Which responses">
-            <Select value={scope} onValueChange={(v) => setScope(v as Scope)}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="current">The ones I&apos;m looking at</SelectItem>
-                <SelectItem value="all">Every response</SelectItem>
-                <SelectItem value="recent">Most recent…</SelectItem>
-              </SelectContent>
-            </Select>
-            {scope === "recent" ? (
-              <Input
-                type="number"
-                min={1}
-                value={recent}
-                onChange={(e) => setRecent(Math.max(1, Number(e.target.value) || 1))}
-                className="mt-2 w-28"
-                aria-label="How many recent responses"
-              />
-            ) : null}
+        <div className="space-y-5">
+          <section>
+            <Label>Which responses</Label>
+            <div className="flex gap-2">
+              <Select value={scope} onValueChange={(v) => setScope(v as Scope)}>
+                <SelectTrigger className="h-9 flex-1 text-sm">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="current">The ones I&apos;m looking at</SelectItem>
+                  <SelectItem value="all">Every response</SelectItem>
+                  <SelectItem value="recent">Most recent…</SelectItem>
+                </SelectContent>
+              </Select>
+              {scope === "recent" ? (
+                <Input
+                  type="number"
+                  min={1}
+                  value={recent}
+                  onChange={(e) => setRecent(Math.max(1, Number(e.target.value) || 1))}
+                  className="h-9 w-24 text-sm"
+                  aria-label="How many recent responses"
+                />
+              ) : null}
+            </div>
             {scope === "current" && !filtered ? (
               <p className="mt-1.5 text-xs text-muted-foreground">
-                No search or filter is active, so this is every response.
+                Nothing is filtered right now, so this is every response.
               </p>
             ) : null}
-            <Toggle
-              className="mt-2"
+            <Check
+              className="mt-2.5"
               checked={includePartials}
               onChange={setIncludePartials}
               label="Include unfinished responses"
             />
-          </Field>
+          </section>
 
-          <Field label="Format">
-            <Select
-              value={format}
-              onValueChange={(v) => setFormat(v as ExportSpec["format"])}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="csv">CSV</SelectItem>
-                <SelectItem value="xlsx">Excel (.xlsx)</SelectItem>
-                <SelectItem value="json">JSON</SelectItem>
-              </SelectContent>
-            </Select>
-            <p className="mt-1.5 text-xs text-muted-foreground">{FORMAT_HINTS[format]}</p>
-          </Field>
-
-          <Field label="Questions">
-            <Toggle
-              checked={allFields}
-              onChange={(on) => {
-                setAllFields(on)
-                if (!on) setFields(columns.map((c) => c.id))
-              }}
-              label={`Every question (${columns.length})`}
-            />
-            {!allFields ? (
-              <div className="mt-1.5 max-h-40 space-y-0.5 overflow-y-auto rounded-md border border-border p-2">
-                {columns.map((c) => (
-                  <Toggle
-                    key={c.id}
-                    checked={fields.includes(c.id)}
-                    onChange={(on) =>
-                      setFields((prev) =>
-                        on
-                          ? columns.filter((x) => [...prev, c.id].includes(x.id)).map((x) => x.id)
-                          : prev.filter((id) => id !== c.id),
-                      )
-                    }
-                    label={c.label || "Untitled"}
-                  />
-                ))}
-              </div>
-            ) : null}
-          </Field>
-
-          <Field label="Extra columns">
-            <Toggle
-              checked={aiFollowUps}
-              onChange={setAiFollowUps}
-              label="AI follow-up questions and answers"
-            />
-            <Toggle
-              checked={removedQuestions}
-              onChange={setRemovedQuestions}
-              label="Answers to deleted questions"
-            />
-            {(showAllMeta ? [...META_COLUMNS] : COMMON_META)
-              .filter((key) => key !== "submitted")
-              .map((key) => (
-                <Toggle
-                  key={key}
-                  checked={meta.includes(key)}
-                  onChange={(on) => toggleMeta(key, on)}
-                  label={META_HEADERS[key]}
-                />
+          <section>
+            <Label>Format</Label>
+            {/* A segmented row rather than a dropdown: three choices, all worth
+                seeing at once, and it removes a click plus a line of help text
+                that only described whichever one was already selected. */}
+            <div className="flex rounded-md border border-border p-0.5">
+              {FORMATS.map((f) => (
+                <button
+                  key={f.value}
+                  type="button"
+                  onClick={() => setFormat(f.value)}
+                  aria-pressed={format === f.value}
+                  className={cn(
+                    "flex-1 rounded-[5px] px-3 py-1.5 text-sm font-medium transition-colors",
+                    format === f.value
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  {f.label}
+                </button>
               ))}
-            {!showAllMeta ? (
+            </div>
+            <p className="mt-1.5 text-xs text-muted-foreground">
+              {FORMATS.find((f) => f.value === format)?.hint}
+            </p>
+          </section>
+
+          <section>
+            <div className="flex items-center justify-between gap-3">
+              <Label className="mb-0">Columns</Label>
               <button
                 type="button"
-                onClick={() => setShowAllMeta(true)}
-                className="mt-1 text-xs font-medium text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                onClick={() => setCustomising((v) => !v)}
+                className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
               >
-                Show all columns
+                {customising ? "Done" : "Customise"}
+                <Icon
+                  name={customising ? "hide" : "edit"}
+                  className="size-3.5"
+                />
               </button>
-            ) : null}
-          </Field>
+            </div>
+            {!customising ? (
+              <p className="mt-1.5 text-sm text-muted-foreground">{summary}</p>
+            ) : (
+              <div className="mt-2 space-y-3">
+                <div>
+                  <Check
+                    checked={allFields}
+                    onChange={(on) => {
+                      setAllFields(on)
+                      // Pre-tick everything when switching to a manual choice,
+                      // so unticking one is the small edit it looks like rather
+                      // than a blank slate.
+                      if (!on) setFields(columns.map((c) => c.id))
+                    }}
+                    label={`Every question (${columns.length})`}
+                  />
+                  {!allFields ? (
+                    <div className="mt-1.5 max-h-36 space-y-0.5 overflow-y-auto rounded-md border border-border p-2">
+                      {columns.map((c) => (
+                        <Check
+                          key={c.id}
+                          checked={fields.includes(c.id)}
+                          onChange={(on) => toggleField(c.id, on)}
+                          label={c.label || "Untitled"}
+                        />
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+
+                <div className="space-y-0.5 border-t border-border pt-3">
+                  <Check
+                    checked={aiFollowUps}
+                    onChange={setAiFollowUps}
+                    label="AI follow-up questions and answers"
+                  />
+                  <Check
+                    checked={removedQuestions}
+                    onChange={setRemovedQuestions}
+                    label="Answers to deleted questions"
+                  />
+                  {(showAllMeta ? [...META_COLUMNS] : COMMON_META)
+                    .filter((key) => key !== "submitted")
+                    .map((key) => (
+                      <Check
+                        key={key}
+                        checked={meta.includes(key)}
+                        onChange={(on) => toggleMeta(key, on)}
+                        label={META_HEADERS[key]}
+                      />
+                    ))}
+                  {!showAllMeta ? (
+                    <button
+                      type="button"
+                      onClick={() => setShowAllMeta(true)}
+                      className="pt-1 text-xs font-medium text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                    >
+                      Show every column
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+            )}
+          </section>
         </div>
 
         <DialogFooter className="items-center gap-3 sm:justify-between">
           <p className="text-xs text-muted-foreground">
-            {columnCount} {columnCount === 1 ? "column" : "columns"} · times in {timezone}
+            {columnCount} {columnCount === 1 ? "column" : "columns"}
           </p>
           <div className="flex gap-2">
             <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={pending}>
@@ -288,16 +336,13 @@ export function ExportDialog({
   )
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Label({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
-    <div className="min-w-0">
-      <p className="mb-1.5 text-sm font-medium text-foreground">{label}</p>
-      {children}
-    </div>
+    <p className={cn("mb-1.5 text-sm font-medium text-foreground", className)}>{children}</p>
   )
 }
 
-function Toggle({
+function Check({
   checked,
   onChange,
   label,
@@ -310,7 +355,10 @@ function Toggle({
 }) {
   return (
     <label
-      className={`flex min-w-0 cursor-pointer items-center gap-2 py-1 text-sm text-muted-foreground ${className ?? ""}`}
+      className={cn(
+        "flex min-w-0 cursor-pointer items-center gap-2 py-1 text-sm text-foreground",
+        className,
+      )}
     >
       <Checkbox checked={checked} onCheckedChange={(v) => onChange(v === true)} />
       <span className="min-w-0 truncate">{label}</span>
