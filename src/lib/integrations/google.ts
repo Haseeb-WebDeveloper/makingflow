@@ -224,63 +224,6 @@ export async function getSheetId(
   return match?.properties?.sheetId ?? null
 }
 
-/** Overwrite the header row (row 1) with the given column labels. */
-export async function setHeaderRow(
-  accessToken: string,
-  spreadsheetId: string,
-  sheetName: string,
-  headers: string[],
-): Promise<void> {
-  const range = `${sheetName}!A1`
-  await sheetsFetch(
-    accessToken,
-    `${SHEETS_API}/${spreadsheetId}/values/${encodeURIComponent(range)}?valueInputOption=RAW`,
-    { method: "PUT", body: JSON.stringify({ values: [headers] }) },
-  )
-}
-
-/** Append one row of values after the last filled row. */
-export async function appendRow(
-  accessToken: string,
-  spreadsheetId: string,
-  sheetName: string,
-  values: string[],
-): Promise<void> {
-  await appendRows(accessToken, spreadsheetId, sheetName, [values])
-}
-
-/** Append many rows in one call (used to backfill existing submissions). */
-export async function appendRows(
-  accessToken: string,
-  spreadsheetId: string,
-  sheetName: string,
-  rows: string[][],
-): Promise<void> {
-  if (rows.length === 0) return
-  const range = `${sheetName}!A1`
-  await sheetsFetch(
-    accessToken,
-    `${SHEETS_API}/${spreadsheetId}/values/${encodeURIComponent(range)}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
-    { method: "POST", body: JSON.stringify({ values: rows }) },
-  )
-}
-
-/** Read a single column top-to-bottom (incl. the header) as a flat string array. */
-export async function getColumnValues(
-  accessToken: string,
-  spreadsheetId: string,
-  sheetName: string,
-  column: string,
-): Promise<string[]> {
-  const range = `${sheetName}!${column}:${column}`
-  const data = (await sheetsFetch(
-    accessToken,
-    `${SHEETS_API}/${spreadsheetId}/values/${encodeURIComponent(range)}?majorDimension=COLUMNS`,
-    { method: "GET" },
-  )) as { values?: string[][] }
-  return data.values?.[0] ?? []
-}
-
 /** Run a batchUpdate (structural edits like insert column / delete row). */
 async function batchUpdate(
   accessToken: string,
@@ -294,25 +237,7 @@ async function batchUpdate(
   })
 }
 
-/** Insert `count` blank column(s) at `startIndex` (0-based), shifting data right. */
-export async function insertColumns(
-  accessToken: string,
-  spreadsheetId: string,
-  sheetId: number,
-  startIndex: number,
-  count = 1,
-): Promise<void> {
-  await batchUpdate(accessToken, spreadsheetId, [
-    {
-      insertDimension: {
-        range: { sheetId, dimension: "COLUMNS", startIndex, endIndex: startIndex + count },
-        inheritFromBefore: false,
-      },
-    },
-  ])
-}
-
-/** Delete a single row by 0-based index (row 1 / the header = index 0). */
+/** Delete a single row by its 0-based index. */
 export async function deleteRow(
   accessToken: string,
   spreadsheetId: string,

@@ -20,15 +20,37 @@
 import { randomUUID } from "node:crypto"
 import { beforeEach, describe, expect, test, vi } from "vitest"
 import { and, eq } from "drizzle-orm"
+import type { MetadataTag } from "@/lib/integrations/sheet-layout"
 
-type AnyRequest = Record<string, any>
+type CreatedMetadata = NonNullable<SheetsRequest["createDeveloperMetadata"]>["developerMetadata"]
 
-// Mutable fake-spreadsheet state the mock factory reads. Declared with `var`-
-// like module scope because vi.mock factories are hoisted above imports.
-let tags: any[] = []
+/** Only the parts of a Sheets batchUpdate request these tests look at. */
+type SheetsRequest = {
+  createDeveloperMetadata?: {
+    developerMetadata: {
+      metadataKey: string
+      metadataValue: string
+      location: {
+        dimensionRange: { sheetId: number; dimension: "ROWS" | "COLUMNS"; startIndex: number }
+      }
+    }
+  }
+  updateCells?: {
+    start: { sheetId: number; rowIndex: number; columnIndex: number }
+    rows: { values: { userEnteredValue?: { stringValue: string } }[] }[]
+  }
+  appendCells?: unknown
+  insertDimension?: unknown
+  deleteDimension?: unknown
+}
+
+// Mutable fake-spreadsheet state the mock factory reads. Module scope because
+// vi.mock factories are hoisted above imports and cannot close over anything
+// declared later.
+let tags: MetadataTag[] = []
 let idColumnValues: string[] = []
 let gridRows: string[][] = []
-const batchRequests: { spreadsheetId: string; requests: AnyRequest[] }[] = []
+const batchRequests: { spreadsheetId: string; requests: SheetsRequest[] }[] = []
 const appended: { sheetId: number; cells: (string | null)[] }[] = []
 const deletedRows: number[] = []
 
@@ -47,7 +69,7 @@ vi.mock("@/lib/integrations/google", async (importOriginal) => {
     // Applies what it is told, so a second read sees the first write. Without
     // that a reconcile straight after provisioning would find an untagged sheet
     // and "migrate" one we had just tagged ourselves.
-    runBatchUpdate: async (_t: string, spreadsheetId: string, requests: AnyRequest[]) => {
+    runBatchUpdate: async (_t: string, spreadsheetId: string, requests: SheetsRequest[]) => {
       batchRequests.push({ spreadsheetId, requests })
       for (const r of requests) {
         const meta = r.createDeveloperMetadata?.developerMetadata
@@ -83,12 +105,6 @@ vi.mock("@/lib/integrations/google", async (importOriginal) => {
     deleteRow: async (_t: string, _s: string, _sheetId: number, rowIndex: number) => {
       deletedRows.push(rowIndex)
     },
-    // Legacy A1 surface, still mocked while the fallback path exists.
-    setHeaderRow: async () => {},
-    insertColumns: async () => {},
-    appendRow: async () => {},
-    appendRows: async () => {},
-    getColumnValues: async () => idColumnValues,
   }
 })
 
@@ -116,12 +132,12 @@ const rowTag = (value: string, index: number) => ({
 })
 
 /** Every request sent to Sheets this test, flattened. */
-const allRequests = (): AnyRequest[] => batchRequests.flatMap((b) => b.requests)
+const allRequests = (): SheetsRequest[] => batchRequests.flatMap((b) => b.requests)
 /** The developerMetadata payloads we asked Sheets to create. */
-const createdTags = (): AnyRequest[] =>
+const createdTags = (): CreatedMetadata[] =>
   allRequests()
-    .filter((r) => r.createDeveloperMetadata)
-    .map((r) => r.createDeveloperMetadata.developerMetadata)
+    .map((r) => r.createDeveloperMetadata?.developerMetadata)
+    .filter((m): m is CreatedMetadata => m !== undefined)
 
 type Seeded = {
   userId: string
@@ -329,7 +345,7 @@ describe("provisioning a sheet", () => {
 
     const headerWrites = allRequests()
       .filter((r) => r.updateCells)
-      .map((r) => r.updateCells.rows[0].values[0].userEnteredValue.stringValue)
+      .map((r) => r.updateCells?.rows[0].values[0].userEnteredValue?.stringValue)
     expect(headerWrites).toEqual(["Submission ID", "Submitted at", "Full name"])
     // One atomic batchUpdate: a half-tagged sheet is worse than an untagged one.
     expect(batchRequests).toHaveLength(1)
@@ -423,8 +439,8 @@ describe("reconciling a tagged sheet", () => {
 
     const writes = allRequests().filter((r) => r.updateCells)
     expect(writes).toHaveLength(1)
-    expect(writes[0].updateCells.start.columnIndex).toBe(2)
-    expect(writes[0].updateCells.rows[0].values[0].userEnteredValue.stringValue).toBe(
+    expect(writes[0].updateCells?.start.columnIndex).toBe(2)
+    expect(writes[0].updateCells?.rows[0].values[0].userEnteredValue?.stringValue).toBe(
       "Your full name",
     )
   })

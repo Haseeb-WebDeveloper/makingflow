@@ -36,12 +36,7 @@ vi.mock("@/lib/integrations/google", async (importOriginal) => {
         sheetId: created,
       }
     },
-    setHeaderRow: async () => {},
     getSheetId: async () => 0,
-    insertColumns: async () => {},
-    appendRow: async () => {},
-    appendRows: async () => {},
-    getColumnValues: async () => [] as string[],
     deleteRow: async () => {},
     // The grid-addressed surface. A sheet that reports the canonical tags is
     // the uninteresting case here — these tests are about WHICH spreadsheet a

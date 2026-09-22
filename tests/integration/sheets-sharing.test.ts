@@ -44,12 +44,7 @@ vi.mock("@/lib/integrations/google", async (importOriginal) => {
       spreadsheetUrl: "https://docs.google.com/spreadsheets/d/new-sheet-1/edit",
       sheetId: 1,
     }),
-    setHeaderRow: async () => {},
     getSheetId: async () => 0,
-    insertColumns: async () => {},
-    appendRow: async () => {},
-    appendRows: async () => {},
-    getColumnValues: async () => [] as string[],
     deleteRow: async () => {},
     // The grid-addressed surface, stubbed to a canonically tagged sheet. These
     // tests are about Drive permissions, not about the cells.
