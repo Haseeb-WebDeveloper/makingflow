@@ -13,19 +13,18 @@ import {
   type WorkspaceConnection,
 } from "@/lib/db/schema"
 import {
-  appendRow,
-  appendRows,
+  appendCellRows,
+  appendCells,
   deleteRow,
-  getColumnValues,
-  getSheetId,
   getValidAccessToken,
-  DEFAULT_SHEET_NAME,
+  readGridColumn,
 } from "@/lib/integrations/google"
 import {
   createFormSheet,
   isOrphanedSheetConfig,
   reconcileFormSheet,
 } from "@/lib/integrations/sheets-provision"
+import { buildRow, type SheetLayout } from "@/lib/integrations/sheet-layout"
 import { reconcileSheetShares } from "@/lib/integrations/sheets-sharing"
 import { answerToCell } from "@/lib/submissions/answer-format"
 import type { DeliveryContent, SendOutcome } from "@/lib/integrations/submission-content"
@@ -42,6 +41,23 @@ import type { AnswerValue as AnswerValueForCell } from "@/lib/db/schema"
  */
 function cell(value: AnswerValueForCell | undefined): string {
   return neutralizeFormula(answerToCell(value))
+}
+
+/**
+ * The submission ids already in the sheet, by the layout's own reckoning.
+ *
+ * Everything above the header row is skipped — which used to be hardcoded as
+ * "row 1". When the owner had inserted a row above the header, that dropped a
+ * REAL submission id from the set, and the retry it was meant to stop appended
+ * the response a second time.
+ */
+async function presentIds(
+  accessToken: string,
+  spreadsheetId: string,
+  layout: SheetLayout,
+): Promise<string[]> {
+  const column = await readGridColumn(accessToken, spreadsheetId, layout.sheetId, layout.idColumn)
+  return column.slice(layout.headerRow + 1)
 }
 
 /** The workspace's Google connection (the global Sheets on-switch), or null. */
@@ -234,48 +250,61 @@ export async function syncSubmissionToSheets(
       }
     }
 
-    // Grow columns for any new fields (and migrate old sheets to the id column).
+    // Find out where this sheet's columns ACTUALLY are, tagging or repairing it
+    // as needed, and grow it for any question added since the last delivery.
     const reconciled = await reconcileFormSheet(conn, config, form.id)
     config = reconciled.config
-    if (reconciled.changed && row) {
-      await db
-        .update(formIntegrations)
-        .set({ config })
-        .where(eq(formIntegrations.id, row.id))
+    const layout = reconciled.layout
+    if (reconciled.changed) {
+      // Guarded on the row we have, or — when a concurrent delivery won the
+      // provisioning race and we adopted its config — on the row it created.
+      // Skipping the write in that case left the grown column list unpersisted,
+      // so the next delivery redid the whole repair.
+      const target = row?.id ?? (await sheetIntegration(form.id))?.id
+      if (target) {
+        await db.update(formIntegrations).set({ config }).where(eq(formIntegrations.id, target))
+      }
+    }
+
+    // Nothing addressable — no resolvable sheet id. Fail rather than write into
+    // a sheet whose shape we could not establish.
+    if (!layout) {
+      return { ok: false, error: "Could not resolve the spreadsheet's layout" }
     }
 
     const accessToken = await getValidAccessToken(conn)
-    const sheetName = config.sheetName ?? DEFAULT_SHEET_NAME
 
     // ── The retry-safety check ──
     //
     // Appending is not idempotent, and the failure that matters is the one
-    // where the row DID land and we never heard back. Column A holds the
+    // where the row DID land and we never heard back. The id column holds the
     // submission ids for exactly this kind of lookup — it is what
-    // deleteSubmissionFromSheet and the backfill already use.
+    // deleteSubmissionFromSheet and the backfill also use.
     //
     // Only on a retry: the first attempt knows it has not sent anything, and
     // the check costs an API round-trip per delivery.
-    //
-    // A legacy sheet with no id column cannot be checked, so it is not retried
-    // into a duplicate — see the caller, which treats those as one-shot.
-    if (opts.verifyFirst && config.hasIdColumn) {
-      const present = await getColumnValues(accessToken, config.spreadsheetId, sheetName, "A")
-      if (present.slice(1).includes(submissionId)) {
+    if (opts.verifyFirst) {
+      const present = await presentIds(accessToken, config.spreadsheetId, layout)
+      if (present.includes(submissionId)) {
         return { ok: true }
       }
     }
 
     const answerByField = new Map(answers.map((a) => [a.fieldId, a.value]))
-    const columns = config.columns ?? []
-    const cells = [
-      submittedAt.toISOString(),
-      ...columns.map((c) => cell(answerByField.get(c.fieldId))),
-    ]
-    // Lead with the submission id when the sheet tracks it (so the row can later
-    // be found and deleted); legacy sheets without it just get the data columns.
-    const values = config.hasIdColumn ? [submissionId, ...cells] : cells
-    await appendRow(accessToken, config.spreadsheetId, sheetName, values)
+    const byField = new Map<string, string>()
+    for (const fieldId of layout.fieldColumns.keys()) {
+      byField.set(fieldId, cell(answerByField.get(fieldId)))
+    }
+    await appendCells(
+      accessToken,
+      config.spreadsheetId,
+      layout.sheetId,
+      buildRow(layout, {
+        submissionId,
+        submittedAt: submittedAt.toISOString(),
+        byField,
+      }),
+    )
     return { ok: true }
   } catch (err) {
     // Retryable by default: a Google outage, an expired token, a rate limit.
@@ -404,10 +433,11 @@ const BACKFILL_CHUNK = 500
  * Runs when Sheets is connected/enabled AFTER responses exist, so the sheet
  * shows the full history rather than only rows that arrive from then on.
  *
- * Idempotent: rows whose Submission ID is already present (column A) are skipped,
- * so it's safe to run again (e.g. re-enabling a form). Requires the id-column
- * layout to dedup — a no-op on legacy sheets that lack it. Returns how many rows
- * it wrote; never throws into the caller.
+ * Idempotent: rows whose Submission ID is already present are skipped, so it's
+ * safe to run again (e.g. re-enabling a form). Resolves the sheet's live layout
+ * first, so a backfill into a sheet the owner has rearranged still puts every
+ * answer under its own header. Returns how many rows it wrote; never throws
+ * into the caller.
  */
 export async function backfillFormSheet(
   conn: WorkspaceConnection,
@@ -415,15 +445,14 @@ export async function backfillFormSheet(
   formId: string,
 ): Promise<number> {
   try {
-    if (!config.spreadsheetId || !config.hasIdColumn) return 0
+    if (!config.spreadsheetId) return 0
+    const { layout } = await reconcileFormSheet(conn, config, formId)
+    if (!layout) return 0
     const accessToken = await getValidAccessToken(conn)
-    const sheetName = config.sheetName ?? DEFAULT_SHEET_NAME
 
-    // Submission ids already in the sheet (skip the header at index 0) so a
+    // Submission ids already in the sheet (everything below the header) so a
     // re-run never duplicates a row.
-    const present = new Set(
-      (await getColumnValues(accessToken, config.spreadsheetId, sheetName, "A")).slice(1),
-    )
+    const present = new Set(await presentIds(accessToken, config.spreadsheetId, layout))
 
     const subs = await db
       .select({
@@ -465,15 +494,26 @@ export async function backfillFormSheet(
       fields.set(a.fieldId, a.value)
     }
 
-    const columns = config.columns ?? []
     const values = pending.map((s) => {
-      const byField = bySubmission.get(s.id) ?? new Map<string, AnswerValue>()
-      const submittedAt = (s.completedAt ?? s.createdAt).toISOString()
-      return [s.id, submittedAt, ...columns.map((c) => cell(byField.get(c.fieldId)))]
+      const answered = bySubmission.get(s.id) ?? new Map<string, AnswerValue>()
+      const byField = new Map<string, string>()
+      for (const fieldId of layout.fieldColumns.keys()) {
+        byField.set(fieldId, cell(answered.get(fieldId)))
+      }
+      return buildRow(layout, {
+        submissionId: s.id,
+        submittedAt: (s.completedAt ?? s.createdAt).toISOString(),
+        byField,
+      })
     })
 
     for (let i = 0; i < values.length; i += BACKFILL_CHUNK) {
-      await appendRows(accessToken, config.spreadsheetId, sheetName, values.slice(i, i + BACKFILL_CHUNK))
+      await appendCellRows(
+        accessToken,
+        config.spreadsheetId,
+        layout.sheetId,
+        values.slice(i, i + BACKFILL_CHUNK),
+      )
     }
     return values.length
   } catch (err) {
@@ -485,8 +525,8 @@ export async function backfillFormSheet(
 /**
  * Best-effort: remove a submission's row from its Google Sheet (called when the
  * owner deletes the submission in MakingFlow). Finds the row by its id in the
- * leading Submission ID column. No-op for paused forms, disconnected workspaces,
- * or legacy sheets that predate id tracking. Never throws into the caller.
+ * resolved Submission ID column, wherever the owner has since moved it. No-op
+ * for paused forms and disconnected workspaces. Never throws into the caller.
  */
 export async function deleteSubmissionFromSheet(
   form: { id: string; workspaceId: string },
@@ -499,19 +539,25 @@ export async function deleteSubmissionFromSheet(
     const row = await sheetIntegration(form.id)
     if (!row || !row.enabled) return
     const config = row.config as GoogleSheetsIntegrationConfig
-    if (!config?.spreadsheetId || !config.hasIdColumn) return // can't locate the row
+    if (!config?.spreadsheetId) return
+
+    const { layout } = await reconcileFormSheet(conn, config, form.id)
+    if (!layout) return // no way to target the row for deletion
 
     const accessToken = await getValidAccessToken(conn)
-    const sheetName = config.sheetName ?? DEFAULT_SHEET_NAME
 
-    let sheetId = config.sheetId ?? null
-    if (sheetId == null) sheetId = await getSheetId(accessToken, config.spreadsheetId, sheetName)
-    if (sheetId == null) return // no way to target the row for deletion
-
-    // Column A holds the submission ids (incl. the header at index 0).
-    const ids = await getColumnValues(accessToken, config.spreadsheetId, sheetName, "A")
-    const rowIndex = ids.findIndex((v, i) => i > 0 && v === submissionId)
+    // Search the WHOLE id column, header included. A row above the header is
+    // still a row somebody's response is sitting in — skipping index 0 on
+    // principle is what left those undeletable.
+    const ids = await readGridColumn(
+      accessToken,
+      config.spreadsheetId,
+      layout.sheetId,
+      layout.idColumn,
+    )
+    const rowIndex = ids.findIndex((v, i) => i !== layout.headerRow && v === submissionId)
     if (rowIndex < 0) return // already gone, or never synced
+    const sheetId = layout.sheetId
 
     await deleteRow(accessToken, config.spreadsheetId, sheetId, rowIndex)
   } catch (err) {

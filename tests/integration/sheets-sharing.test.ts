@@ -51,6 +51,18 @@ vi.mock("@/lib/integrations/google", async (importOriginal) => {
     appendRows: async () => {},
     getColumnValues: async () => [] as string[],
     deleteRow: async () => {},
+    // The grid-addressed surface, stubbed to a canonically tagged sheet. These
+    // tests are about Drive permissions, not about the cells.
+    runBatchUpdate: async () => {},
+    searchDeveloperMetadata: async () => [
+      { key: "makingflow.row", value: "header", dimension: "ROWS" as const, index: 0, sheetId: 0 },
+      { key: "makingflow.col", value: "id", dimension: "COLUMNS" as const, index: 0, sheetId: 0 },
+      { key: "makingflow.col", value: "ts", dimension: "COLUMNS" as const, index: 1, sheetId: 0 },
+    ],
+    readGridRows: async () => [["Submission ID", "Submitted at"]],
+    readGridColumn: async () => [] as string[],
+    appendCells: async () => {},
+    appendCellRows: async () => {},
   }
 })
 

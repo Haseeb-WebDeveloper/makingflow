@@ -127,6 +127,11 @@ export type RepairPlan = {
  * the last sync, and header text for questions since renamed (or blanked by
  * hand). A question removed from the form keeps its column — historic rows
  * still resolve through it.
+ *
+ * New columns start past the last USED column, not merely past the last one we
+ * own. Those are different numbers the moment the owner adds a column of their
+ * own on the right, and taking the first free index we knew about would drop a
+ * question's answers straight onto their data.
  */
 export function planRepair(
   layout: SheetLayout,
@@ -135,7 +140,7 @@ export function planRepair(
 ): RepairPlan {
   const create: RepairPlan["create"] = []
   const relabel: RepairPlan["relabel"] = []
-  let next = layout.lastColumn + 1
+  let next = Math.max(layout.lastColumn + 1, headerCells.length)
 
   for (const field of desired) {
     const index = layout.fieldColumns.get(field.fieldId)

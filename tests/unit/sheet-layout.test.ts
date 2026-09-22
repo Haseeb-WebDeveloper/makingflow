@@ -229,6 +229,21 @@ describe("planRepair", () => {
     expect(plan.create).toEqual([{ fieldId: "f3", label: "Phone", index: 4 }])
   })
 
+  // The owner's own column sits at index 4. Taking the first index WE knew
+  // about would put the new question's answers straight onto their data.
+  test("starts a new column past the owner's columns, not past ours", () => {
+    const plan = planRepair(
+      pristine(),
+      [
+        { fieldId: "f1", label: "Name" },
+        { fieldId: "f2", label: "Email" },
+        { fieldId: "f3", label: "Phone" },
+      ],
+      ["Submission ID", "Submitted at", "Name", "Email", "My notes"],
+    )
+    expect(plan.create).toEqual([{ fieldId: "f3", label: "Phone", index: 5 }])
+  })
+
   test("numbers several new questions consecutively", () => {
     const plan = planRepair(
       pristine(),
