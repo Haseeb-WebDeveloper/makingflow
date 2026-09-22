@@ -21,6 +21,7 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }))
 afterEach(cleanup)
 
 const base = {
+  customisedForms: 0,
   setting: { role: "reader" as const, audience: "all" as const },
   members: [
     { email: "a@acme.com", state: "shared" as const, reason: null, sheets: 3 },
@@ -63,7 +64,7 @@ describe("SheetSharingControl", () => {
   test("off is a legible state, not an empty panel", () => {
     render(
       <SheetSharingControl
-        sharing={{ setting: null, members: [] }}
+        sharing={{ setting: null, customisedForms: 0, members: [] }}
         accountEmail="owner@acme.com"
         canManage
       />,

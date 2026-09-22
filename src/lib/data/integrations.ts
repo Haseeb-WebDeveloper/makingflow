@@ -13,6 +13,7 @@ import {
 } from "@/lib/db/schema"
 import { isGoogleConfigured } from "@/lib/integrations/google"
 import { isOrphanedSheetConfig } from "@/lib/integrations/sheets-provision"
+import { resolveSharing } from "@/lib/integrations/sheets-sharing"
 import { isEmailConfigured } from "@/lib/email/provider"
 import { isNotionConfigured } from "@/lib/integrations/notion"
 
@@ -41,6 +42,86 @@ function statusOf(
   return row.enabled ? "syncing" : "paused"
 }
 
+/**
+ * One spreadsheet's access, as the UI needs to render a button for it.
+ *
+ * `source` is what lets the button say "following the workspace" instead of
+ * repeating a setting the person did not choose here — the difference between
+ * inheriting and having decided is the whole point of the per-form control.
+ */
+export type FormAccess = {
+  source: "workspace" | "form"
+  /** null = nobody (sharing off, or this form kept private). */
+  role: "reader" | "writer" | null
+  audience: "all" | { emails: string[] } | null
+  /** People who can open it, and people we could not give access to. */
+  granted: number
+  blocked: number
+}
+
+/** Access of one sheets row, resolved against the workspace setting. */
+function accessOf(
+  config: GoogleSheetsIntegrationConfig | undefined,
+  workspace: SheetSharingSetting | null,
+): FormAccess {
+  const override = config?.shareOverride
+  const effective = resolveSharing(workspace ?? undefined, override)
+  const shares = config?.shares ?? []
+  return {
+    source: override === undefined ? "workspace" : "form",
+    role: effective?.role ?? null,
+    audience: effective?.audience ?? null,
+    granted: shares.filter((sh) => sh.permissionId).length,
+    blocked: shares.filter((sh) => !sh.permissionId && sh.error).length,
+  }
+}
+
+/** One member's standing on one spreadsheet, for the pickers. */
+function memberStates(
+  config: GoogleSheetsIntegrationConfig | undefined,
+  access: FormAccess,
+  memberEmails: string[],
+  ownerEmail: string | undefined,
+): { email: string; state: "shared" | "blocked" | "failed" | "pending"; reason: SheetShareError | null }[] {
+  const byEmail = new Map((config?.shares ?? []).map((sh) => [sh.email.toLowerCase(), sh]))
+  const chosen =
+    access.audience && access.audience !== "all"
+      ? new Set(access.audience.emails.map((e) => e.toLowerCase()))
+      : null
+  const out: { email: string; state: "shared" | "blocked" | "failed" | "pending"; reason: SheetShareError | null }[] = []
+  for (const email of memberEmails) {
+    const k = email.toLowerCase()
+    if (k === ownerEmail) continue
+    const share = byEmail.get(k)
+    // Listed whether or not they are in the audience: this is the list you pick
+    // FROM, so leaving people out would make them unpickable.
+    const inAudience = access.role !== null && (!chosen || chosen.has(k))
+    if (share?.permissionId) out.push({ email, state: "shared", reason: null })
+    else if (share?.error)
+      out.push({
+        email,
+        state:
+          share.error === "domain_policy" || share.error === "not_a_google_account"
+            ? "blocked"
+            : "failed",
+        reason: share.error,
+      })
+    else out.push({ email, state: inAudience ? "pending" : "pending", reason: null })
+  }
+  return out
+}
+
+/** The workspace's member addresses, in a stable order. */
+async function workspaceMemberEmails(workspaceId: string): Promise<string[]> {
+  const rows = await db
+    .select({ email: users.email })
+    .from(workspaceMembers)
+    .innerJoin(users, eq(users.id, workspaceMembers.userId))
+    .where(eq(workspaceMembers.workspaceId, workspaceId))
+    .orderBy(users.email)
+  return rows.map((r) => r.email)
+}
+
 // ── Per-form Integrations tab ──────────────────────────────────────────────
 
 export type GoogleSheetsState = {
@@ -48,6 +129,14 @@ export type GoogleSheetsState = {
   connection: { accountEmail: string } | null
   status: FormSyncStatus
   spreadsheetUrl: string | null
+  /** Who can open THIS form's spreadsheet, and whether that was chosen here. */
+  access: FormAccess
+  /** Everyone who could be given access, with where each of them stands. */
+  members: {
+    email: string
+    state: "shared" | "blocked" | "failed" | "pending"
+    reason: SheetShareError | null
+  }[]
 }
 
 export async function getGoogleSheetsState(formId: string, workspaceId: string): Promise<GoogleSheetsState | null> {
@@ -60,7 +149,11 @@ export async function getGoogleSheetsState(formId: string, workspaceId: string):
   if (!form) return null
 
   const [conn] = await db
-    .select({ id: workspaceConnections.id, accountEmail: workspaceConnections.accountEmail })
+    .select({
+      id: workspaceConnections.id,
+      accountEmail: workspaceConnections.accountEmail,
+      metadata: workspaceConnections.metadata,
+    })
     .from(workspaceConnections)
     .where(
       and(
@@ -77,11 +170,21 @@ export async function getGoogleSheetsState(formId: string, workspaceId: string):
     .limit(1)
 
   const cfg = row?.config as GoogleSheetsIntegrationConfig | undefined
+  const access = accessOf(cfg, conn?.metadata?.google?.share ?? null)
   return {
     configured: isGoogleConfigured(),
     connection: conn ? { accountEmail: conn.accountEmail } : null,
     status: statusOf(conn, row),
     spreadsheetUrl: cfg?.spreadsheetUrl ?? null,
+    access,
+    members: conn
+      ? memberStates(
+          cfg,
+          access,
+          await workspaceMemberEmails(workspaceId),
+          conn.accountEmail.toLowerCase(),
+        )
+      : [],
   }
 }
 
@@ -270,6 +373,8 @@ export type WorkspaceIntegrations = {
     title: string
     status: FormSyncStatus
     spreadsheetUrl: string | null
+    /** Who can open this form's spreadsheet — per form, so the row can say. */
+    access: FormAccess
   }[]
   email: { configured: boolean; forms: WorkspaceEmailForm[] }
   webhook: { forms: WorkspaceWebhookForm[] }
@@ -290,6 +395,8 @@ export type WorkspaceIntegrations = {
    */
   sharing: {
     setting: SheetSharingSetting | null
+    /** Forms that answer the access question themselves — the bulk control warns. */
+    customisedForms: number
     members: {
       email: string
       state: "shared" | "blocked" | "failed" | "pending"
@@ -332,9 +439,6 @@ export async function getWorkspaceIntegrations(
       .limit(1)
       .then((r) => r[0]),
   ])
-  const connected = Boolean(conn)
-  const notionConnected = Boolean(notionConn)
-
   const formRows = await db
     .select({ id: forms.id, title: forms.title })
     .from(forms)
@@ -425,7 +529,15 @@ export async function getWorkspaceIntegrations(
   return {
     configured: isGoogleConfigured(),
     connection: conn ? { accountEmail: conn.accountEmail } : null,
-    sharing: { setting: sharingSetting, members: [...memberRollup.values()] },
+    sharing: {
+      setting: sharingSetting,
+      customisedForms: integrationRows.filter(
+        (r) =>
+          r.type === "google_sheets" &&
+          (r.config as GoogleSheetsIntegrationConfig).shareOverride !== undefined,
+      ).length,
+      members: [...memberRollup.values()],
+    },
     allForms: formRows.map((f) => ({ id: f.id, title: title(f.title) })),
     forms: formRows.map((f) => {
       const row = byForm.get(f.id)
@@ -435,6 +547,7 @@ export async function getWorkspaceIntegrations(
         title: title(f.title),
         status: statusOf(conn, row),
         spreadsheetUrl: cfg?.spreadsheetUrl ?? null,
+        access: accessOf(cfg, sharingSetting),
       }
     }),
     email: {

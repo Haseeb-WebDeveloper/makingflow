@@ -433,7 +433,7 @@ describe("what the integrations page is told", () => {
 
     const view = await getWorkspaceIntegrations(s.workspaceId)
 
-    expect(view?.sharing).toEqual({ setting: null, members: [] })
+    expect(view?.sharing).toEqual({ setting: null, customisedForms: 0, members: [] })
   })
 
   test("a member who has not been reached yet reads as pending, not as shared", async () => {
@@ -490,5 +490,88 @@ describe("a form with its own access setting", () => {
     await reconcileSheetShares(await conn(s.workspaceId), await rowFor(s.formId))
 
     expect(shareCalls.map((c) => c.email)).toEqual([members[1]])
+  })
+})
+
+describe("per-form access, as the UI reads it", () => {
+  test("a form following the workspace says so", async () => {
+    const { getWorkspaceIntegrations } = await import("@/lib/data/integrations")
+    const s = await seed({ share: { role: "reader", audience: "all" } })
+    await reconcileSheetShares(await conn(s.workspaceId), await rowFor(s.formId))
+
+    const view = await getWorkspaceIntegrations(s.workspaceId)
+    const form = view?.forms.find((f) => f.id === s.formId)
+
+    expect(form?.access).toMatchObject({
+      source: "workspace",
+      role: "reader",
+      audience: "all",
+      granted: 2,
+      blocked: 0,
+    })
+    expect(view?.sharing.customisedForms).toBe(0)
+  })
+
+  test("a customised form reports its own setting and is counted", async () => {
+    const { getWorkspaceIntegrations } = await import("@/lib/data/integrations")
+    const s = await seed({ share: { role: "reader", audience: "all" } })
+    const members = await otherMembers(s.workspaceId)
+    const row = await rowFor(s.formId)
+    await db
+      .update(formIntegrations)
+      .set({
+        config: {
+          ...row.config,
+          shareOverride: { role: "writer", audience: { emails: [members[0]] } },
+        },
+      })
+      .where(eq(formIntegrations.id, s.rowId))
+
+    const view = await getWorkspaceIntegrations(s.workspaceId)
+    const form = view?.forms.find((f) => f.id === s.formId)
+
+    expect(form?.access).toMatchObject({ source: "form", role: "writer" })
+    expect(form?.access.audience).toEqual({ emails: [members[0]] })
+    expect(view?.sharing.customisedForms).toBe(1)
+  })
+
+  test("a private form reads as nobody rather than as inheriting", async () => {
+    const { getWorkspaceIntegrations } = await import("@/lib/data/integrations")
+    const s = await seed({ share: { role: "reader", audience: "all" } })
+    const row = await rowFor(s.formId)
+    await db
+      .update(formIntegrations)
+      .set({ config: { ...row.config, shareOverride: "none" } })
+      .where(eq(formIntegrations.id, s.rowId))
+
+    const view = await getWorkspaceIntegrations(s.workspaceId)
+    const form = view?.forms.find((f) => f.id === s.formId)
+
+    expect(form?.access).toMatchObject({ source: "form", role: null, granted: 0 })
+  })
+
+  test("a blocked member is counted against the form they are blocked on", async () => {
+    const { getWorkspaceIntegrations } = await import("@/lib/data/integrations")
+    const s = await seed({ share: { role: "reader", audience: "all" } })
+    const members = await otherMembers(s.workspaceId)
+    refuse.set(members[0], "domain_policy")
+    await reconcileSheetShares(await conn(s.workspaceId), await rowFor(s.formId))
+
+    const view = await getWorkspaceIntegrations(s.workspaceId)
+    const form = view?.forms.find((f) => f.id === s.formId)
+
+    expect(form?.access).toMatchObject({ granted: 1, blocked: 1 })
+  })
+
+  test("the form's own Integrations tab reads the same state", async () => {
+    const { getGoogleSheetsState } = await import("@/lib/data/integrations")
+    const s = await seed({ share: { role: "reader", audience: "all" } })
+    await reconcileSheetShares(await conn(s.workspaceId), await rowFor(s.formId))
+
+    const state = await getGoogleSheetsState(s.formId, s.workspaceId)
+
+    expect(state?.access).toMatchObject({ source: "workspace", role: "reader", granted: 2 })
+    // The tab needs the people, not just the counts — it is where they are picked.
+    expect(state?.members.map((m) => m.state)).toEqual(["shared", "shared"])
   })
 })
