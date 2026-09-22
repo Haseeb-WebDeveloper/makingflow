@@ -360,6 +360,16 @@ export type GoogleSheetsIntegrationConfig = {
   // Access we have granted on this spreadsheet, one entry per person. See
   // SheetShare — an entry with no permissionId is a failed attempt, not a grant.
   shares?: SheetShare[]
+  /**
+   * This form's own answer to "who can open it", overriding the workspace's.
+   *
+   * Absent means follow the workspace. `"none"` means nobody, and has to be its
+   * own value rather than an empty audience: "this form is private" and "nobody
+   * has chosen for this form yet" are different states, and collapsing them would
+   * make a deliberately private form re-share itself the next time the workspace
+   * setting changed.
+   */
+  shareOverride?: SheetSharingSetting | 'none'
 }
 
 export type EmailIntegrationConfig = {

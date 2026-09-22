@@ -8,7 +8,11 @@
  */
 
 import { describe, expect, test } from "vitest"
-import { desiredShareEmails, planShareChanges } from "@/lib/integrations/sheets-sharing"
+import {
+  desiredShareEmails,
+  planShareChanges,
+  resolveSharing,
+} from "@/lib/integrations/sheets-sharing"
 import type { SheetShare } from "@/lib/db/schema"
 
 describe("desiredShareEmails", () => {
@@ -111,5 +115,33 @@ describe("planShareChanges", () => {
     const plan = planShareChanges(["A@Acme.com"], "reader", [granted("a@acme.com")])
     expect(plan.grant).toEqual([])
     expect(plan.revoke).toEqual([])
+  })
+})
+
+describe("resolveSharing", () => {
+  const workspace = { role: "reader" as const, audience: "all" as const }
+
+  test("a form with no override follows the workspace", () => {
+    expect(resolveSharing(workspace, undefined)).toEqual(workspace)
+  })
+
+  test("an override wins", () => {
+    const own = { role: "writer" as const, audience: { emails: ["a@acme.com"] } }
+    expect(resolveSharing(workspace, own)).toEqual(own)
+  })
+
+  test("a form can opt out while the workspace shares", () => {
+    // "none" has to be distinguishable from "no override", or opting one form out
+    // would be indistinguishable from never having chosen.
+    expect(resolveSharing(workspace, "none")).toBeUndefined()
+  })
+
+  test("an override still applies when the workspace shares nothing", () => {
+    const own = { role: "reader" as const, audience: "all" as const }
+    expect(resolveSharing(undefined, own)).toEqual(own)
+  })
+
+  test("nothing set anywhere means nobody", () => {
+    expect(resolveSharing(undefined, undefined)).toBeUndefined()
   })
 })

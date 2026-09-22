@@ -35,6 +35,22 @@ import {
 const key = (email: string) => email.trim().toLowerCase()
 
 /**
+ * Which setting governs one spreadsheet: its own, or the workspace's.
+ *
+ * A form's override beats the workspace in both directions — it can share a form
+ * the workspace does not, and `"none"` keeps a form private while everything
+ * else is shared. Returning undefined means nobody, which is exactly what the
+ * rest of this module already does with "sharing is off".
+ */
+export function resolveSharing(
+  workspace: SheetSharingSetting | undefined,
+  override: SheetSharingSetting | 'none' | undefined,
+): SheetSharingSetting | undefined {
+  if (override === 'none') return undefined
+  return override ?? workspace
+}
+
+/**
  * Who should be able to open the spreadsheets this connection owns.
  *
  * The account's own address is always excluded: Drive refuses to share a file
@@ -138,7 +154,7 @@ export async function reconcileSheetShares(
     const config = row.config
     if (!config.spreadsheetId) return // nothing provisioned yet, nothing to share
 
-    const setting = conn.metadata?.google?.share
+    const setting = resolveSharing(conn.metadata?.google?.share, config.shareOverride)
     const role = setting?.role ?? "reader"
     const desired = desiredShareEmails(
       setting,

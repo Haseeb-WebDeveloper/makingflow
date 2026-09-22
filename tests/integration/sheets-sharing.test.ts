@@ -447,3 +447,48 @@ describe("what the integrations page is told", () => {
     expect(view?.sharing.members.map((m) => m.state)).toEqual(["pending", "pending"])
   })
 })
+
+describe("a form with its own access setting", () => {
+  test("shares with only the people that form names", async () => {
+    const s = await seed({ share: { role: "reader", audience: "all" } })
+    const members = await otherMembers(s.workspaceId)
+    const row = await rowFor(s.formId)
+    await db
+      .update(formIntegrations)
+      .set({ config: { ...row.config, shareOverride: { role: "writer", audience: { emails: [members[0]] } } } })
+      .where(eq(formIntegrations.id, s.rowId))
+
+    await reconcileSheetShares(await conn(s.workspaceId), await rowFor(s.formId))
+
+    expect(shareCalls.map((c) => [c.email, c.role])).toEqual([[members[0], "writer"]])
+  })
+
+  test("can keep itself private while the rest of the workspace is shared", async () => {
+    const s = await seed({ share: { role: "reader", audience: "all" } })
+    await reconcileSheetShares(await conn(s.workspaceId), await rowFor(s.formId))
+    const row = await rowFor(s.formId)
+    await db
+      .update(formIntegrations)
+      .set({ config: { ...row.config, shareOverride: "none" } })
+      .where(eq(formIntegrations.id, s.rowId))
+
+    await reconcileSheetShares(await conn(s.workspaceId), await rowFor(s.formId))
+
+    expect(unshareCalls).toHaveLength(2)
+    expect(await sharesOf(s.rowId)).toEqual([])
+  })
+
+  test("is shared even when the workspace shares nothing", async () => {
+    const s = await seed({})
+    const members = await otherMembers(s.workspaceId)
+    const row = await rowFor(s.formId)
+    await db
+      .update(formIntegrations)
+      .set({ config: { ...row.config, shareOverride: { role: "reader", audience: { emails: [members[1]] } } } })
+      .where(eq(formIntegrations.id, s.rowId))
+
+    await reconcileSheetShares(await conn(s.workspaceId), await rowFor(s.formId))
+
+    expect(shareCalls.map((c) => c.email)).toEqual([members[1]])
+  })
+})
