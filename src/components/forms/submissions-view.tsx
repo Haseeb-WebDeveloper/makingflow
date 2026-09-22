@@ -12,6 +12,7 @@ import {
 } from "@/components/forms/submissions-table"
 import { SubmissionsFilterDialog } from "@/components/forms/submissions-filter-dialog"
 import { MediaArchiveButton } from "@/components/forms/media-archive-button"
+import { ExportDialog } from "@/components/forms/export-dialog"
 import { SubmissionDetailSheet, type SubmissionDetail } from "@/components/forms/submission-detail"
 import {
   AlertDialog,
@@ -79,6 +80,7 @@ export function SubmissionsView({
   const [filters, setFilters] = useState<Filter[]>([])
   const [match, setMatch] = useState<MatchMode>("all")
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [exportOpen, setExportOpen] = useState(false)
   const [deletedIds, setDeletedIds] = useState<Set<string>>(() => new Set())
   const [pendingDelete, setPendingDelete] = useState<string | null>(null)
   const [openId, setOpenId] = useState<string | null>(null)
@@ -246,17 +248,18 @@ export function SubmissionsView({
             </span>
           ) : null}
         </button>
-        {/* Server-rendered export: the table below holds only a capped page, so
-            exporting what's on screen silently dropped every response past it.
-            The route streams the full set straight to the browser. */}
-        <a
-          href={`/api/forms/${formId}/export`}
-          download
+        {/* Opens the options dialog rather than downloading immediately. The
+            table below holds only a capped page, so the export never reads from
+            it — the dialog sends the search and filters to the server, which
+            re-applies them over every response. */}
+        <button
+          type="button"
+          onClick={() => setExportOpen(true)}
           className="inline-flex h-9 items-center gap-1.5 rounded-md border border-border px-3 text-sm font-medium text-foreground transition-colors hover:bg-muted"
         >
           <Icon name="download" className="size-4" />
           Export
-        </a>
+        </button>
         {/* Only where there is something to archive: a form with no upload
             question can never produce a zip, and a button that always errors
             is worse than one that is not there. */}
@@ -319,6 +322,15 @@ export function SubmissionsView({
         }}
         intelligenceEnabled={intelligenceEnabled}
         onDelete={(id) => setPendingDelete(id)}
+      />
+
+      <ExportDialog
+        formId={formId}
+        open={exportOpen}
+        onOpenChange={setExportOpen}
+        columns={columns}
+        live={{ search, filters, match }}
+        totalCompleted={totalCompleted}
       />
 
       <SubmissionsFilterDialog

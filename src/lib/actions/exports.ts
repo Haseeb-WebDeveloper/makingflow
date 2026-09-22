@@ -23,7 +23,64 @@ import {
   MediaArchiveError,
   type MediaArchive,
 } from "@/lib/submissions/export-media"
-import { exportSpecSchema, SYNC_ROW_CEILING, type ExportSpec } from "@/lib/submissions/export-spec"
+import {
+  encodeSpec,
+  exportSpecSchema,
+  isSyncEligible,
+  syncCeilingFor,
+  SYNC_ROW_CEILING,
+  type ExportSpec,
+} from "@/lib/submissions/export-spec"
+
+export type PrepareExportResult =
+  | { success: true; url: string; rowCount: number }
+  | { success: false; error: string }
+
+/**
+ * Check an export is servable, then hand back the URL that downloads it.
+ *
+ * The dialog cannot make this decision itself: only the server knows how many
+ * responses the scope holds, and the ceiling differs by format. Asking here
+ * means an oversized request is a sentence in the dialog rather than a 413 the
+ * browser renders as a broken download.
+ *
+ * The URL is a plain GET carrying the spec, so the browser downloads it with
+ * the filename from Content-Disposition — which a fetch() could not do.
+ */
+export async function prepareExport(
+  formId: string,
+  input: ExportSpec,
+): Promise<PrepareExportResult> {
+  const workspace = await getDefaultWorkspace()
+  if (!workspace) return { success: false, error: "Not signed in" }
+
+  const parsed = exportSpecSchema.safeParse(input)
+  if (!parsed.success) return { success: false, error: "That export request is not valid" }
+  const spec = parsed.data
+
+  // Tenancy through the same query the download route runs, so the dialog
+  // cannot report a count for a form the caller may not read.
+  const source = await openExport(formId, workspace.id, spec)
+  if (!source) return { success: false, error: "Form not found" }
+
+  const rowCount = await countExportRows(formId, spec)
+  if (!isSyncEligible(spec, rowCount)) {
+    const limit = syncCeilingFor(spec.format).toLocaleString()
+    return {
+      success: false,
+      error:
+        spec.format === "xlsx"
+          ? `Too many responses for one spreadsheet (${rowCount.toLocaleString()}, limit ${limit}). Export as CSV, or narrow it with a filter or date range.`
+          : `Too many responses to export at once (${rowCount.toLocaleString()}, limit ${limit}). Narrow it with a filter or a date range.`,
+    }
+  }
+
+  return {
+    success: true,
+    url: `/api/forms/${formId}/export?spec=${encodeSpec(spec)}`,
+    rowCount,
+  }
+}
 
 export type MediaArchiveResult =
   | {

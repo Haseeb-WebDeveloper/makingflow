@@ -26,7 +26,20 @@ const { GET } = await import("@/app/api/forms/[id]/export/route")
 const { encodeSpec, exportSpecSchema, SYNC_ROW_CEILING } = await import(
   "@/lib/submissions/export-spec"
 )
-const query = await import("@/lib/submissions/export-query")
+/**
+ * The row count is overridden through a wrapper installed before import, not
+ * spied on afterwards: mutating an ES module namespace mid-run has to be undone
+ * and makes the result depend on test order.
+ */
+const counts = vi.hoisted(() => ({ override: null as number | null }))
+vi.mock("@/lib/submissions/export-query", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/submissions/export-query")>()
+  return {
+    ...actual,
+    countExportRows: async (formId: string, spec: never) =>
+      counts.override ?? actual.countExportRows(formId, spec),
+  }
+})
 
 let seq = 0
 
@@ -89,6 +102,7 @@ const exportCsv = async (formId: string, token?: string) => {
 
 beforeEach(() => {
   session.workspaceId = null
+  counts.override = null
 })
 
 describe("GET /api/forms/[id]/export", () => {
@@ -173,14 +187,11 @@ describe("GET /api/forms/[id]/export", () => {
     session.workspaceId = f.workspaceId
     // Faked rather than seeded: proving the refusal does not require inserting
     // 5,001 rows, and this is the only assertion that needs the count to lie.
-    const spy = vi.spyOn(query, "countExportRows").mockResolvedValue(SYNC_ROW_CEILING + 1)
-    try {
-      const { res, body } = await exportCsv(f.formId)
-      expect(res.status).toBe(413)
-      expect(body).toContain("too large")
-    } finally {
-      spy.mockRestore()
-    }
+    counts.override = SYNC_ROW_CEILING + 1
+
+    const { res, body } = await exportCsv(f.formId)
+    expect(res.status).toBe(413)
+    expect(body).toContain("too large")
   })
 
   test("a signed link carries its own spec and the query string cannot widen it", async () => {
