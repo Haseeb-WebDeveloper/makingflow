@@ -23,7 +23,7 @@ import {
   disconnectNotion,
 } from "@/lib/actions/integrations";
 import { CardShell, StatusBadge } from "@/components/integrations/cards";
-import { SheetSharingControl } from "@/components/integrations/sheet-sharing-control";
+import { AccessButton } from "@/components/integrations/sheet-access";
 import type { WorkspaceIntegrations } from "@/lib/data/integrations";
 import { McpCard, type McpCardProps } from "@/components/integrations/mcp-card";
 import { SVGIcon } from "../ui/svg-icon";
@@ -514,11 +514,29 @@ export function WorkspaceIntegrationsPanel({
             </p>
 
             {connection ? (
-              <SheetSharingControl
-                sharing={sharing}
-                accountEmail={connection.accountEmail}
-                canManage={canManageSharing}
-              />
+              <div className="mt-4 flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2">
+                <span className="text-xs font-medium text-foreground">
+                  Access to every sheet
+                </span>
+                <AccessButton
+                  scope={{
+                    kind: "workspace",
+                    customisedForms: sharing.customisedForms,
+                  }}
+                  access={{
+                    source: "workspace",
+                    role: sharing.setting?.role ?? null,
+                    audience: sharing.setting?.audience ?? null,
+                    granted: sharing.members.filter((m) => m.state === "shared").length,
+                    blocked: sharing.members.filter(
+                      (m) => m.state === "blocked" || m.state === "failed"
+                    ).length,
+                  }}
+                  members={sharing.members}
+                  accountEmail={connection.accountEmail}
+                  canManage={canManageSharing}
+                />
+              </div>
             ) : null}
 
             <div className="mt-4 flex items-center justify-between">
@@ -547,6 +565,15 @@ export function WorkspaceIntegrationsPanel({
                         </p>
                         <div className="mt-1 flex items-center gap-2">
                           <StatusBadge status={f.status} />
+                          {connection ? (
+                            <AccessButton
+                              scope={{ kind: "form", formId: f.id }}
+                              access={f.access}
+                              members={sharing.members}
+                              accountEmail={connection.accountEmail}
+                              canManage={canManageSharing}
+                            />
+                          ) : null}
                           {f.spreadsheetUrl && f.status !== "orphaned" ? (
                             <a
                               href={f.spreadsheetUrl}

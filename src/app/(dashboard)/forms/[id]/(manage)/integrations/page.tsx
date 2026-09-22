@@ -49,6 +49,7 @@ export default async function FormIntegrationsPage({
           discord={discord}
           notion={notion}
           ownerEmail={user.email}
+          canManageAccess={workspace.role === "owner"}
         />
       </div>
 

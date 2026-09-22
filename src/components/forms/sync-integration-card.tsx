@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { showToast } from "@/components/ui/toast";
 import { CardShell, StatusBadge } from "@/components/integrations/cards";
+import { AccessButton, type AccessMember } from "@/components/integrations/sheet-access";
 import { DeliveryLog } from "@/components/forms/delivery-log";
 import {
   enableFormSheet,
@@ -63,6 +64,7 @@ export function SyncIntegrationCard({
   connectionLabel,
   status,
   destinationUrl,
+  access,
 }: {
   formId: string;
   provider: SyncProvider;
@@ -71,6 +73,14 @@ export function SyncIntegrationCard({
   connectionLabel: string | null;
   status: FormSyncStatus;
   destinationUrl: string | null;
+  /** Sheets only: who can open this form's spreadsheet (Notion has no equivalent). */
+  access?: {
+    formId: string;
+    state: import("@/lib/data/integrations").FormAccess;
+    members: AccessMember[];
+    accountEmail: string;
+    canManage: boolean;
+  };
 }) {
   const router = useRouter();
   const { name, iconSrc, destinationNoun, openLabel, enable, pause, preserveColors } =
@@ -211,6 +221,18 @@ export function SyncIntegrationCard({
                     </a>
                   ) : null}
                 </div>
+                {access ? (
+                  <div className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
+                    <span>Access</span>
+                    <AccessButton
+                      scope={{ kind: "form", formId: access.formId }}
+                      access={access.state}
+                      members={access.members}
+                      accountEmail={access.accountEmail}
+                      canManage={access.canManage}
+                    />
+                  </div>
+                ) : null}
                 <p className="mt-1 text-xs text-muted-foreground">
                   {status === "pending"
                     ? `This form has no ${destinationNoun} yet.`

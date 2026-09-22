@@ -23,6 +23,7 @@ export function IntegrationsPanel({
   discord,
   notion,
   ownerEmail,
+  canManageAccess,
 }: {
   formId: string;
   state: GoogleSheetsState;
@@ -31,6 +32,8 @@ export function IntegrationsPanel({
   discord: FormDiscordState;
   notion: NotionState;
   ownerEmail: string;
+  /** Owner-only, decided on the server — who may change who can open the sheet. */
+  canManageAccess: boolean;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -75,6 +78,17 @@ export function IntegrationsPanel({
         }
         status={state.status}
         destinationUrl={state.spreadsheetUrl}
+        access={
+          state.connection
+            ? {
+                formId,
+                state: state.access,
+                members: state.members,
+                accountEmail: state.connection.accountEmail,
+                canManage: canManageAccess,
+              }
+            : undefined
+        }
       />
 
       {/* ── Webhooks ── */}
