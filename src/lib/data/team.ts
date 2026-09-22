@@ -1,5 +1,6 @@
 import { and, count, desc, eq } from 'drizzle-orm'
 import { db } from '@/lib/db'
+import { reconcileWorkspaceSheetShares } from '@/lib/integrations/sheets-sharing'
 import {
   users,
   workspaceInvitations,
@@ -152,6 +153,11 @@ export async function acceptInvitationByToken(
       .set({ status: 'accepted' })
       .where(eq(workspaceInvitations.id, invite.id))
   })
+
+  // A new member should not have to ask anyone for access to the spreadsheets.
+  // Awaited because this also runs from signup, which has no request scope to
+  // defer into; the reconciler never throws, so joining cannot fail on it.
+  await reconcileWorkspaceSheetShares(invite.workspaceId)
 
   return { ok: true, workspaceId: invite.workspaceId }
 }

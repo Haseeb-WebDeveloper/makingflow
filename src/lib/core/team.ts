@@ -30,6 +30,7 @@ import { db } from "@/lib/db"
 import { users, workspaceInvitations, workspaceMembers } from "@/lib/db/schema"
 import { authorize, type AuthContext } from "@/lib/auth/context"
 import { invalidate } from "@/lib/core/cache"
+import { reconcileWorkspaceSheetShares } from "@/lib/integrations/sheets-sharing"
 import { getOwnerCount } from "@/lib/data/team"
 import { sendEmail, isEmailConfigured } from "@/lib/email/provider"
 import { inviteEmailHtml } from "@/lib/email/templates"
@@ -209,6 +210,12 @@ export async function removeMember(ctx: AuthContext, userId: string): Promise<Re
     .where(
       and(eq(workspaceMembers.workspaceId, ctx.workspaceId), eq(workspaceMembers.userId, userId)),
     )
+  // Their access to the response spreadsheets goes with their membership.
+  // AWAITED, not deferred: this is a withdrawal of access, so it should be done
+  // before we report success. The reconciler never throws, so it cannot fail the
+  // removal.
+  await reconcileWorkspaceSheetShares(ctx.workspaceId)
+
   invalidate(ctx, { paths: ["/settings/workspace"] })
   return { success: true }
 }

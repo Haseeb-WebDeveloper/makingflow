@@ -360,3 +360,47 @@ describe("a spreadsheet replaced after an account switch", () => {
     expect((after.config.shares ?? []).filter((sh) => sh.permissionId)).toHaveLength(2)
   })
 })
+
+describe("membership changes", () => {
+  test("removing a member withdraws their access", async () => {
+    // Leaving the workspace has to mean leaving the data, or "remove member" is a
+    // claim nobody checks until it matters.
+    //
+    // This drives removeMember rather than the reconciler, because the trigger IS
+    // the behaviour under test — and note that the integration setup stubs after()
+    // to a no-op, so a deferred reconcile would be invisible here and in any other
+    // test that tried to check it.
+    const teamCore = await import("@/lib/core/team")
+    const { testContext } = await import("../helpers/context")
+
+    const s = await seed({ share: { role: "reader", audience: "all" } })
+    await reconcileSheetShares(await conn(s.workspaceId), await rowFor(s.formId))
+
+    const members = await db
+      .select({ userId: workspaceMembers.userId, email: users.email })
+      .from(workspaceMembers)
+      .innerJoin(users, eq(users.id, workspaceMembers.userId))
+      .where(eq(workspaceMembers.workspaceId, s.workspaceId))
+      .orderBy(users.email)
+    // Removal is an owner's act, and cannot be aimed at the person doing it.
+    const actor = members[0]
+    const victim = members[1]
+    await db
+      .update(workspaceMembers)
+      .set({ role: "owner" })
+      .where(
+        and(
+          eq(workspaceMembers.workspaceId, s.workspaceId),
+          eq(workspaceMembers.userId, actor.userId),
+        ),
+      )
+    const ctx = testContext({ userId: actor.userId, workspaceId: s.workspaceId, role: "owner" })
+    unshareCalls.length = 0
+
+    const res = await teamCore.removeMember(ctx, victim.userId)
+
+    expect(res).toEqual({ success: true })
+    expect(unshareCalls).toHaveLength(1)
+    expect((await sharesOf(s.rowId)).some((sh) => sh.email === victim.email)).toBe(false)
+  })
+})
