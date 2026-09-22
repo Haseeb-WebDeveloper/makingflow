@@ -23,6 +23,7 @@ import {
   disconnectNotion,
 } from "@/lib/actions/integrations";
 import { CardShell, StatusBadge } from "@/components/integrations/cards";
+import { SheetSharingControl } from "@/components/integrations/sheet-sharing-control";
 import type { WorkspaceIntegrations } from "@/lib/data/integrations";
 import { McpCard, type McpCardProps } from "@/components/integrations/mcp-card";
 import { SVGIcon } from "../ui/svg-icon";
@@ -119,9 +120,12 @@ function OnPill({ label = "On" }: { label?: string }) {
 export function WorkspaceIntegrationsPanel({
   data,
   mcp,
+  canManageSharing,
 }: {
   data: WorkspaceIntegrations;
   mcp: McpCardProps;
+  /** Owner-only, decided on the server — never re-derived from a role here. */
+  canManageSharing: boolean;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -159,8 +163,17 @@ export function WorkspaceIntegrationsPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const { configured, connection, allForms, forms, email, webhook, discord, notion } =
-    data;
+  const {
+    configured,
+    connection,
+    allForms,
+    forms,
+    email,
+    webhook,
+    discord,
+    notion,
+    sharing,
+  } = data;
   const connected = Boolean(connection);
   const syncingCount = forms.filter((f) => f.status === "syncing").length;
   const emailActive = email.forms.some((f) => f.status === "on");
@@ -499,6 +512,14 @@ export function WorkspaceIntegrationsPanel({
               form&apos;s sheet is created on its first response, and new forms
               are added automatically.
             </p>
+
+            {connection ? (
+              <SheetSharingControl
+                sharing={sharing}
+                accountEmail={connection.accountEmail}
+                canManage={canManageSharing}
+              />
+            ) : null}
 
             <div className="mt-4 flex items-center justify-between">
               <h4 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">

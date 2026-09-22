@@ -36,6 +36,9 @@ export default async function IntegrationsPage() {
       <div className="mt-6">
         <WorkspaceIntegrationsPanel
           data={data}
+          // Sharing the spreadsheets out is an owner's call; the rest of this
+          // page is not gated.
+          canManageSharing={session.ctx.role === "owner"}
           mcp={{
             keys,
             apps,
