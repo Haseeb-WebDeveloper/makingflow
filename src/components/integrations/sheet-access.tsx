@@ -3,12 +3,21 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetDescription,
-} from "@/components/ui/sheet";
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { showToast } from "@/components/ui/toast";
@@ -19,7 +28,7 @@ import type { SheetShareError, SheetSharingSetting } from "@/lib/db/schema";
 /**
  * What a Share button governs: one form, or every form in the workspace.
  *
- * `customisedForms` travels with the workspace scope because applying a
+ * `customisedForms` travels with the workspace scope because saving a
  * workspace-wide choice replaces the per-form ones, and the person clicking
  * deserves to know that before they click rather than after.
  */
@@ -27,9 +36,9 @@ export type AccessScope =
   | { kind: "form"; formId: string }
   | { kind: "workspace"; customisedForms: number };
 
-type Role = "reader" | "writer" | "none";
+/** What a person's own dropdown can say. `inherit` = whatever everyone gets. */
+type PersonChoice = "inherit" | "reader" | "writer" | "none";
 
-/** Initials, for the avatar beside each address. */
 function initials(email: string) {
   return email.slice(0, 2).toUpperCase();
 }
@@ -39,9 +48,7 @@ function reasonText(reason: SheetShareError | null, accountEmail: string): strin
   const domain = accountEmail.split("@")[1];
   switch (reason) {
     case "domain_policy":
-      return domain
-        ? `${domain} blocks sharing outside the domain`
-        : "blocked by domain policy";
+      return domain ? `${domain} blocks sharing outside the domain` : "blocked by policy";
     case "not_a_google_account":
       return "not a Google account";
     default:
@@ -49,17 +56,53 @@ function reasonText(reason: SheetShareError | null, accountEmail: string): strin
   }
 }
 
+/** The one-line answer for the row the button sits in. */
+export function accessSummary(access: FormAccess): string {
+  if (access.blocked > 0) {
+    return `${access.blocked} blocked`;
+  }
+  if (access.general) {
+    const excluded = access.people.filter((p) => p.role === "none").length;
+    return excluded ? `Everyone except ${excluded}` : "Everyone";
+  }
+  const named = access.people.filter((p) => p.role !== "none").length;
+  if (named === 0) return "Private";
+  return `${named} ${named === 1 ? "person" : "people"}`;
+}
+
 /**
- * The Share button, and the dialog behind it.
+ * What the dialog would store, given what is on screen.
  *
- * Deliberately Google's own shape: people with a role each, then one general
- * access line. It is the dialog everybody has already used for exactly this
- * decision, so there is nothing here to learn — and the role select per person is
- * what lets one teammate edit while the rest only look.
+ * Pure and exported, because this is the rule that decides who ends up with
+ * access — worth reading and testing without a rendered dialog in the way.
  *
- * The trigger carries one piece of state and no more: a warning dot when somebody
- * could not be given access, because that is the only thing you cannot discover
- * by opening the dialog yourself.
+ * "Same as everyone" is stored as NOTHING, and so is anyone whose role already
+ * matches the general line: a member added to the workspace later is then carried
+ * by that line instead of being silently left out of every sheet.
+ */
+export function buildSharingSetting(input: {
+  audience: "everyone" | "chosen";
+  everyoneRole: "reader" | "writer";
+  choices: Record<string, PersonChoice>;
+  members: { email: string }[];
+}): SheetSharingSetting {
+  const general = input.audience === "everyone" ? input.everyoneRole : null;
+  const people = input.members
+    .map((m) => ({ email: m.email, role: input.choices[m.email] ?? "inherit" }))
+    .filter(
+      (p): p is { email: string; role: "reader" | "writer" | "none" } =>
+        p.role !== "inherit" && p.role !== (general ?? "none"),
+    );
+  return { general, ...(people.length ? { people } : {}) };
+}
+
+/**
+ * Who can open a response spreadsheet.
+ *
+ * The button says how things stand; the dialog is where they change. The
+ * dialog asks ONE question first — everyone, or only chosen people — and only
+ * then talks about roles, because "general access" alongside a list of people
+ * with their own roles is the part nobody could read.
  */
 export function ShareButton({
   scope,
@@ -67,14 +110,12 @@ export function ShareButton({
   members,
   accountEmail,
   canManage = true,
-  label = "Share",
 }: {
   scope: AccessScope;
   access: FormAccess;
   members: AccessMemberState[];
   accountEmail: string;
   canManage?: boolean;
-  label?: string;
 }) {
   const [open, setOpen] = React.useState(false);
 
@@ -82,12 +123,12 @@ export function ShareButton({
     <>
       <Button
         size="sm"
-        variant="ghost"
-        className="h-7 gap-1.5 px-2 text-xs text-muted-foreground hover:text-foreground"
+        variant="outline"
+        className="h-7 gap-1.5 px-2 text-xs"
         onClick={() => setOpen(true)}
       >
         <Icon name="add-user" className="size-3.5" />
-        {label}
+        Share
         {access.blocked > 0 ? (
           <span
             aria-label={`${access.blocked} blocked`}
@@ -111,7 +152,7 @@ export function ShareButton({
 }
 
 /**
- * Mounted only while open, which is also how the draft below is seeded from the
+ * Mounted only while open, which is how the draft below is seeded from the
  * current state without an effect that writes state during render.
  */
 function ShareDialog({
@@ -132,22 +173,35 @@ function ShareDialog({
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
 
-  // The dialog is a draft: nothing is written until Save, so a half-made change
-  // cannot leave somebody sharing a file they did not mean to share.
-  const [general, setGeneral] = React.useState<"reader" | "writer" | null>(access.general);
-  const [roles, setRoles] = React.useState<Record<string, Role>>(() =>
-    Object.fromEntries(members.map((m) => [m.email, m.role])),
+  // A draft: nothing is written until Save, so a half-made change cannot leave
+  // somebody sharing a file they did not mean to share.
+  const [audience, setAudience] = React.useState<"everyone" | "chosen">(
+    access.general ? "everyone" : "chosen",
+  );
+  const [everyoneRole, setEveryoneRole] = React.useState<"reader" | "writer">(
+    access.general ?? "reader",
+  );
+  const [choices, setChoices] = React.useState<Record<string, PersonChoice>>(() =>
+    Object.fromEntries(
+      members.map((m) => {
+        const own = access.people.find(
+          (p) => p.email.toLowerCase() === m.email.toLowerCase(),
+        );
+        return [m.email, own ? own.role : access.general ? "inherit" : "none"];
+      }),
+    ),
   );
 
   const perForm = scope.kind === "form";
   const customised = scope.kind === "workspace" ? scope.customisedForms : 0;
   const inheriting = perForm && access.source === "workspace";
 
+  const next = buildSharingSetting({ audience, everyoneRole, choices, members });
   const dirty =
-    general !== access.general ||
-    members.some((m) => (roles[m.email] ?? "none") !== m.role);
+    next.general !== access.general ||
+    JSON.stringify(next.people ?? []) !== JSON.stringify(access.people ?? []);
 
-  function save(setting: SheetSharingSetting | null, done: string) {
+  function write(setting: SheetSharingSetting | null, done: string) {
     startTransition(async () => {
       const res = perForm
         ? await setFormSheetSharing((scope as { formId: string }).formId, setting)
@@ -162,156 +216,186 @@ function ShareDialog({
     });
   }
 
-  function saveDraft() {
-    // Only the people who differ from the general line are worth storing; the
-    // rest follow it, so a later membership change carries them automatically.
-    const people = members
-      .map((m) => ({ email: m.email, role: roles[m.email] ?? "none" }))
-      .filter((p) => p.role !== (general ?? "none"));
-    save(
-      { general, ...(people.length ? { people } : {}) },
-      perForm ? "Access updated" : "Access updated on every sheet",
-    );
-  }
-
   return (
-    <Sheet open onOpenChange={(next) => (next ? undefined : onClose())}>
-      <SheetContent side="right" className="w-full sm:max-w-md">
-        <SheetHeader>
-          <SheetTitle>{perForm ? "Share this sheet" : "Share every sheet"}</SheetTitle>
-          <SheetDescription>
+    <Dialog open onOpenChange={(o) => (o ? undefined : onClose())}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>{perForm ? "Share this spreadsheet" : "Share every spreadsheet"}</DialogTitle>
+          <DialogDescription>
             {inheriting
-              ? "Following the workspace setting."
+              ? `Following the workspace setting. Files live in ${accountEmail}’s Drive.`
               : `Files live in ${accountEmail}’s Drive.`}
-          </SheetDescription>
-        </SheetHeader>
+          </DialogDescription>
+        </DialogHeader>
 
-        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 lg:px-6">
+        <div className="space-y-5">
           {customised > 0 ? (
             <p className="rounded-md bg-warning-bg px-3 py-2 text-xs text-warning-foreground">
-              {customised} {customised === 1 ? "form has" : "forms have"} its own access.
-              Saving here replaces {customised === 1 ? "it" : "them"}.
+              {customised} {customised === 1 ? "form has" : "forms have"} their own
+              sharing. Saving here replaces {customised === 1 ? "it" : "them"}.
             </p>
           ) : null}
 
-          <ul className="space-y-3">
-            <li className="flex items-center gap-2.5">
-              <Avatar email={accountEmail} />
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-xs font-medium text-foreground">{accountEmail}</p>
-                <p className="text-[11px] text-muted-foreground">Owns the files</p>
-              </div>
-              <span className="text-[11px] text-muted-foreground">Owner</span>
-            </li>
+          {/* ── One question first, then roles. Asking both at once is what
+                made the old "General access" line unreadable.
 
-            {members.map((m) => {
-              const role = roles[m.email] ?? "none";
-              return (
-                <li key={m.email} className="flex items-center gap-2.5">
-                  <Avatar email={m.email} danger={m.state === "blocked"} />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-xs font-medium text-foreground">{m.email}</p>
-                    {m.state === "blocked" || m.state === "failed" ? (
-                      <p className="text-[11px] text-destructive">
-                        {reasonText(m.reason, accountEmail)}
-                      </p>
-                    ) : m.state === "pending" && role !== "none" ? (
-                      <p className="text-[11px] text-muted-foreground">not shared yet</p>
-                    ) : null}
-                  </div>
-                  {canManage ? (
-                    <select
-                      aria-label={`Access for ${m.email}`}
-                      value={role}
-                      disabled={pending}
-                      onChange={(e) =>
-                        setRoles((r) => ({ ...r, [m.email]: e.target.value as Role }))
-                      }
-                      className="rounded-md border border-border bg-background px-1.5 py-1 text-[11px] text-foreground"
-                    >
-                      <option value="none">No access</option>
-                      <option value="reader">Viewer</option>
-                      <option value="writer">Editor</option>
-                    </select>
-                  ) : (
-                    <span className="text-[11px] text-muted-foreground">
-                      {role === "none" ? "No access" : role === "reader" ? "Viewer" : "Editor"}
-                    </span>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
-
-          <div className="border-t border-border pt-4">
-            <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-              General access
+                Somebody who cannot change any of this gets a sentence, not a
+                row of controls they are not allowed to touch. ── */}
+          {!canManage ? (
+            <p className="rounded-lg border border-border px-3 py-2.5 text-sm text-foreground">
+              {audience === "everyone"
+                ? `Everyone in the workspace can ${everyoneRole === "writer" ? "edit" : "view"}`
+                : "Only chosen people"}
             </p>
-            <div className="mt-2 flex items-center gap-2">
-              <Icon
-                name={general ? "unlock" : "lock"}
-                className="size-4 text-muted-foreground"
-              />
-              {canManage ? (
-                <select
-                  aria-label="General access"
-                  value={general ?? "restricted"}
-                  disabled={pending}
-                  onChange={(e) =>
-                    setGeneral(
-                      e.target.value === "restricted"
-                        ? null
-                        : (e.target.value as "reader" | "writer"),
-                    )
-                  }
-                  className="rounded-md border border-border bg-background px-1.5 py-1 text-xs text-foreground"
+          ) : (
+          <RadioGroup
+            value={audience}
+            onValueChange={(v) => setAudience(v as "everyone" | "chosen")}
+            className="gap-2"
+            disabled={pending}
+          >
+            <label className="flex items-center gap-2.5 rounded-lg border border-border px-3 py-2.5">
+              <RadioGroupItem value="everyone" id="aud-everyone" />
+              <span className="flex-1 text-sm text-foreground">Everyone in the workspace</span>
+              {audience === "everyone" ? (
+                <Select
+                  value={everyoneRole}
+                  onValueChange={(v) => setEveryoneRole(v as "reader" | "writer")}
+                  disabled={!canManage || pending}
                 >
-                  <option value="restricted">Restricted — only people above</option>
-                  <option value="reader">Everyone in the workspace can view</option>
-                  <option value="writer">Everyone in the workspace can edit</option>
-                </select>
-              ) : (
-                <span className="text-xs text-foreground">
-                  {general === null
-                    ? "Restricted"
-                    : general === "reader"
-                      ? "Everyone in the workspace can view"
-                      : "Everyone in the workspace can edit"}
-                </span>
-              )}
-            </div>
-            <p className="mt-2 text-[11px] text-muted-foreground">
-              Members can always read responses in MakingFlow — this is Drive access.
+                  <SelectTrigger size="sm" className="w-[110px] text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="reader">Can view</SelectItem>
+                    <SelectItem value="writer">Can edit</SelectItem>
+                  </SelectContent>
+                </Select>
+              ) : null}
+            </label>
+
+            <label className="flex items-center gap-2.5 rounded-lg border border-border px-3 py-2.5">
+              <RadioGroupItem value="chosen" id="aud-chosen" />
+              <span className="flex-1 text-sm text-foreground">Only the people I choose</span>
+            </label>
+          </RadioGroup>
+          )}
+
+          {/* ── The people. Each dropdown says what THIS person gets, with
+                "Same as everyone" naming the inheritance out loud. ── */}
+          <div>
+            <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              People
             </p>
+            <ul className="space-y-2.5">
+              <li className="flex items-center gap-3">
+                <Avatar email={accountEmail} />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm text-foreground">{accountEmail}</p>
+                  <p className="text-xs text-muted-foreground">Owns the files</p>
+                </div>
+                <span className="shrink-0 text-xs text-muted-foreground">Owner</span>
+              </li>
+
+              {members.map((m) => {
+                const choice = choices[m.email] ?? "inherit";
+                return (
+                  <li key={m.email} className="flex items-center gap-3">
+                    <Avatar email={m.email} danger={m.state === "blocked"} />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm text-foreground">{m.email}</p>
+                      {m.state === "blocked" || m.state === "failed" ? (
+                        <p className="text-xs text-destructive">
+                          {reasonText(m.reason, accountEmail)}
+                        </p>
+                      ) : m.state === "shared" ? (
+                        <p className="text-xs text-muted-foreground">Has access</p>
+                      ) : null}
+                    </div>
+                    {canManage ? (
+                      <Select
+                        value={choice}
+                        onValueChange={(v) =>
+                          setChoices((c) => ({ ...c, [m.email]: v as PersonChoice }))
+                        }
+                        disabled={pending}
+                      >
+                        <SelectTrigger
+                          size="sm"
+                          className="w-[145px] shrink-0 text-xs"
+                          aria-label={`Access for ${m.email}`}
+                        >
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {audience === "everyone" ? (
+                            <SelectItem value="inherit">Same as everyone</SelectItem>
+                          ) : null}
+                          <SelectItem value="reader">Can view</SelectItem>
+                          <SelectItem value="writer">Can edit</SelectItem>
+                          <SelectItem value="none">No access</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <span className="shrink-0 text-xs text-muted-foreground">
+                        {choice === "none"
+                          ? "No access"
+                          : choice === "writer"
+                            ? "Can edit"
+                            : "Can view"}
+                      </span>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
           </div>
+
+          <p className="text-xs text-muted-foreground">
+            Members can always read responses inside MakingFlow. This is Google Drive
+            access to the spreadsheet itself.
+          </p>
         </div>
 
         {canManage ? (
-          <div className="flex items-center justify-between gap-2 border-t border-border p-4 lg:p-6">
-            <Button size="sm" disabled={pending || !dirty} onClick={saveDraft}>
-              Save
-            </Button>
+          <DialogFooter className="sm:justify-between">
             {perForm && access.source === "form" ? (
               <Button
-                size="sm"
                 variant="ghost"
+                size="sm"
                 disabled={pending}
-                onClick={() => save(null, "Following the workspace again")}
+                onClick={() => write(null, "Following the workspace again")}
               >
                 Follow workspace
               </Button>
-            ) : null}
-          </div>
+            ) : (
+              <span />
+            )}
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" disabled={pending} onClick={onClose}>
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                disabled={pending || !dirty}
+                onClick={() =>
+                  write(next, perForm ? "Sharing updated" : "Sharing updated on every sheet")
+                }
+              >
+                Save
+              </Button>
+            </div>
+          </DialogFooter>
         ) : null}
-      </SheetContent>
-    </Sheet>
+      </DialogContent>
+    </Dialog>
   );
 }
 
 function Avatar({ email, danger }: { email: string; danger?: boolean }) {
   return (
     <span
-      className={`flex size-7 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold ${
+      className={`flex size-8 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold ${
         danger ? "bg-destructive/15 text-destructive" : "bg-muted text-foreground"
       }`}
     >

@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { showToast } from "@/components/ui/toast";
 import { CardShell, StatusBadge } from "@/components/integrations/cards";
-import { ShareButton } from "@/components/integrations/sheet-access";
+import { ShareButton, accessSummary } from "@/components/integrations/sheet-access";
 import { DeliveryLog } from "@/components/forms/delivery-log";
 import {
   enableFormSheet,
@@ -221,18 +221,7 @@ export function SyncIntegrationCard({
                     </a>
                   ) : null}
                 </div>
-                {access ? (
-                  <div className="mt-1">
-                    <ShareButton
-                      scope={{ kind: "form", formId: access.formId }}
-                      access={access.state}
-                      members={access.members}
-                      accountEmail={access.accountEmail}
-                      canManage={access.canManage}
-                      label="Share"
-                    />
-                  </div>
-                ) : null}
+
                 <p className="mt-1 text-xs text-muted-foreground">
                   {status === "pending"
                     ? `This form has no ${destinationNoun} yet.`
@@ -262,6 +251,25 @@ export function SyncIntegrationCard({
                 onCheckedChange={onToggle}
               />
             </div>
+
+            {access ? (
+              <div className="mt-2 flex items-center justify-between gap-3 rounded-lg border border-border p-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-foreground">Sharing</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    {accessSummary(access.state)}
+                    {access.state.source === "workspace" ? " · from the workspace" : ""}
+                  </p>
+                </div>
+                <ShareButton
+                  scope={{ kind: "form", formId: access.formId }}
+                  access={access.state}
+                  members={access.members}
+                  accountEmail={access.accountEmail}
+                  canManage={access.canManage}
+                />
+              </div>
+            ) : null}
           </div>
 
           <div className="border-t border-border p-4 lg:p-6">

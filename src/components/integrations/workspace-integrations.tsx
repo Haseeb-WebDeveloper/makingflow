@@ -23,7 +23,7 @@ import {
   disconnectNotion,
 } from "@/lib/actions/integrations";
 import { CardShell, StatusBadge } from "@/components/integrations/cards";
-import { ShareButton } from "@/components/integrations/sheet-access";
+import { ShareButton, accessSummary } from "@/components/integrations/sheet-access";
 import type { WorkspaceIntegrations } from "@/lib/data/integrations";
 import { McpCard, type McpCardProps } from "@/components/integrations/mcp-card";
 import { SVGIcon } from "../ui/svg-icon";
@@ -514,10 +514,24 @@ export function WorkspaceIntegrationsPanel({
             </p>
 
             {connection ? (
-              <div className="mt-4 flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2">
-                <span className="text-xs font-medium text-foreground">
-                  Access to every sheet
-                </span>
+              <div className="mt-4 flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2.5">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-foreground">Sharing</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    {accessSummary({
+                      source: "workspace",
+                      general: sharing.setting?.general ?? null,
+                      people: sharing.setting?.people ?? [],
+                      granted: 0,
+                      blocked: 0,
+                    })}
+                    {sharing.customisedForms > 0
+                      ? ` · ${sharing.customisedForms} form${
+                          sharing.customisedForms === 1 ? "" : "s"
+                        } customised`
+                      : ""}
+                  </p>
+                </div>
                 <ShareButton
                   scope={{
                     kind: "workspace",
@@ -568,7 +582,10 @@ export function WorkspaceIntegrationsPanel({
                 {forms.map((f) => {
                   const on = f.status === "syncing" || f.status === "pending";
                   return (
-                    <li key={f.id} className="flex items-center gap-3 py-3">
+                    <li key={f.id} className="flex items-center gap-3 py-2.5">
+                      {/* Left: what this form is and where its sharing stands.
+                          Right: the two things you can do about it. Keeping the
+                          actions in one group is what makes the rows line up. */}
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-medium text-foreground">
                           {f.title}
@@ -576,23 +593,15 @@ export function WorkspaceIntegrationsPanel({
                         <div className="mt-1 flex items-center gap-2">
                           <StatusBadge status={f.status} />
                           {connection ? (
-                            <ShareButton
-                              scope={{ kind: "form", formId: f.id }}
-                              access={f.access}
-                              members={sharing.members.map((m) => ({
-                                email: m.email,
-                                role:
-                                  f.access.people.find(
-                                    (p) => p.email.toLowerCase() === m.email.toLowerCase()
-                                  )?.role ??
-                                  f.access.general ??
-                                  "none",
-                                state: m.state,
-                                reason: m.reason,
-                              }))}
-                              accountEmail={connection.accountEmail}
-                              canManage={canManageSharing}
-                            />
+                            <span
+                              className={
+                                f.access.blocked > 0
+                                  ? "text-xs text-destructive"
+                                  : "text-xs text-muted-foreground"
+                              }
+                            >
+                              {accessSummary(f.access)}
+                            </span>
                           ) : null}
                           {f.spreadsheetUrl && f.status !== "orphaned" ? (
                             <a
@@ -601,27 +610,49 @@ export function WorkspaceIntegrationsPanel({
                               rel="noopener noreferrer"
                               className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground hover:underline"
                             >
-                              Open sheet
+                              Open
                               <Icon name="discovery" className="size-3" />
                             </a>
                           ) : null}
                         </div>
                       </div>
-                      <Switch
-                        checked={on}
-                        disabled={pending}
-                        onCheckedChange={(next) =>
-                          next
-                            ? run(
-                                () => enableFormSheet(f.id),
-                                `“${f.title}” will sync to Sheets`
-                              )
-                            : run(
-                                () => pauseFormSheet(f.id),
-                                `Paused sync for “${f.title}”`
-                              )
-                        }
-                      />
+
+                      <div className="flex shrink-0 items-center gap-2">
+                        {connection ? (
+                          <ShareButton
+                            scope={{ kind: "form", formId: f.id }}
+                            access={f.access}
+                            members={sharing.members.map((m) => ({
+                              email: m.email,
+                              role:
+                                f.access.people.find(
+                                  (p) => p.email.toLowerCase() === m.email.toLowerCase()
+                                )?.role ??
+                                f.access.general ??
+                                "none",
+                              state: m.state,
+                              reason: m.reason,
+                            }))}
+                            accountEmail={connection.accountEmail}
+                            canManage={canManageSharing}
+                          />
+                        ) : null}
+                        <Switch
+                          checked={on}
+                          disabled={pending}
+                          onCheckedChange={(next) =>
+                            next
+                              ? run(
+                                  () => enableFormSheet(f.id),
+                                  `“${f.title}” will sync to Sheets`
+                                )
+                              : run(
+                                  () => pauseFormSheet(f.id),
+                                  `Paused sync for “${f.title}”`
+                                )
+                          }
+                        />
+                      </div>
                     </li>
                   );
                 })}
