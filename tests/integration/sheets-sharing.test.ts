@@ -404,3 +404,46 @@ describe("membership changes", () => {
     expect((await sharesOf(s.rowId)).some((sh) => sh.email === victim.email)).toBe(false)
   })
 })
+
+describe("what the integrations page is told", () => {
+  test("reports the setting and each member's state", async () => {
+    const { getWorkspaceIntegrations } = await import("@/lib/data/integrations")
+    const s = await seed({ share: { role: "reader", audience: "all" } })
+    const members = await otherMembers(s.workspaceId)
+    refuse.set(members[1], "domain_policy")
+    await reconcileSheetShares(await conn(s.workspaceId), await rowFor(s.formId))
+
+    const view = await getWorkspaceIntegrations(s.workspaceId)
+
+    expect(view?.sharing.setting).toEqual({ role: "reader", audience: "all" })
+    const blocked = view?.sharing.members.find((m) => m.email === members[1])
+    expect(blocked?.state).toBe("blocked")
+    expect(blocked?.reason).toBe("domain_policy")
+    const shared = view?.sharing.members.find((m) => m.email === members[0])
+    expect(shared?.state).toBe("shared")
+    expect(shared?.sheets).toBe(1)
+    // The account that owns the files is never listed as needing access to them.
+    const owner = (await conn(s.workspaceId)).accountEmail
+    expect(view?.sharing.members.some((m) => m.email === owner)).toBe(false)
+  })
+
+  test("with sharing off there is nothing to report", async () => {
+    const { getWorkspaceIntegrations } = await import("@/lib/data/integrations")
+    const s = await seed({})
+
+    const view = await getWorkspaceIntegrations(s.workspaceId)
+
+    expect(view?.sharing).toEqual({ setting: null, members: [] })
+  })
+
+  test("a member who has not been reached yet reads as pending, not as shared", async () => {
+    // The setting is on but nothing has reconciled — the state the card shows
+    // between turning it on and the Drive calls finishing.
+    const { getWorkspaceIntegrations } = await import("@/lib/data/integrations")
+    const s = await seed({ share: { role: "reader", audience: "all" } })
+
+    const view = await getWorkspaceIntegrations(s.workspaceId)
+
+    expect(view?.sharing.members.map((m) => m.state)).toEqual(["pending", "pending"])
+  })
+})

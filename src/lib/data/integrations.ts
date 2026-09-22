@@ -3,9 +3,13 @@ import { db } from "@/lib/db"
 import {
   forms,
   formIntegrations,
+  users,
   workspaceConnections,
+  workspaceMembers,
   type GoogleSheetsIntegrationConfig,
   type NotionIntegrationConfig,
+  type SheetShareError,
+  type SheetSharingSetting,
 } from "@/lib/db/schema"
 import { isGoogleConfigured } from "@/lib/integrations/google"
 import { isOrphanedSheetConfig } from "@/lib/integrations/sheets-provision"
@@ -275,6 +279,25 @@ export type WorkspaceIntegrations = {
     connection: { workspaceName: string } | null
     forms: WorkspaceNotionForm[]
   }
+  /**
+   * Whether the workspace's members can open the response spreadsheets, and how
+   * each of them is actually getting on.
+   *
+   * Rolled up ACROSS forms on purpose: one blocked member is one row to act on,
+   * not one row per spreadsheet. Whether the viewer may change any of this is not
+   * here — the page passes that down separately, as it already does for the MCP
+   * card's owner check.
+   */
+  sharing: {
+    setting: SheetSharingSetting | null
+    members: {
+      email: string
+      state: "shared" | "blocked" | "failed" | "pending"
+      reason: SheetShareError | null
+      /** How many of the workspace's spreadsheets this person can open. */
+      sheets: number
+    }[]
+  }
 }
 
 export async function getWorkspaceIntegrations(
@@ -283,7 +306,11 @@ export async function getWorkspaceIntegrations(
 
   const [conn, notionConn] = await Promise.all([
     db
-      .select({ id: workspaceConnections.id, accountEmail: workspaceConnections.accountEmail })
+      .select({
+        id: workspaceConnections.id,
+        accountEmail: workspaceConnections.accountEmail,
+        metadata: workspaceConnections.metadata,
+      })
       .from(workspaceConnections)
       .where(
         and(
@@ -349,9 +376,56 @@ export async function getWorkspaceIntegrations(
 
   const title = (t: string) => t || "Untitled form"
 
+  // ── Sharing, rolled up per person ──
+  //
+  // A member with one failure and four successes reads as "blocked": the failure
+  // is the thing somebody has to do something about, and averaging it away into
+  // "shared" is how a missing teammate goes unnoticed.
+  const sharingSetting = conn?.metadata?.google?.share ?? null
+  const ownerEmail = conn?.accountEmail?.toLowerCase()
+  const memberRollup = new Map<
+    string,
+    WorkspaceIntegrations["sharing"]["members"][number]
+  >()
+  if (sharingSetting) {
+    const memberRows = await db
+      .select({ email: users.email })
+      .from(workspaceMembers)
+      .innerJoin(users, eq(users.id, workspaceMembers.userId))
+      .where(eq(workspaceMembers.workspaceId, workspaceId))
+      .orderBy(users.email)
+    const chosen =
+      sharingSetting.audience === "all"
+        ? null
+        : new Set(sharingSetting.audience.emails.map((e) => e.toLowerCase()))
+    for (const { email } of memberRows) {
+      const k = email.toLowerCase()
+      if (k === ownerEmail || (chosen && !chosen.has(k))) continue
+      memberRollup.set(k, { email, state: "pending", reason: null, sheets: 0 })
+    }
+    for (const row of integrationRows) {
+      if (row.type !== "google_sheets") continue
+      for (const share of (row.config as GoogleSheetsIntegrationConfig).shares ?? []) {
+        const entry = memberRollup.get(share.email.toLowerCase())
+        if (!entry) continue
+        if (share.permissionId) {
+          entry.sheets += 1
+          if (entry.state === "pending") entry.state = "shared"
+        } else if (share.error) {
+          entry.state =
+            share.error === "domain_policy" || share.error === "not_a_google_account"
+              ? "blocked"
+              : "failed"
+          entry.reason = share.error
+        }
+      }
+    }
+  }
+
   return {
     configured: isGoogleConfigured(),
     connection: conn ? { accountEmail: conn.accountEmail } : null,
+    sharing: { setting: sharingSetting, members: [...memberRollup.values()] },
     allForms: formRows.map((f) => ({ id: f.id, title: title(f.title) })),
     forms: formRows.map((f) => {
       const row = byForm.get(f.id)
