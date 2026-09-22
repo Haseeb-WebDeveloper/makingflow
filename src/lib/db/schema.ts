@@ -313,6 +313,34 @@ export type WebhookDeliveryPayload = {
   answers: { fieldId: string; question: string; value: AnswerValue }[]
 }
 
+/** Why a share attempt failed, in terms the card can explain to a human. */
+export type SheetShareError = 'domain_policy' | 'not_a_google_account' | 'failed'
+
+/**
+ * One person's access to one spreadsheet, as WE know it.
+ *
+ * `permissionId` is load-bearing: it is the only thing that distinguishes a
+ * grant we created from a share the account's owner made by hand in Drive, and
+ * therefore the only thing that makes revoking safe. An entry without one is a
+ * record of a failed attempt, never something to delete.
+ */
+export type SheetShare = {
+  email: string
+  role: 'reader' | 'writer'
+  permissionId?: string
+  error?: SheetShareError
+  syncedAt?: string
+}
+
+/**
+ * Who gets access to the spreadsheets a connection owns. Absent = off, so every
+ * existing connection reads as off with no backfill.
+ */
+export type SheetSharingSetting = {
+  role: 'reader' | 'writer'
+  audience: 'all' | { emails: string[] }
+}
+
 export type GoogleSheetsIntegrationConfig = {
   connectionId: string // workspace_connections.id holding the OAuth grant
   spreadsheetId: string
@@ -329,6 +357,9 @@ export type GoogleSheetsIntegrationConfig = {
   // END on the next sync (existing rows stay aligned, blank in the new column);
   // removed fields keep their column so historical rows still resolve.
   columns?: { fieldId: string; label: string }[]
+  // Access we have granted on this spreadsheet, one entry per person. See
+  // SheetShare — an entry with no permissionId is a failed attempt, not a grant.
+  shares?: SheetShare[]
 }
 
 export type EmailIntegrationConfig = {
@@ -365,6 +396,10 @@ export type IntegrationConfig =
 // per workspace) under which every form's database is created.
 export type ConnectionMetadata = {
   notion?: { parentPageId?: string; workspaceId?: string; botId?: string }
+  // Google: whether the spreadsheets this account owns are shared with the
+  // workspace's members, and as what. It lives on the connection because the
+  // account owns the files — disconnect it and the setting is meaningless.
+  google?: { share?: SheetSharingSetting }
 }
 
 // One DNS challenge Vercel returns when a domain is added — surfaced in the UI
