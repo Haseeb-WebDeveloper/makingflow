@@ -1,6 +1,24 @@
 import "server-only"
 
-import type { SheetShare, SheetSharingSetting } from "@/lib/db/schema"
+import { and, desc, eq, isNull, sql } from "drizzle-orm"
+import { db } from "@/lib/db"
+import {
+  forms,
+  formIntegrations,
+  users,
+  workspaceConnections,
+  workspaceMembers,
+  type GoogleSheetsIntegrationConfig,
+  type SheetShare,
+  type SheetSharingSetting,
+  type WorkspaceConnection,
+} from "@/lib/db/schema"
+import {
+  DriveShareError,
+  getValidAccessToken,
+  shareFile,
+  unshareFile,
+} from "@/lib/integrations/google"
 
 /**
  * Giving the workspace's members access to the spreadsheets a connected Google
@@ -84,4 +102,139 @@ export function planShareChanges(
 
   for (const email of wanted.values()) grant.push(email)
   return { grant, revoke, keep }
+}
+
+/** How many sheets one workspace-wide reconcile touches. Google rate-limits. */
+const MAX_RECONCILE_SHEETS = 25
+
+/** The workspace's member addresses, in a stable order. */
+async function memberEmails(workspaceId: string): Promise<string[]> {
+  const rows = await db
+    .select({ email: users.email })
+    .from(workspaceMembers)
+    .innerJoin(users, eq(users.id, workspaceMembers.userId))
+    .where(eq(workspaceMembers.workspaceId, workspaceId))
+    .orderBy(users.email)
+  return rows.map((r) => r.email)
+}
+
+/**
+ * Make one spreadsheet's access match the workspace's setting.
+ *
+ * Best-effort by design: every Drive failure is recorded against the person it
+ * concerns and the remaining work continues. Sharing sits on top of delivery — a
+ * Drive outage must not cost anybody a response, and must never stop a sheet from
+ * being provisioned.
+ *
+ * The write is guarded on the config still naming this connection, so a
+ * concurrent account switch (which replaces the spreadsheet outright) wins
+ * instead of having grants for a dead file written back over it.
+ */
+export async function reconcileSheetShares(
+  conn: WorkspaceConnection,
+  row: { id: string; formId: string; config: GoogleSheetsIntegrationConfig },
+): Promise<void> {
+  try {
+    const config = row.config
+    if (!config.spreadsheetId) return // nothing provisioned yet, nothing to share
+
+    const setting = conn.metadata?.google?.share
+    const role = setting?.role ?? "reader"
+    const desired = desiredShareEmails(
+      setting,
+      await memberEmails(conn.workspaceId),
+      conn.accountEmail,
+    )
+    const { grant, revoke, keep } = planShareChanges(desired, role, config.shares ?? [])
+    if (!grant.length && !revoke.length) return
+
+    const accessToken = await getValidAccessToken(conn)
+    const next: SheetShare[] = [...keep]
+
+    for (const share of revoke) {
+      try {
+        await unshareFile(accessToken, config.spreadsheetId, share.permissionId!)
+      } catch (err) {
+        // Keep the record. A grant we failed to withdraw still exists, and
+        // forgetting its id would strand it on the file forever.
+        next.push({ ...share, error: err instanceof DriveShareError ? err.kind : "failed" })
+      }
+    }
+
+    for (const email of grant) {
+      try {
+        const { permissionId } = await shareFile(accessToken, config.spreadsheetId, email, role)
+        next.push({ email, role, permissionId, syncedAt: new Date().toISOString() })
+      } catch (err) {
+        next.push({ email, role, error: err instanceof DriveShareError ? err.kind : "failed" })
+      }
+    }
+
+    await db
+      .update(formIntegrations)
+      .set({ config: { ...config, shares: next } })
+      .where(
+        and(
+          eq(formIntegrations.id, row.id),
+          sql`${formIntegrations.config} ->> 'connectionId' = ${config.connectionId}`,
+        ),
+      )
+  } catch (err) {
+    console.error("[sharing] reconcile failed", err)
+  }
+}
+
+/**
+ * Bring every sheet in a workspace in line — the setting changed, or the
+ * membership did. Serial and capped for the same reason `ensureWorkspaceSheets`
+ * is: each sheet costs a Drive call per person, and Google rate-limits.
+ */
+export async function reconcileWorkspaceSheetShares(workspaceId: string): Promise<void> {
+  try {
+    const [conn] = await db
+      .select()
+      .from(workspaceConnections)
+      .where(
+        and(
+          eq(workspaceConnections.workspaceId, workspaceId),
+          eq(workspaceConnections.provider, "google"),
+        ),
+      )
+      .limit(1)
+    if (!conn) return
+
+    const rows = await db
+      .select({
+        id: formIntegrations.id,
+        formId: formIntegrations.formId,
+        config: formIntegrations.config,
+      })
+      .from(formIntegrations)
+      .innerJoin(forms, eq(forms.id, formIntegrations.formId))
+      .where(
+        and(
+          eq(formIntegrations.workspaceId, workspaceId),
+          eq(formIntegrations.type, "google_sheets"),
+          isNull(forms.deletedAt),
+        ),
+      )
+      .orderBy(desc(formIntegrations.updatedAt))
+      .limit(MAX_RECONCILE_SHEETS)
+
+    for (const row of rows) {
+      await reconcileSheetShares(conn, {
+        id: row.id,
+        formId: row.formId,
+        config: row.config as GoogleSheetsIntegrationConfig,
+      })
+    }
+    // Say so rather than letting a partial pass read as a complete one.
+    if (rows.length === MAX_RECONCILE_SHEETS) {
+      console.warn(
+        `[sharing] reconciled the ${MAX_RECONCILE_SHEETS} most recently updated sheets for workspace ${workspaceId}; older ones are covered on their next change`,
+      )
+    }
+  } catch (err) {
+    console.error("[sharing] workspace reconcile failed", err)
+  }
 }
