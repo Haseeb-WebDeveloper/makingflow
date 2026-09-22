@@ -17,7 +17,10 @@ import { markdownToPlainText } from "@/lib/markdown"
 import type { ExportSpec, MetaColumnKey } from "@/lib/submissions/export-spec"
 
 export type ExportColumn =
-  | { kind: "meta"; key: MetaColumnKey; header: string }
+  // `timezone` is set only on the columns that render a wall-clock time, and it
+  // travels on the column rather than being passed alongside it so that a row
+  // renderer needs nothing but the column list to produce a correct cell.
+  | { kind: "meta"; key: MetaColumnKey; header: string; timezone?: string }
   | { kind: "field"; fieldId: string; fieldType: string; header: string }
   | { kind: "removed"; question: string; header: string }
   | { kind: "followUp"; index: number; part: "question" | "answer"; header: string }
@@ -61,10 +64,12 @@ export function buildColumns(spec: ExportSpec, src: ColumnSources): ExportColumn
   const out: ExportColumn[] = []
 
   for (const key of spec.columns.meta) {
+    const zoned = ZONED.has(key)
     out.push({
       kind: "meta",
       key,
-      header: ZONED.has(key) ? `${META_HEADERS[key]} (${src.timezone})` : META_HEADERS[key],
+      header: zoned ? `${META_HEADERS[key]} (${src.timezone})` : META_HEADERS[key],
+      ...(zoned ? { timezone: src.timezone } : {}),
     })
   }
 
