@@ -980,7 +980,7 @@ Expected: PASS, 7 tests.
 
 - [ ] **Step 5: Verify nothing else broke**
 
-Run: `pnpm vitest --run --project=unit && pnpm typecheck`
+Run: `pnpm vitest --run --project=unit && pnpm exec tsc --noEmit`
 Expected: PASS. The existing exports are untouched, so `drive-share.test.ts` and the sheets integration tests still pass.
 
 - [ ] **Step 6: Commit**
@@ -1343,7 +1343,7 @@ Expected: PASS.
 
 - [ ] **Step 5: Verify no regression across the whole suite**
 
-Run: `pnpm vitest --run --project=unit && pnpm vitest --run --project=integration && pnpm typecheck && pnpm lint`
+Run: `pnpm vitest --run --project=unit && pnpm vitest --run --project=integration && pnpm exec tsc --noEmit && pnpm lint`
 Expected: PASS. `sheets-account-switch.test.ts` and `sheets-sharing.test.ts` must be green untouched — if they need edits, the change broke a contract it should not have.
 
 - [ ] **Step 6: Commit**
@@ -1369,7 +1369,7 @@ Expected: no hits in `src/` outside `google.ts`'s own definitions. Any hit is a 
 - [ ] **Step 3:** Mark `sheetName` in `GoogleSheetsIntegrationConfig` (`schema.ts:344-373`) as retained for display/back-compat only, with a comment saying no read path uses it to address the sheet any more. Do **not** drop the field — old configs carry it and removing it is a migration for no gain.
 - [ ] **Step 4:** Run the full suite and typecheck.
 
-Run: `pnpm vitest --run && pnpm typecheck && pnpm lint`
+Run: `pnpm vitest --run && pnpm exec tsc --noEmit && pnpm lint`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -1387,7 +1387,7 @@ git commit -m "refactor(sheets): drop the A1-addressed write paths"
 
 ```bash
 pnpm test:db:up
-pnpm vitest --run && pnpm typecheck && pnpm lint
+pnpm vitest --run && pnpm exec tsc --noEmit && pnpm lint
 pnpm test:db:down
 ```
 

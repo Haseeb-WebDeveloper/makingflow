@@ -8,6 +8,12 @@ import {
   type WorkspaceConnection,
 } from "@/lib/db/schema"
 import { decrypt, encrypt } from "@/lib/integrations/crypto"
+import {
+  TAG_COLUMN,
+  TAG_ROW,
+  type Cell,
+  type MetadataTag,
+} from "@/lib/integrations/sheet-layout"
 
 /**
  * Google OAuth + Sheets/Drive API, scoped to the `drive.file` grant. With this
@@ -320,6 +326,213 @@ export async function deleteRow(
       },
     },
   ])
+}
+
+/**
+ * Grid-addressed Sheets I/O.
+ *
+ * Everything below targets a tab by its numeric `sheetId` and cells by 0-based
+ * index — never by an A1 range like `Submissions!A1`. That is deliberate: the
+ * A1 form embeds the tab's NAME, so renaming the tab used to break every write,
+ * and `values.append`'s table detection put rows above the header whenever row
+ * 1 happened to be blank. Indexes have neither failure mode.
+ */
+
+/** Run a batchUpdate (structural edits, metadata, grid writes). */
+export async function runBatchUpdate(
+  accessToken: string,
+  spreadsheetId: string,
+  requests: unknown[],
+): Promise<void> {
+  await batchUpdate(accessToken, spreadsheetId, requests)
+}
+
+/** A CellData that writes `value`, or an empty one that leaves the cell alone. */
+export function cellData(value: Cell): Record<string, unknown> {
+  return value === null ? {} : { userEnteredValue: { stringValue: value } }
+}
+
+function metadataRequest(
+  sheetId: number,
+  dimension: "ROWS" | "COLUMNS",
+  index: number,
+  key: string,
+  value: string,
+): unknown {
+  return {
+    createDeveloperMetadata: {
+      developerMetadata: {
+        metadataKey: key,
+        metadataValue: value,
+        // DOCUMENT rather than PROJECT: it survives a Google Cloud project
+        // change, which PROJECT visibility would silently hide from us.
+        visibility: "DOCUMENT",
+        location: {
+          dimensionRange: { sheetId, dimension, startIndex: index, endIndex: index + 1 },
+        },
+      },
+    },
+  }
+}
+
+export function tagColumnRequest(sheetId: number, index: number, value: string): unknown {
+  return metadataRequest(sheetId, "COLUMNS", index, TAG_COLUMN, value)
+}
+
+export function tagRowRequest(sheetId: number, index: number, value: string): unknown {
+  return metadataRequest(sheetId, "ROWS", index, TAG_ROW, value)
+}
+
+/** Write one cell, leaving every other cell in the row untouched. */
+export function writeCellRequest(
+  sheetId: number,
+  rowIndex: number,
+  columnIndex: number,
+  value: string,
+): unknown {
+  return {
+    updateCells: {
+      start: { sheetId, rowIndex, columnIndex },
+      fields: "userEnteredValue",
+      rows: [{ values: [cellData(value)] }],
+    },
+  }
+}
+
+/** Every MakingFlow tag on the spreadsheet, with its CURRENT index. */
+export async function searchDeveloperMetadata(
+  accessToken: string,
+  spreadsheetId: string,
+  keys: readonly string[],
+): Promise<MetadataTag[]> {
+  const data = (await sheetsFetch(
+    accessToken,
+    `${SHEETS_API}/${spreadsheetId}/developerMetadata:search`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        dataFilters: keys.map((metadataKey) => ({ developerMetadataLookup: { metadataKey } })),
+      }),
+    },
+  )) as {
+    matchedDeveloperMetadata?: {
+      developerMetadata?: {
+        metadataKey?: string
+        metadataValue?: string
+        location?: {
+          dimensionRange?: { sheetId?: number; dimension?: string; startIndex?: number }
+        }
+      }
+    }[]
+  }
+
+  const tags: MetadataTag[] = []
+  for (const match of data.matchedDeveloperMetadata ?? []) {
+    const meta = match.developerMetadata
+    const range = meta?.location?.dimensionRange
+    if (!meta?.metadataKey || meta.metadataValue === undefined) continue
+    // Sheet- or spreadsheet-scoped metadata has no dimensionRange. Defaulting
+    // its index to 0 would claim column A for whatever it tagged.
+    if (!range || range.sheetId === undefined || range.startIndex === undefined) continue
+    if (range.dimension !== "ROWS" && range.dimension !== "COLUMNS") continue
+    tags.push({
+      key: meta.metadataKey,
+      value: meta.metadataValue,
+      dimension: range.dimension,
+      index: range.startIndex,
+      sheetId: range.sheetId,
+    })
+  }
+  return tags
+}
+
+/**
+ * Append one row after the last row with data IN THE SHEET.
+ *
+ * `appendCells` is what `values.append` is not: it has no table detection, so a
+ * blank row above the header cannot pull the write to the top. It is also a
+ * single atomic server-side operation, which matters because deliveries are not
+ * serialized per form — two responses to the same form can land at once.
+ */
+export async function appendCells(
+  accessToken: string,
+  spreadsheetId: string,
+  sheetId: number,
+  cells: Cell[],
+): Promise<void> {
+  if (cells.length === 0) return
+  await batchUpdate(accessToken, spreadsheetId, [
+    {
+      appendCells: {
+        sheetId,
+        fields: "userEnteredValue",
+        rows: [{ values: cells.map(cellData) }],
+      },
+    },
+  ])
+}
+
+/** Append many rows in one atomic call (used to backfill existing submissions). */
+export async function appendCellRows(
+  accessToken: string,
+  spreadsheetId: string,
+  sheetId: number,
+  rows: Cell[][],
+): Promise<void> {
+  if (rows.length === 0) return
+  await batchUpdate(accessToken, spreadsheetId, [
+    {
+      appendCells: {
+        sheetId,
+        fields: "userEnteredValue",
+        rows: rows.map((cells) => ({ values: cells.map(cellData) })),
+      },
+    },
+  ])
+}
+
+/** Read one column top-to-bottom (incl. the header) by index, not by name. */
+export async function readGridColumn(
+  accessToken: string,
+  spreadsheetId: string,
+  sheetId: number,
+  columnIndex: number,
+): Promise<string[]> {
+  const data = (await sheetsFetch(
+    accessToken,
+    `${SHEETS_API}/${spreadsheetId}/values:batchGetByDataFilter`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        majorDimension: "COLUMNS",
+        dataFilters: [
+          { gridRange: { sheetId, startColumnIndex: columnIndex, endColumnIndex: columnIndex + 1 } },
+        ],
+      }),
+    },
+  )) as { valueRanges?: { valueRange?: { values?: string[][] } }[] }
+  return data.valueRanges?.[0]?.valueRange?.values?.[0] ?? []
+}
+
+/** Read the top `rowCount` rows by index — how a displaced header is found. */
+export async function readGridRows(
+  accessToken: string,
+  spreadsheetId: string,
+  sheetId: number,
+  rowCount: number,
+): Promise<string[][]> {
+  const data = (await sheetsFetch(
+    accessToken,
+    `${SHEETS_API}/${spreadsheetId}/values:batchGetByDataFilter`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        majorDimension: "ROWS",
+        dataFilters: [{ gridRange: { sheetId, startRowIndex: 0, endRowIndex: rowCount } }],
+      }),
+    },
+  )) as { valueRanges?: { valueRange?: { values?: string[][] } }[] }
+  return data.valueRanges?.[0]?.valueRange?.values ?? []
 }
 
 /**
