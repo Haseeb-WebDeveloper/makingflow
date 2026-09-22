@@ -2,7 +2,11 @@ import "server-only"
 
 import { eq } from "drizzle-orm"
 import { db } from "@/lib/db"
-import { workspaceConnections, type WorkspaceConnection } from "@/lib/db/schema"
+import {
+  workspaceConnections,
+  type SheetShareError,
+  type WorkspaceConnection,
+} from "@/lib/db/schema"
 import { decrypt, encrypt } from "@/lib/integrations/crypto"
 
 /**
@@ -18,6 +22,7 @@ import { decrypt, encrypt } from "@/lib/integrations/crypto"
 const AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 const TOKEN_URL = "https://oauth2.googleapis.com/token"
 const SHEETS_API = "https://sheets.googleapis.com/v4/spreadsheets"
+const DRIVE_API = "https://www.googleapis.com/drive/v3/files"
 
 export const GOOGLE_SCOPES = [
   "openid",
@@ -315,4 +320,96 @@ export async function deleteRow(
       },
     },
   ])
+}
+
+/**
+ * A Drive sharing call that failed, classified.
+ *
+ * The classification is the point. "403" tells the person reading the
+ * integrations card nothing they can act on, while "your Google Workspace
+ * refuses to share outside the domain" tells them why their teammate is missing
+ * AND that no retry will help.
+ */
+export class DriveShareError extends Error {
+  constructor(
+    readonly kind: SheetShareError,
+    message: string,
+  ) {
+    super(message)
+    this.name = "DriveShareError"
+  }
+}
+
+/** Classify a Drive error body. Google names the policy case in the message. */
+function classifyDriveError(status: number, body: string): SheetShareError {
+  if (status === 403 && /domain|sharing/i.test(body)) return "domain_policy"
+  if (status === 400) return "not_a_google_account"
+  return "failed"
+}
+
+/**
+ * Drive's half of the client, separate from `sheetsFetch` for one reason: every
+ * call here must carry `supportsAllDrives=true`. A file in a Google Workspace
+ * shared drive is invisible to the Drive API without it — a flat 404 — while the
+ * Sheets API reads the same file happily. That asymmetry has already cost one
+ * debugging session; it should not cost another.
+ */
+async function driveFetch(accessToken: string, url: string, init: RequestInit) {
+  const res = await fetch(url, {
+    ...init,
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+      ...(init.headers ?? {}),
+    },
+  })
+  if (!res.ok) {
+    const body = await res.text()
+    throw new DriveShareError(
+      classifyDriveError(res.status, body),
+      `Drive API ${res.status}: ${body}`,
+    )
+  }
+  return res
+}
+
+/**
+ * Give one person access to one file. Allowed under `drive.file` for files this
+ * app created — verified against a live connection, which reports
+ * `capabilities.canShare: true` on our spreadsheets.
+ *
+ * No notification email: this runs once per member per form, so a workspace
+ * turning sharing on would otherwise mail everybody once per spreadsheet.
+ */
+export async function shareFile(
+  accessToken: string,
+  fileId: string,
+  email: string,
+  role: "reader" | "writer",
+): Promise<{ permissionId: string }> {
+  const url = `${DRIVE_API}/${fileId}/permissions?supportsAllDrives=true&sendNotificationEmail=false&fields=id`
+  const res = await driveFetch(accessToken, url, {
+    method: "POST",
+    body: JSON.stringify({ type: "user", role, emailAddress: email }),
+  })
+  const data = (await res.json()) as { id: string }
+  return { permissionId: data.id }
+}
+
+/**
+ * Withdraw a grant we created. A 404 means someone removed it in Drive before we
+ * got here, which is the state we were asking for — not an error.
+ */
+export async function unshareFile(
+  accessToken: string,
+  fileId: string,
+  permissionId: string,
+): Promise<void> {
+  const url = `${DRIVE_API}/${fileId}/permissions/${permissionId}?supportsAllDrives=true`
+  try {
+    await driveFetch(accessToken, url, { method: "DELETE" })
+  } catch (err) {
+    if (err instanceof DriveShareError && /Drive API 404/.test(err.message)) return
+    throw err
+  }
 }
