@@ -4,6 +4,7 @@ import { db } from "@/lib/db"
 import { folders, forms, formChatMessages, formFields, uploads, type FormSettings, type FormAiConfig, type FormTheme, type FieldConfig, type FieldLogic } from "@/lib/db/schema"
 import type { AuthContext } from "@/lib/auth/context"
 import { invalidate } from "@/lib/core/cache"
+import { normalizeRedirectUrl } from "@/lib/core/redirect-url"
 import { destroyAssets, assetFromUrl, resourceTypeFromMime, type CloudinaryAsset } from "@/lib/cloudinary/delete"
 import { ensureFormSheet } from "@/lib/integrations/sync"
 import { ensureFormNotionDatabase } from "@/lib/integrations/notion-sync"
@@ -513,8 +514,21 @@ export async function updateFormSettings(
   if (patch.submissionLimit !== undefined) set.submissionLimit = patch.submissionLimit
   if (patch.closesAt !== undefined)
     set.closesAt = patch.closesAt ? new Date(patch.closesAt) : null
-  if (patch.redirectUrl !== undefined)
-    set.redirectUrl = patch.redirectUrl?.trim() || null
+  // Every writer funnels through here — the settings panel, the builder's
+  // "redirect: <url>" command, the AI's update_settings op, the MCP tool and
+  // the Tally import — so this is the one place the destination has to be
+  // real. Stored scheme-less, `window.location` resolves it against the form's
+  // own page and the respondent lands on a 404 after answering.
+  if (patch.redirectUrl !== undefined) {
+    const raw = patch.redirectUrl?.trim()
+    if (!raw) {
+      set.redirectUrl = null
+    } else {
+      const checked = normalizeRedirectUrl(raw)
+      if (!checked.ok) return { success: false, error: checked.error }
+      set.redirectUrl = checked.url
+    }
+  }
   if (patch.oneResponsePerPerson !== undefined)
     set.oneResponsePerPerson = patch.oneResponsePerPerson
 

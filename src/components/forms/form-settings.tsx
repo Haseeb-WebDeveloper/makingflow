@@ -12,6 +12,7 @@ import { Switch } from "@/components/ui/switch"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { updateFormSettings, type FormSettingsPatch } from "@/lib/actions/forms"
+import { normalizeRedirectUrl } from "@/lib/core/redirect-url"
 import type { FormSettingsData } from "@/lib/data/forms"
 import { showToast } from "@/components/ui/toast"
 
@@ -110,6 +111,10 @@ export const FormSettings = forwardRef<
   const [baseline, setBaseline] = useState(initial)
   const [state, setState] = useState(initial)
   const [saving, startSaving] = useTransition()
+  // Why the redirect field needs its own error slot: the server repairs a bare
+  // host and refuses the rest, but a `type="url"` input gives us nothing here —
+  // this panel has no <form>, so the browser never runs constraint validation.
+  const [redirectError, setRedirectError] = useState<string | null>(null)
 
   const patch = useMemo(() => diffPatch(baseline, state), [baseline, state])
   const dirty = Object.keys(patch).length > 0
@@ -358,13 +363,37 @@ export const FormSettings = forwardRef<
           }
         >
           {redirectOn ? (
-            <Input
-              type="url"
-              placeholder="https://example.com/thank-you"
-              value={state.redirectUrl ?? ""}
-              onChange={(e) => setState((s) => ({ ...s, redirectUrl: e.target.value }))}
-              className="h-9 w-full"
-            />
+            <>
+              <Input
+                type="url"
+                placeholder="https://example.com/thank-you"
+                value={state.redirectUrl ?? ""}
+                onChange={(e) => {
+                  setRedirectError(null)
+                  setState((s) => ({ ...s, redirectUrl: e.target.value }))
+                }}
+                // Settle the value on blur so the box shows what will actually
+                // be stored: "example.com/thanks" becomes absolute here rather
+                // than silently server-side, and a destination we refuse says
+                // so now instead of looking saved.
+                onBlur={(e) => {
+                  const raw = e.target.value.trim()
+                  if (!raw) return setRedirectError(null)
+                  const checked = normalizeRedirectUrl(raw)
+                  if (checked.ok) {
+                    setRedirectError(null)
+                    setState((s) => ({ ...s, redirectUrl: checked.url }))
+                  } else {
+                    setRedirectError(checked.error)
+                  }
+                }}
+                aria-invalid={redirectError ? true : undefined}
+                className="h-9 w-full"
+              />
+              {redirectError ? (
+                <p className="mt-1.5 text-sm text-destructive">{redirectError}</p>
+              ) : null}
+            </>
           ) : null}
         </SettingRow>
 

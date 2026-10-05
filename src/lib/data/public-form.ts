@@ -9,6 +9,7 @@ import {
   type FieldLogic,
   type FieldConfig,
 } from "@/lib/db/schema"
+import { usableRedirectUrl } from "@/lib/core/redirect-url"
 
 export type PublicOption = { id: string; label: string }
 
@@ -95,7 +96,10 @@ function mapForm(row: FormRow, fields: PublicField[]): PublicForm {
     thankYou: row.settings?.thankYouMessage || "Thanks! Your response has been recorded.",
     successBody: row.settings?.successBody || null,
     successVideoUrl: row.settings?.successVideoUrl || null,
-    redirectUrl: row.redirectUrl ?? null,
+    // Re-checked rather than trusted: rows predating the write-side guard can
+    // still hold a scheme-less value, which the runtimes would resolve against
+    // the form's own URL.
+    redirectUrl: usableRedirectUrl(row.redirectUrl),
     showProgressBar: row.settings?.showProgressBar ?? false,
     chooserEnabled: row.settings?.chooserEnabled === true,
     chooserStyle: row.settings?.chooserStyle ?? "cards",

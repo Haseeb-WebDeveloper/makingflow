@@ -4,6 +4,7 @@ import { answers, folders, formFields, forms, submissions } from "@/lib/db/schem
 import type { AuthContext } from "@/lib/auth/context"
 import { invalidate } from "@/lib/core/cache"
 import { saveAiForm, updateFormSettings } from "@/lib/core/forms"
+import { usableRedirectUrl } from "@/lib/core/redirect-url"
 import { importTallyFormFromUrl } from "@/lib/import/tally-page"
 import { TallyImportError, tallyErrorMessage } from "@/lib/import/tally-error"
 import {
@@ -89,7 +90,10 @@ export async function importTallyForm(ctx: AuthContext, url: string): Promise<Im
   if (form.settings && Object.keys(form.settings).length > 0) {
     await updateFormSettings(ctx, saved.id, {
       showProgressBar: form.settings.showProgressBar,
-      redirectUrl: form.settings.redirectUrl ?? null,
+      // Normalised here, not left to the guard in updateFormSettings: this
+      // call's result is not checked, so a redirect Tally stored in a shape we
+      // refuse would take the rest of the patch down with it.
+      redirectUrl: usableRedirectUrl(form.settings.redirectUrl ?? null),
     })
   }
 
@@ -472,7 +476,7 @@ export async function importTallyFormFromApiKey(
   const settings = form.settings ?? {}
   await updateFormSettings(ctx, saved.id, {
     showProgressBar: settings.showProgressBar,
-    redirectUrl: settings.redirectUrl ?? null,
+    redirectUrl: usableRedirectUrl(settings.redirectUrl ?? null),
     thankYouMessage: settings.thankYouMessage ?? null,
     successBody: settings.successBody ?? null,
     logoUrl: form.theme?.logoUrl ?? null,
